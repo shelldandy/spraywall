@@ -7,7 +7,7 @@ prod:
 	docker compose up -d --build
 
 migrate:
-	docker compose exec server goose -dir /app/db/migrations postgres "$$DATABASE_URL" up
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml exec server sh -c 'goose -dir /app/db/migrations postgres "$$DATABASE_URL" up'
 
 sqlc:
 	docker run --rm -v ./server:/src -w /src sqlc/sqlc:latest generate
