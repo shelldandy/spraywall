@@ -1,5 +1,5 @@
 # ---- Build stage ----
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ COPY . .
 RUN go build -o /server ./cmd/server
 
 # ---- Dev target ----
-FROM golang:1.23-alpine AS dev
+FROM golang:1.26-alpine AS dev
 
 WORKDIR /app
 
