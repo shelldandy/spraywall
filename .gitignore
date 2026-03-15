@@ -3,7 +3,6 @@
 
 # Go
 server/tmp/
-server/db/generated/
 
 # Python
 worker/__pycache__/

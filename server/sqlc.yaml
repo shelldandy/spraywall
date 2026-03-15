@@ -7,3 +7,11 @@ sql:
       go:
         package: "generated"
         out: "db/generated/"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        overrides:
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "user_role"
+            go_type:
+              type: "UserRole"

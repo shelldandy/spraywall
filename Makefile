@@ -19,10 +19,13 @@ expo:
 	cd app && npx expo start
 
 lint:
-	@echo "TODO: configure linting"
+	cd server && go vet ./...
+	cd app && npx tsc --noEmit
+	cd worker && python -m py_compile main.py
 
 test:
-	@echo "TODO: configure tests"
+	cd server && go test ./...
+	cd worker && python -m pytest -q
 
 clean:
 	docker compose down -v
