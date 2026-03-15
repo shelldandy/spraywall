@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
 import { useServerStore } from "../lib/store/server";
 
 export default function ConnectScreen() {
   const { serverUrl, setServerUrl } = useServerStore();
   const [input, setInput] = useState(serverUrl || "http://localhost:8080");
+
+  useEffect(() => {
+    if (serverUrl) setInput(serverUrl);
+  }, [serverUrl]);
   const [loading, setLoading] = useState(false);
 
   const handleConnect = async () => {

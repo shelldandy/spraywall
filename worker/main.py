@@ -38,6 +38,10 @@ def poll_jobs(conn):
 
 
 def main():
+    if not DATABASE_URL:
+        logger.error("DATABASE_URL is not set — exiting.")
+        raise SystemExit(1)
+
     logger.info("Worker starting (poll interval: %ds)", POLL_INTERVAL)
 
     conn = None

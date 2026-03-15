@@ -6,8 +6,21 @@ MODEL_FILE="${MODEL_DIR}/yolov8n.pt"
 
 if [ ! -f "$MODEL_FILE" ]; then
     echo "Downloading YOLOv8n model weights..."
-    python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
-    mv yolov8n.pt "$MODEL_FILE" 2>/dev/null || true
+    mkdir -p "$MODEL_DIR"
+    python -c "
+from ultralytics import YOLO
+model = YOLO('yolov8n.pt')
+import shutil, os
+# ultralytics caches to ~/.cache/ultralytics or beside the script; find and move it
+for candidate in ['yolov8n.pt', os.path.expanduser('~/.cache/ultralytics/yolov8n.pt')]:
+    if os.path.isfile(candidate):
+        shutil.move(candidate, '${MODEL_FILE}')
+        break
+"
+    if [ ! -f "$MODEL_FILE" ]; then
+        echo "ERROR: Failed to download YOLOv8n model weights" >&2
+        exit 1
+    fi
 fi
 
 echo "Starting worker..."
