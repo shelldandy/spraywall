@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { apiFetch } from "../../../lib/api/fetch";
+import { useServerStore } from "../../../lib/store/server";
 import type { WallDetail, Hold } from "../../../lib/api/types";
 import HoldOverlay from "../../../components/HoldOverlay";
 
@@ -25,6 +26,7 @@ export default function WallDetailScreen() {
     gymSlug: string;
   }>();
   const queryClient = useQueryClient();
+  const { serverUrl } = useServerStore();
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [imageLayout, setImageLayout] = useState<{
@@ -171,7 +173,7 @@ export default function WallDetailScreen() {
           {wall?.image ? (
             <View style={styles.imageContainer}>
               <Image
-                source={{ uri: wall.image.image_url }}
+                source={{ uri: `${serverUrl}${wall.image.image_url}` }}
                 style={styles.wallImage}
                 resizeMode="contain"
                 onLayout={onImageLayout}

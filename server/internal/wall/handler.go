@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -299,13 +300,10 @@ func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
 	// Try to get the active image and its detection status.
 	img, err := h.queries.GetActiveWallImage(r.Context(), wall.ID)
 	if err == nil {
-		url, urlErr := h.storage.PresignedURL(r.Context(), img.StorageKey)
-		if urlErr == nil {
-			detail.Image = &imageInfo{
-				ID:       shared.UUIDFromPg(img.ID).String(),
-				ImageURL: url,
-				IsActive: img.IsActive,
-			}
+		detail.Image = &imageInfo{
+			ID:       shared.UUIDFromPg(img.ID).String(),
+			ImageURL: "/images/" + img.StorageKey,
+			IsActive: img.IsActive,
 		}
 
 		job, jobErr := h.queries.GetDetectionJobByWallImage(r.Context(), img.ID)
@@ -458,3 +456,22 @@ func (h *Handler) GetHolds(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// ServeImage handles GET /images/*
+func (h *Handler) ServeImage(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "*")
+	if key == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	reader, contentType, err := h.storage.Download(r.Context(), key)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer reader.Close()
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	io.Copy(w, reader)
+}

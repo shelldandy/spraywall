@@ -98,6 +98,9 @@ func main() {
 	wallHandler := wall.NewHandler(queries, storageClient)
 	inviteHandler := invite.NewHandler(queries)
 
+	// Image proxy (no auth required, keys are unguessable UUIDs)
+	r.Get("/images/*", wallHandler.ServeImage)
+
 	// Logbook (authenticated, outside gyms)
 	r.With(user.AuthMiddleware(jwtSecret)).Get("/users/me/logbook", routeHandler.Logbook)
 
