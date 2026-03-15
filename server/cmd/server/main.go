@@ -6,12 +6,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
+	"github.com/bowlinedandy/spraywall/server/internal/invite"
+	mw "github.com/bowlinedandy/spraywall/server/internal/middleware"
 	"github.com/bowlinedandy/spraywall/server/internal/route"
 	"github.com/bowlinedandy/spraywall/server/internal/storage"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
@@ -29,7 +32,6 @@ func main() {
 		log.Fatal("JWT_SECRET is required")
 	}
 
-	// Database
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL is required")
@@ -43,7 +45,6 @@ func main() {
 
 	queries := generated.New(pool)
 
-	// MinIO storage
 	storageClient, err := storage.New()
 	if err != nil {
 		log.Fatalf("Unable to create storage client: %v", err)
@@ -53,14 +54,29 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
+	// Health check with DB connectivity
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		dbStatus := "ok"
+		if err := pool.Ping(r.Context()); err != nil {
+			dbStatus = "error"
+		}
+		status := "ok"
+		if dbStatus != "ok" {
+			status = "degraded"
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+		json.NewEncoder(w).Encode(map[string]string{
+			"status": status,
+			"db":     dbStatus,
+		})
 	})
 
-	// Auth routes
+	// Auth routes (rate limited)
+	authLimiter := mw.NewRateLimiter(10, time.Minute)
 	authHandler := user.NewHandler(queries, jwtSecret)
 	r.Route("/auth", func(r chi.Router) {
+		r.Use(authLimiter.Handler)
 		r.Post("/register", authHandler.Register)
 		r.Post("/login", authHandler.Login)
 		r.Post("/refresh", authHandler.Refresh)
@@ -68,14 +84,21 @@ func main() {
 		r.With(user.AuthMiddleware(jwtSecret)).Get("/me", authHandler.Me)
 	})
 
-	// Route handler
+	// Handlers
 	routeHandler := route.NewHandler(queries)
+	wallHandler := wall.NewHandler(queries, storageClient)
+	inviteHandler := invite.NewHandler(queries)
 
-	// Logbook route (authenticated, outside gyms)
+	// Logbook (authenticated, outside gyms)
 	r.With(user.AuthMiddleware(jwtSecret)).Get("/users/me/logbook", routeHandler.Logbook)
 
+	// Public invite routes
+	r.Route("/invites/{token}", func(r chi.Router) {
+		r.Get("/", inviteHandler.ValidateInvite)
+		r.With(user.AuthMiddleware(jwtSecret)).Post("/accept", inviteHandler.AcceptInvite)
+	})
+
 	// Gym & wall routes (authenticated)
-	wallHandler := wall.NewHandler(queries, storageClient)
 	r.Route("/gyms", func(r chi.Router) {
 		r.Use(user.AuthMiddleware(jwtSecret))
 		r.Post("/", wallHandler.CreateGym)
@@ -83,6 +106,7 @@ func main() {
 		r.Route("/{gymSlug}", func(r chi.Router) {
 			r.Get("/", wallHandler.GetGym)
 			r.Post("/members", wallHandler.AddMember)
+			r.Post("/invites", inviteHandler.CreateInvite)
 			r.Route("/walls", func(r chi.Router) {
 				r.Post("/", wallHandler.CreateWall)
 				r.Get("/", wallHandler.ListWalls)

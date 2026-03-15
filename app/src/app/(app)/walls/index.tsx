@@ -7,6 +7,7 @@ import {
   TextInput,
   StyleSheet,
   Alert,
+  Share,
   ActivityIndicator,
   SafeAreaView,
 } from "react-native";
@@ -111,6 +112,25 @@ export default function WallsScreen() {
     router.replace("/login" as any);
   };
 
+  const handleInvite = async (gym: Gym) => {
+    try {
+      const res = await apiFetch(`/gyms/${gym.slug}/invites`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        Alert.alert("Error", data.error || "Failed to create invite");
+        return;
+      }
+      const data = await res.json();
+      const inviteLink = `spraywall://invite/${data.token}`;
+      await Share.share({ message: `Join ${gym.name} on Spraywall! ${inviteLink}` });
+    } catch {
+      Alert.alert("Error", "Failed to create invite");
+    }
+  };
+
   const data = wallsQueries.data ?? [];
 
   return (
@@ -125,6 +145,12 @@ export default function WallsScreen() {
             style={styles.logbookButton}
           >
             <Text style={styles.logbookText}>Logbook</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/(app)/settings" as any)}
+            style={styles.logbookButton}
+          >
+            <Text style={styles.logbookText}>Settings</Text>
           </Pressable>
           <Pressable onPress={handleLogout} style={styles.logoutButton}>
             <Text style={styles.logoutText}>Logout</Text>
@@ -146,7 +172,12 @@ export default function WallsScreen() {
           }
           renderItem={({ item: gym }) => (
             <View style={styles.gymSection}>
-              <Text style={styles.gymName}>{gym.name}</Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={styles.gymName}>{gym.name}</Text>
+                <Pressable onPress={() => handleInvite(gym)}>
+                  <Text style={{ color: "#007AFF", fontSize: 14, fontWeight: "600" }}>Invite</Text>
+                </Pressable>
+              </View>
               {gym.walls.map((wall) => (
                 <Pressable
                   key={wall.id}

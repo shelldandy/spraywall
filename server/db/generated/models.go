@@ -86,6 +86,17 @@ type Hold struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type Invite struct {
+	ID        pgtype.UUID        `json:"id"`
+	GymID     pgtype.UUID        `json:"gym_id"`
+	Token     string             `json:"token"`
+	CreatedBy pgtype.UUID        `json:"created_by"`
+	Role      UserRole           `json:"role"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+	UsedBy    pgtype.UUID        `json:"used_by"`
+}
+
 type RefreshToken struct {
 	ID        pgtype.UUID        `json:"id"`
 	UserID    pgtype.UUID        `json:"user_id"`
