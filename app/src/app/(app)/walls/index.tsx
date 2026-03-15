@@ -1,121 +1,414 @@
-import { useEffect, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
-import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  Pressable,
+  FlatList,
+  TextInput,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  SafeAreaView,
+} from "react-native";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { router } from "expo-router";
 import { useServerStore } from "../../../lib/store/server";
+import { apiFetch } from "../../../lib/api/fetch";
+import type { Gym, Wall } from "../../../lib/api/types";
 
-interface UserInfo {
-  id: string;
-  email: string;
-  display_name: string;
-  role: string;
-  created_at: string;
+interface GymWithWalls extends Gym {
+  walls: Wall[];
 }
 
 export default function WallsScreen() {
-  const router = useRouter();
-  const { serverUrl, accessToken, clearTokens } = useServerStore();
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { clearTokens } = useServerStore();
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await fetch(`${serverUrl}/auth/me`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+  const [showGymForm, setShowGymForm] = useState(false);
+  const [gymName, setGymName] = useState("");
+  const [gymSlug, setGymSlug] = useState("");
 
-        if (!res.ok) {
-          setError(`Failed to load user (${res.status}).`);
-          return;
-        }
+  const [wallFormGymSlug, setWallFormGymSlug] = useState<string | null>(null);
+  const [wallName, setWallName] = useState("");
 
-        const data = await res.json();
-        setUser(data);
-      } catch {
-        setError("Could not reach the server.");
-      } finally {
-        setLoading(false);
+  const gymsQuery = useQuery<Gym[]>({
+    queryKey: ["gyms"],
+    queryFn: async () => {
+      const res = await apiFetch("/gyms");
+      if (!res.ok) throw new Error("Failed to fetch gyms");
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const wallsQueries = useQuery<GymWithWalls[]>({
+    queryKey: ["gyms-with-walls", gymsQuery.data],
+    queryFn: async () => {
+      const gyms = gymsQuery.data;
+      if (!gyms) return [];
+      const results = await Promise.all(
+        gyms.map(async (gym) => {
+          const res = await apiFetch(`/gyms/${gym.slug}/walls`);
+          const walls: Wall[] = res.ok ? await res.json() : [];
+          return { ...gym, walls };
+        })
+      );
+      return results;
+    },
+    enabled: !!gymsQuery.data,
+    refetchInterval: 10000,
+  });
+
+  const createGymMutation = useMutation({
+    mutationFn: async ({ name, slug }: { name: string; slug: string }) => {
+      const res = await apiFetch("/gyms", {
+        method: "POST",
+        body: JSON.stringify({ name, slug }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to create gym");
       }
-    };
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["gyms"] });
+      setShowGymForm(false);
+      setGymName("");
+      setGymSlug("");
+    },
+    onError: (err: Error) => Alert.alert("Error", err.message),
+  });
 
-    fetchUser();
-  }, [serverUrl, accessToken]);
+  const createWallMutation = useMutation({
+    mutationFn: async ({
+      gymSlug,
+      name,
+    }: {
+      gymSlug: string;
+      name: string;
+    }) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls`, {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to create wall");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
+      setWallFormGymSlug(null);
+      setWallName("");
+    },
+    onError: (err: Error) => Alert.alert("Error", err.message),
+  });
 
   const handleLogout = () => {
     clearTokens();
     router.replace("/login" as any);
   };
 
+  const data = wallsQueries.data ?? [];
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Walls</Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Spraywall</Text>
+        <Pressable onPress={handleLogout} style={styles.logoutButton}>
+          <Text style={styles.logoutText}>Logout</Text>
+        </Pressable>
+      </View>
 
-      {loading && <ActivityIndicator size="large" color="#007AFF" />}
+      {gymsQuery.isLoading ? (
+        <ActivityIndicator style={styles.loader} size="large" color="#007AFF" />
+      ) : (
+        <FlatList
+          data={data}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              No gyms yet. Create one to get started.
+            </Text>
+          }
+          renderItem={({ item: gym }) => (
+            <View style={styles.gymSection}>
+              <Text style={styles.gymName}>{gym.name}</Text>
+              {gym.walls.map((wall) => (
+                <Pressable
+                  key={wall.id}
+                  style={styles.wallItem}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(app)/walls/[wallId]" as any,
+                      params: { wallId: wall.id, gymSlug: gym.slug },
+                    })
+                  }
+                >
+                  <Text style={styles.wallName}>{wall.name}</Text>
+                  <Text style={styles.chevron}>{">"}</Text>
+                </Pressable>
+              ))}
 
-      {error && <Text style={styles.error}>{error}</Text>}
-
-      {user && (
-        <View style={styles.userInfo}>
-          <Text style={styles.userName}>{user.display_name}</Text>
-          <Text style={styles.userEmail}>{user.email}</Text>
-          <Text style={styles.userRole}>Role: {user.role}</Text>
-        </View>
+              {wallFormGymSlug === gym.slug ? (
+                <View style={styles.inlineForm}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Wall name"
+                    value={wallName}
+                    onChangeText={setWallName}
+                    autoFocus
+                  />
+                  <View style={styles.formButtons}>
+                    <Pressable
+                      style={styles.cancelButton}
+                      onPress={() => {
+                        setWallFormGymSlug(null);
+                        setWallName("");
+                      }}
+                    >
+                      <Text style={styles.cancelText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.submitButton,
+                        (!wallName.trim() ||
+                          createWallMutation.isPending) &&
+                          styles.buttonDisabled,
+                      ]}
+                      onPress={() =>
+                        createWallMutation.mutate({
+                          gymSlug: gym.slug,
+                          name: wallName.trim(),
+                        })
+                      }
+                      disabled={
+                        !wallName.trim() || createWallMutation.isPending
+                      }
+                    >
+                      <Text style={styles.submitText}>
+                        {createWallMutation.isPending ? "Creating..." : "Add"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable
+                  style={styles.addWallButton}
+                  onPress={() => setWallFormGymSlug(gym.slug)}
+                >
+                  <Text style={styles.addWallText}>+ Add Wall</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+          ListFooterComponent={
+            showGymForm ? (
+              <View style={styles.gymForm}>
+                <Text style={styles.formTitle}>New Gym</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Gym name"
+                  value={gymName}
+                  onChangeText={setGymName}
+                  autoFocus
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Slug (e.g. my-gym)"
+                  value={gymSlug}
+                  onChangeText={setGymSlug}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <View style={styles.formButtons}>
+                  <Pressable
+                    style={styles.cancelButton}
+                    onPress={() => {
+                      setShowGymForm(false);
+                      setGymName("");
+                      setGymSlug("");
+                    }}
+                  >
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.submitButton,
+                      (!gymName.trim() ||
+                        !gymSlug.trim() ||
+                        createGymMutation.isPending) &&
+                        styles.buttonDisabled,
+                    ]}
+                    onPress={() =>
+                      createGymMutation.mutate({
+                        name: gymName.trim(),
+                        slug: gymSlug.trim(),
+                      })
+                    }
+                    disabled={
+                      !gymName.trim() ||
+                      !gymSlug.trim() ||
+                      createGymMutation.isPending
+                    }
+                  >
+                    <Text style={styles.submitText}>
+                      {createGymMutation.isPending ? "Creating..." : "Create"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <Pressable
+                style={styles.createGymButton}
+                onPress={() => setShowGymForm(true)}
+              >
+                <Text style={styles.createGymText}>+ Create Gym</Text>
+              </Pressable>
+            )
+          }
+        />
       )}
-
-      <Pressable style={styles.button} onPress={handleLogout}>
-        <Text style={styles.buttonText}>Log Out</Text>
-      </Pressable>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
     backgroundColor: "#fff",
   },
-  title: {
-    fontSize: 32,
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  headerTitle: {
+    fontSize: 20,
     fontWeight: "bold",
+  },
+  logoutButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  logoutText: {
+    color: "#ff3b30",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  loader: {
+    marginTop: 40,
+  },
+  listContent: {
+    padding: 16,
+  },
+  emptyText: {
+    textAlign: "center",
+    color: "#999",
+    marginTop: 40,
+    fontSize: 16,
+  },
+  gymSection: {
     marginBottom: 24,
   },
-  userInfo: {
+  gymName: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 8,
+    color: "#333",
+  },
+  wallItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 32,
+    backgroundColor: "#f8f8f8",
+    padding: 14,
+    borderRadius: 8,
+    marginBottom: 6,
   },
-  userName: {
-    fontSize: 20,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  userEmail: {
+  wallName: {
     fontSize: 16,
-    color: "#666",
-    marginBottom: 4,
+    color: "#333",
   },
-  userRole: {
-    fontSize: 14,
+  chevron: {
+    fontSize: 16,
     color: "#999",
   },
-  error: {
-    color: "#ff3b30",
-    fontSize: 14,
-    marginBottom: 16,
-    textAlign: "center",
+  addWallButton: {
+    paddingVertical: 10,
   },
-  button: {
-    backgroundColor: "#ff3b30",
-    paddingVertical: 12,
-    paddingHorizontal: 32,
+  addWallText: {
+    color: "#007AFF",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  inlineForm: {
+    marginTop: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  formButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  cancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  cancelText: {
+    color: "#999",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  submitButton: {
+    backgroundColor: "#007AFF",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     borderRadius: 8,
   },
-  buttonText: {
+  submitText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  createGymButton: {
+    backgroundColor: "#007AFF",
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  createGymText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  gymForm: {
+    backgroundColor: "#f8f8f8",
+    padding: 16,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  formTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 12,
   },
 });

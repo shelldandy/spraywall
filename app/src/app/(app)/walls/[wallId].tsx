@@ -1,0 +1,306 @@
+import React, { useState, useCallback } from "react";
+import {
+  View,
+  Text,
+  Pressable,
+  Image,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  LayoutChangeEvent,
+} from "react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocalSearchParams, router } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
+import { apiFetch } from "../../../lib/api/fetch";
+import type { WallDetail, Hold } from "../../../lib/api/types";
+import HoldOverlay from "../../../components/HoldOverlay";
+
+export default function WallDetailScreen() {
+  const { wallId, gymSlug } = useLocalSearchParams<{
+    wallId: string;
+    gymSlug: string;
+  }>();
+  const queryClient = useQueryClient();
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [imageLayout, setImageLayout] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const isPolling = (status: string | null | undefined) =>
+    status === "pending" || status === "processing";
+
+  const wallQuery = useQuery<WallDetail>({
+    queryKey: ["wall-detail", gymSlug, wallId],
+    queryFn: async () => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}`);
+      if (!res.ok) throw new Error("Failed to fetch wall");
+      return res.json();
+    },
+    refetchInterval: (query) =>
+      isPolling(query.state.data?.detection_status) ? 3000 : false,
+  });
+
+  const holdsQuery = useQuery<Hold[]>({
+    queryKey: ["holds", gymSlug, wallId],
+    queryFn: async () => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds`);
+      if (!res.ok) throw new Error("Failed to fetch holds");
+      return res.json();
+    },
+    enabled: wallQuery.data?.detection_status === "done",
+  });
+
+  const handleToggle = useCallback((holdId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(holdId)) {
+        next.delete(holdId);
+      } else {
+        next.add(holdId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleUpload = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    const uri = asset.uri;
+    const filename = uri.split("/").pop() ?? "photo.jpg";
+    const match = /\.(\w+)$/.exec(filename);
+    const mimeType = match ? `image/${match[1]}` : "image/jpeg";
+
+    const formData = new FormData();
+    formData.append("image", {
+      uri,
+      name: filename,
+      type: mimeType,
+    } as any);
+
+    setUploading(true);
+    try {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/images`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Upload failed");
+      }
+      queryClient.invalidateQueries({
+        queryKey: ["wall-detail", gymSlug, wallId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["holds", gymSlug, wallId] });
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      Alert.alert("Upload Error", err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onImageLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setImageLayout({ width, height });
+  };
+
+  const wall = wallQuery.data;
+  const holds = holdsQuery.data ?? [];
+  const detectionStatus = wall?.detection_status;
+
+  const statusBadge = () => {
+    if (!detectionStatus) return null;
+    let color = "#999";
+    let label = detectionStatus;
+    if (detectionStatus === "pending" || detectionStatus === "processing") {
+      color = "#f5a623";
+      label = "Detecting holds...";
+    } else if (detectionStatus === "done") {
+      color = "#34c759";
+      label = "Holds detected";
+    } else if (detectionStatus === "failed") {
+      color = "#ff3b30";
+      label = "Detection failed";
+    }
+    return (
+      <View style={[styles.badge, { backgroundColor: color }]}>
+        <Text style={styles.badgeText}>{label}</Text>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Text style={styles.backText}>{"< Back"}</Text>
+        </Pressable>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {wall?.wall.name ?? "Wall"}
+        </Text>
+        <Text style={styles.selectedCount}>
+          {selectedIds.size > 0 ? `${selectedIds.size} selected` : ""}
+        </Text>
+      </View>
+
+      {wallQuery.isLoading ? (
+        <ActivityIndicator style={styles.loader} size="large" color="#007AFF" />
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {statusBadge()}
+
+          {wall?.image ? (
+            <View style={styles.imageContainer}>
+              <Image
+                source={{ uri: wall.image.image_url }}
+                style={styles.wallImage}
+                resizeMode="contain"
+                onLayout={onImageLayout}
+              />
+              {imageLayout && holds.length > 0 && (
+                <HoldOverlay
+                  holds={holds}
+                  selectedIds={selectedIds}
+                  onToggle={handleToggle}
+                  imageWidth={imageLayout.width}
+                  imageHeight={imageLayout.height}
+                />
+              )}
+            </View>
+          ) : (
+            <View style={styles.noImage}>
+              <Text style={styles.noImageText}>No photo uploaded yet</Text>
+            </View>
+          )}
+
+          <Pressable
+            style={[styles.uploadButton, uploading && styles.buttonDisabled]}
+            onPress={handleUpload}
+            disabled={uploading}
+          >
+            <Text style={styles.uploadText}>
+              {uploading ? "Uploading..." : "Upload Photo"}
+            </Text>
+          </Pressable>
+
+          {detectionStatus === "done" && holds.length > 0 && (
+            <Text style={styles.holdCount}>
+              {holds.length} hold{holds.length !== 1 ? "s" : ""} detected
+            </Text>
+          )}
+        </ScrollView>
+      )}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  backButton: {
+    paddingRight: 12,
+  },
+  backText: {
+    color: "#007AFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  selectedCount: {
+    fontSize: 14,
+    color: "#007AFF",
+    minWidth: 60,
+    textAlign: "right",
+  },
+  loader: {
+    marginTop: 40,
+  },
+  scrollContent: {
+    padding: 16,
+  },
+  badge: {
+    alignSelf: "flex-start",
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  imageContainer: {
+    position: "relative",
+    width: "100%",
+    aspectRatio: 3 / 4,
+    marginBottom: 16,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  wallImage: {
+    width: "100%",
+    height: "100%",
+  },
+  noImage: {
+    width: "100%",
+    aspectRatio: 3 / 4,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  noImageText: {
+    color: "#999",
+    fontSize: 16,
+  },
+  uploadButton: {
+    backgroundColor: "#007AFF",
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  uploadText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  holdCount: {
+    textAlign: "center",
+    color: "#666",
+    fontSize: 14,
+  },
+});

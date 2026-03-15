@@ -54,6 +54,38 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type DetectionJob struct {
+	ID          pgtype.UUID        `json:"id"`
+	WallImageID pgtype.UUID        `json:"wall_image_id"`
+	Status      string             `json:"status"`
+	Error       pgtype.Text        `json:"error"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Gym struct {
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	Slug      string             `json:"slug"`
+	OwnerID   pgtype.UUID        `json:"owner_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type GymMember struct {
+	GymID  pgtype.UUID `json:"gym_id"`
+	UserID pgtype.UUID `json:"user_id"`
+	Role   UserRole    `json:"role"`
+}
+
+type Hold struct {
+	ID          pgtype.UUID        `json:"id"`
+	WallImageID pgtype.UUID        `json:"wall_image_id"`
+	Bbox        []byte             `json:"bbox"`
+	Polygon     []byte             `json:"polygon"`
+	Confidence  float32            `json:"confidence"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type RefreshToken struct {
 	ID        pgtype.UUID        `json:"id"`
 	UserID    pgtype.UUID        `json:"user_id"`
@@ -70,4 +102,19 @@ type User struct {
 	Role         UserRole           `json:"role"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Wall struct {
+	ID        pgtype.UUID        `json:"id"`
+	GymID     pgtype.UUID        `json:"gym_id"`
+	Name      string             `json:"name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type WallImage struct {
+	ID         pgtype.UUID        `json:"id"`
+	WallID     pgtype.UUID        `json:"wall_id"`
+	StorageKey string             `json:"storage_key"`
+	IsActive   bool               `json:"is_active"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
