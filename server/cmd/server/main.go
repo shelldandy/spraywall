@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
+	"github.com/bowlinedandy/spraywall/server/internal/route"
 	"github.com/bowlinedandy/spraywall/server/internal/storage"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
 	"github.com/bowlinedandy/spraywall/server/internal/wall"
@@ -67,6 +68,12 @@ func main() {
 		r.With(user.AuthMiddleware(jwtSecret)).Get("/me", authHandler.Me)
 	})
 
+	// Route handler
+	routeHandler := route.NewHandler(queries)
+
+	// Logbook route (authenticated, outside gyms)
+	r.With(user.AuthMiddleware(jwtSecret)).Get("/users/me/logbook", routeHandler.Logbook)
+
 	// Gym & wall routes (authenticated)
 	wallHandler := wall.NewHandler(queries, storageClient)
 	r.Route("/gyms", func(r chi.Router) {
@@ -83,6 +90,16 @@ func main() {
 					r.Get("/", wallHandler.GetWall)
 					r.Post("/images", wallHandler.UploadImage)
 					r.Get("/holds", wallHandler.GetHolds)
+					r.Route("/routes", func(r chi.Router) {
+						r.Post("/", routeHandler.CreateRoute)
+						r.Get("/", routeHandler.ListRoutes)
+						r.Route("/{routeId}", func(r chi.Router) {
+							r.Get("/", routeHandler.GetRoute)
+							r.Delete("/", routeHandler.DeleteRoute)
+							r.Post("/sends", routeHandler.LogSend)
+							r.Delete("/sends/me", routeHandler.RemoveSend)
+						})
+					})
 				})
 			})
 		})

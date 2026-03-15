@@ -94,6 +94,27 @@ type RefreshToken struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type Route struct {
+	ID          pgtype.UUID        `json:"id"`
+	WallID      pgtype.UUID        `json:"wall_id"`
+	WallImageID pgtype.UUID        `json:"wall_image_id"`
+	CreatedBy   pgtype.UUID        `json:"created_by"`
+	Name        string             `json:"name"`
+	Grade       pgtype.Text        `json:"grade"`
+	Description pgtype.Text        `json:"description"`
+	HoldIds     []pgtype.UUID      `json:"hold_ids"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type Send struct {
+	ID       pgtype.UUID        `json:"id"`
+	RouteID  pgtype.UUID        `json:"route_id"`
+	UserID   pgtype.UUID        `json:"user_id"`
+	SentAt   pgtype.Timestamptz `json:"sent_at"`
+	Attempts pgtype.Int4        `json:"attempts"`
+	Notes    pgtype.Text        `json:"notes"`
+}
+
 type User struct {
 	ID           pgtype.UUID        `json:"id"`
 	Email        string             `json:"email"`

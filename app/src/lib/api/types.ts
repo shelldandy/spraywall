@@ -48,3 +48,38 @@ export interface WallDetail {
   } | null;
   detection_status: string | null;
 }
+
+export interface Route {
+  id: string;
+  wall_id: string;
+  wall_image_id: string;
+  created_by: string;
+  name: string;
+  grade: string | null;
+  description: string | null;
+  hold_ids: string[];
+  created_at: string;
+  send_count: number;
+  has_sent: boolean;
+}
+
+export interface Send {
+  id: string;
+  route_id: string;
+  user_id: string;
+  sent_at: string;
+  attempts: number | null;
+  notes: string | null;
+}
+
+export interface LogbookEntry {
+  id: string;
+  route_id: string;
+  user_id: string;
+  sent_at: string;
+  attempts: number | null;
+  notes: string | null;
+  route_name: string;
+  route_grade: string | null;
+  wall_name: string;
+}

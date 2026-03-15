@@ -117,9 +117,19 @@ export default function WallsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Spraywall</Text>
-        <Pressable onPress={handleLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() =>
+              router.push("/(app)/logbook" as any)
+            }
+            style={styles.logbookButton}
+          >
+            <Text style={styles.logbookText}>Logbook</Text>
+          </Pressable>
+          <Pressable onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Logout</Text>
+          </Pressable>
+        </View>
       </View>
 
       {gymsQuery.isLoading ? (
@@ -293,6 +303,20 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: "bold",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  logbookButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  logbookText: {
+    color: "#007AFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
   logoutButton: {
     paddingVertical: 6,

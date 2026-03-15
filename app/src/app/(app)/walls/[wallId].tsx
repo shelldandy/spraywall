@@ -200,6 +200,38 @@ export default function WallDetailScreen() {
               {holds.length} hold{holds.length !== 1 ? "s" : ""} detected
             </Text>
           )}
+
+          {selectedIds.size >= 2 && (
+            <Pressable
+              style={styles.createRouteButton}
+              onPress={() =>
+                router.push({
+                  pathname: "/(app)/routes/create" as any,
+                  params: {
+                    wallId,
+                    gymSlug,
+                    holdIds: JSON.stringify(Array.from(selectedIds)),
+                  },
+                })
+              }
+            >
+              <Text style={styles.createRouteText}>
+                Create Route ({selectedIds.size} holds)
+              </Text>
+            </Pressable>
+          )}
+
+          <Pressable
+            style={styles.viewRoutesButton}
+            onPress={() =>
+              router.push({
+                pathname: "/(app)/routes" as any,
+                params: { wallId, gymSlug },
+              })
+            }
+          >
+            <Text style={styles.viewRoutesText}>View Routes</Text>
+          </Pressable>
         </ScrollView>
       )}
     </SafeAreaView>
@@ -302,5 +334,32 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#666",
     fontSize: 14,
+    marginBottom: 12,
+  },
+  createRouteButton: {
+    backgroundColor: "#34c759",
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  createRouteText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  viewRoutesButton: {
+    backgroundColor: "#f8f8f8",
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#007AFF",
+    marginBottom: 12,
+  },
+  viewRoutesText: {
+    color: "#007AFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
