@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -12,8 +13,9 @@ import (
 )
 
 type Client struct {
-	mc     *minio.Client
-	bucket string
+	mc             *minio.Client
+	bucket         string
+	publicEndpoint string
 }
 
 func New() (*Client, error) {
@@ -21,6 +23,7 @@ func New() (*Client, error) {
 	accessKey := os.Getenv("MINIO_ROOT_USER")
 	secretKey := os.Getenv("MINIO_ROOT_PASSWORD")
 	bucket := os.Getenv("MINIO_BUCKET")
+	publicEndpoint := os.Getenv("MINIO_PUBLIC_ENDPOINT")
 
 	mc, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
@@ -30,7 +33,7 @@ func New() (*Client, error) {
 		return nil, fmt.Errorf("minio client: %w", err)
 	}
 
-	return &Client{mc: mc, bucket: bucket}, nil
+	return &Client{mc: mc, bucket: bucket, publicEndpoint: publicEndpoint}, nil
 }
 
 func (c *Client) Upload(ctx context.Context, key string, reader io.Reader, size int64, contentType string) error {
@@ -41,9 +44,14 @@ func (c *Client) Upload(ctx context.Context, key string, reader io.Reader, size 
 }
 
 func (c *Client) PresignedURL(ctx context.Context, key string) (string, error) {
-	url, err := c.mc.PresignedGetObject(ctx, c.bucket, key, time.Hour, nil)
+	u, err := c.mc.PresignedGetObject(ctx, c.bucket, key, time.Hour, nil)
 	if err != nil {
 		return "", err
 	}
-	return url.String(), nil
+	result := u.String()
+	if c.publicEndpoint != "" {
+		internalHost := c.mc.EndpointURL().Host
+		result = strings.Replace(result, "://"+internalHost+"/", "://"+c.publicEndpoint+"/", 1)
+	}
+	return result, nil
 }

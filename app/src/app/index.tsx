@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useNavigationContainerRef } from "expo-router";
 import { useServerStore } from "../lib/store/server";
 
 export default function ConnectScreen() {
@@ -14,11 +14,13 @@ export default function ConnectScreen() {
     if (serverUrl) setInput(serverUrl);
   }, [serverUrl]);
 
+  const rootNav = useNavigationContainerRef();
+
   useEffect(() => {
-    if (serverUrl && isAuthenticated()) {
+    if (serverUrl && isAuthenticated() && rootNav?.isReady()) {
       router.replace("/(app)/walls" as any);
     }
-  }, [serverUrl, isAuthenticated, router]);
+  }, [serverUrl, isAuthenticated, router, rootNav]);
 
   const handleConnect = async () => {
     setLoading(true);

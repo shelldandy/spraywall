@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/bowlinedandy/spraywall/server/db/generated"
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
 	"github.com/bowlinedandy/spraywall/server/internal/storage"
@@ -433,9 +434,27 @@ func (h *Handler) GetHolds(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not fetch holds")
 		return
 	}
-	if holds == nil {
-		holds = []generated.Hold{}
+
+	type holdResponse struct {
+		ID          pgtype.UUID        `json:"id"`
+		WallImageID pgtype.UUID        `json:"wall_image_id"`
+		Bbox        json.RawMessage    `json:"bbox"`
+		Polygon     json.RawMessage    `json:"polygon"`
+		Confidence  float32            `json:"confidence"`
+		CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	}
-	writeJSON(w, http.StatusOK, holds)
+
+	result := make([]holdResponse, len(holds))
+	for i, h := range holds {
+		result[i] = holdResponse{
+			ID:          h.ID,
+			WallImageID: h.WallImageID,
+			Bbox:        json.RawMessage(h.Bbox),
+			Polygon:     json.RawMessage(h.Polygon),
+			Confidence:  h.Confidence,
+			CreatedAt:   h.CreatedAt,
+		}
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 

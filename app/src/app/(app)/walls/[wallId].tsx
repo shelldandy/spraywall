@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   ScrollView,
   LayoutChangeEvent,
+  Platform,
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, router } from "expo-router";
@@ -83,11 +84,17 @@ export default function WallDetailScreen() {
     const mimeType = match ? `image/${match[1]}` : "image/jpeg";
 
     const formData = new FormData();
-    formData.append("image", {
-      uri,
-      name: filename,
-      type: mimeType,
-    } as any);
+    if (Platform.OS === "web") {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      formData.append("image", blob, filename);
+    } else {
+      formData.append("image", {
+        uri,
+        name: filename,
+        type: mimeType,
+      } as any);
+    }
 
     setUploading(true);
     try {
