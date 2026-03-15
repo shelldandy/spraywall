@@ -12,7 +12,7 @@ from huggingface_hub import hf_hub_download
 import shutil
 path = hf_hub_download(
     repo_id='jwlarocque/yolov8n-freeclimbs-detect-2',
-    filename='best.pt',
+    filename='yolov8n-freeclimbs-detect-2.pt',
 )
 shutil.copy(path, '${MODEL_FILE}')
 print('Model downloaded to ${MODEL_FILE}')

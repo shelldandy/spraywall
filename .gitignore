@@ -2,10 +2,12 @@
 .env
 
 # Go
+server/server
 server/tmp/
 
 # Python
 worker/__pycache__/
+worker/detection/__pycache__/
 worker/.venv/
 worker/models/*.pt
 worker/models/*.onnx
@@ -15,6 +17,9 @@ worker/models/*.onnx
 .idea/
 *.swp
 *.swo
+
+# Claude Code
+.claude/worktrees/
 
 # OS
 .DS_Store

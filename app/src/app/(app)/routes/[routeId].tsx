@@ -14,6 +14,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, router } from "expo-router";
 import { apiFetch } from "../../../lib/api/fetch";
+import { useServerStore } from "../../../lib/store/server";
 import type { Route, WallDetail, Hold } from "../../../lib/api/types";
 import HoldOverlay from "../../../components/HoldOverlay";
 
@@ -24,6 +25,7 @@ export default function RouteDetailScreen() {
     gymSlug: string;
   }>();
   const queryClient = useQueryClient();
+  const { serverUrl } = useServerStore();
 
   const [imageLayout, setImageLayout] = useState<{
     width: number;
@@ -167,7 +169,7 @@ export default function RouteDetailScreen() {
           {wall?.image ? (
             <View style={styles.imageContainer}>
               <Image
-                source={{ uri: wall.image.image_url }}
+                source={{ uri: `${serverUrl}${wall.image.image_url}` }}
                 style={styles.wallImage}
                 resizeMode="contain"
                 onLayout={onImageLayout}
