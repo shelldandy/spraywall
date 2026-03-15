@@ -14,8 +14,12 @@ POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL_SECONDS", "5"))
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 
+_table_warned = False
+
+
 def poll_jobs(conn):
     """Check for pending detection jobs."""
+    global _table_warned
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -26,9 +30,11 @@ def poll_jobs(conn):
                 logger.info("Found pending job: %s", row[0])
             else:
                 logger.debug("No pending jobs.")
+            _table_warned = False
     except psycopg.errors.UndefinedTable:
-        conn.rollback()
-        logger.warning("detection_jobs table does not exist yet — skipping poll.")
+        if not _table_warned:
+            logger.warning("detection_jobs table does not exist yet — skipping poll.")
+            _table_warned = True
 
 
 def main():

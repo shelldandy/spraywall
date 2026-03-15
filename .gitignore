@@ -11,13 +11,6 @@ worker/.venv/
 worker/models/*.pt
 worker/models/*.onnx
 
-# Expo / React Native
-app/node_modules/
-app/.expo/
-app/dist/
-app/ios/
-app/android/
-
 # IDE
 .vscode/
 .idea/
