@@ -8,16 +8,15 @@ import (
 	"database/sql/driver"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type UserRole string
 
 const (
-	UserRoleAdmin   UserRole = "admin"
-	UserRoleSetter  UserRole = "setter"
 	UserRoleClimber UserRole = "climber"
+	UserRoleSetter  UserRole = "setter"
+	UserRoleAdmin   UserRole = "admin"
 )
 
 func (e *UserRole) Scan(src interface{}) error {
@@ -55,11 +54,20 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type RefreshToken struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	TokenHash string             `json:"token_hash"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type User struct {
-	ID           uuid.UUID          `json:"id"`
+	ID           pgtype.UUID        `json:"id"`
 	Email        string             `json:"email"`
 	PasswordHash string             `json:"password_hash"`
 	DisplayName  string             `json:"display_name"`
 	Role         UserRole           `json:"role"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }

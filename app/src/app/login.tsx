@@ -1,40 +1,42 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, Link } from "expo-router";
 import { useServerStore } from "../lib/store/server";
 
-export default function ConnectScreen() {
+export default function LoginScreen() {
   const router = useRouter();
-  const { serverUrl, setServerUrl, isAuthenticated } = useServerStore();
-  const [input, setInput] = useState(serverUrl || "http://localhost:8080");
+  const { serverUrl, setTokens } = useServerStore();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (serverUrl) setInput(serverUrl);
-  }, [serverUrl]);
-
-  useEffect(() => {
-    if (serverUrl && isAuthenticated()) {
-      router.replace("/(app)/walls" as any);
+  const handleLogin = async () => {
+    if (!email || !password) {
+      setError("Please enter both email and password.");
+      return;
     }
-  }, [serverUrl, isAuthenticated, router]);
 
-  const handleConnect = async () => {
     setLoading(true);
     setError(null);
     try {
-      const url = input.replace(/\/+$/, "");
-      const res = await fetch(`${url}/healthz`);
-      const data = await res.json();
-      if (data.status === "ok") {
-        setServerUrl(url);
-        router.replace("/login" as any);
-      } else {
-        setError("Unexpected response from server.");
+      const res = await fetch(`${serverUrl}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? `Login failed (${res.status}).`);
+        return;
       }
+
+      const data = await res.json();
+      setTokens(data.access_token, data.refresh_token);
+      router.replace("/(app)/walls" as any);
     } catch {
-      setError("Could not connect to server.");
+      setError("Could not reach the server.");
     } finally {
       setLoading(false);
     }
@@ -43,25 +45,38 @@ export default function ConnectScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Spraywall</Text>
-      <Text style={styles.subtitle}>Connect to Server</Text>
+      <Text style={styles.subtitle}>Log In</Text>
       <TextInput
         style={styles.input}
-        value={input}
-        onChangeText={setInput}
-        placeholder="http://localhost:8080"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="Email"
         autoCapitalize="none"
         autoCorrect={false}
+        keyboardType="email-address"
+        textContentType="emailAddress"
+      />
+      <TextInput
+        style={styles.input}
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Password"
+        secureTextEntry
+        textContentType="password"
       />
       {error && <Text style={styles.error}>{error}</Text>}
       <Pressable
         style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={handleConnect}
+        onPress={handleLogin}
         disabled={loading}
       >
         <Text style={styles.buttonText}>
-          {loading ? "Connecting..." : "Connect"}
+          {loading ? "Logging in..." : "Log In"}
         </Text>
       </Pressable>
+      <Link href={"/register" as any} style={styles.link}>
+        Don't have an account? Register
+      </Link>
     </View>
   );
 }
@@ -112,5 +127,10 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  link: {
+    marginTop: 24,
+    color: "#007AFF",
+    fontSize: 14,
   },
 });
