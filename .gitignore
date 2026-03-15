@@ -1,0 +1,22 @@
+# Environment
+.env
+
+# Go
+server/tmp/
+server/db/generated/
+
+# Python
+worker/__pycache__/
+worker/.venv/
+worker/models/*.pt
+worker/models/*.onnx
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

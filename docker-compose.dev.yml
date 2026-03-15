@@ -1,0 +1,21 @@
+services:
+  postgres:
+    ports:
+      - "5433:5432"
+
+  minio:
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  server:
+    build:
+      target: dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./server:/app
+
+  worker:
+    volumes:
+      - ./worker:/app

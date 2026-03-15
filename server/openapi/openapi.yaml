@@ -1,0 +1,9 @@
+openapi: "3.1.0"
+info:
+  title: Spraywall API
+  version: "0.1.0"
+  description: API for the Spraywall climbing app
+servers:
+  - url: http://localhost:8080
+    description: Local development
+paths: {}
