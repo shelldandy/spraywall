@@ -7,7 +7,7 @@ RETURNING *;
 SELECT * FROM gyms WHERE slug = $1;
 
 -- name: ListGymsByUser :many
-SELECT g.* FROM gyms g
+SELECT g.*, gm.role AS user_role FROM gyms g
 JOIN gym_members gm ON g.id = gm.gym_id
 WHERE gm.user_id = $1
 ORDER BY g.name;

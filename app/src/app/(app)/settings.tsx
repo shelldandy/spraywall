@@ -16,6 +16,7 @@ export default function SettingsScreen() {
   const { serverUrl, setServerUrl, clearTokens } = useServerStore();
   const [editing, setEditing] = useState(false);
   const [newUrl, setNewUrl] = useState(serverUrl);
+  const [saving, setSaving] = useState(false);
 
   const appVersion = Constants.expoConfig?.version ?? "1.0.0";
 
@@ -34,16 +35,29 @@ export default function SettingsScreen() {
     );
   };
 
-  const handleSaveUrl = () => {
+  const handleSaveUrl = async () => {
     const url = newUrl.replace(/\/+$/, "");
     if (!url) {
       Alert.alert("Error", "Server URL cannot be empty.");
       return;
     }
-    clearTokens();
-    setServerUrl(url);
-    setEditing(false);
-    router.replace("/" as any);
+    setSaving(true);
+    try {
+      const res = await fetch(`${url}/healthz`);
+      const data = await res.json();
+      if (data.status === "ok") {
+        clearTokens();
+        setServerUrl(url);
+        setEditing(false);
+        router.replace("/" as any);
+      } else {
+        Alert.alert("Error", "Unexpected response from server.");
+      }
+    } catch {
+      Alert.alert("Error", "Could not connect to server.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -72,8 +86,14 @@ export default function SettingsScreen() {
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </Pressable>
-              <Pressable style={styles.button} onPress={handleSaveUrl}>
-                <Text style={styles.buttonText}>Save</Text>
+              <Pressable
+                style={[styles.button, saving && styles.disabledButton]}
+                onPress={handleSaveUrl}
+                disabled={saving}
+              >
+                <Text style={styles.buttonText}>
+                  {saving ? "Validating..." : "Save"}
+                </Text>
               </Pressable>
             </View>
           </>
@@ -151,6 +171,9 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     backgroundColor: "#999",
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   backButton: {
     marginTop: "auto",

@@ -19,9 +19,12 @@ expo:
 	cd app && npx expo start
 
 lint:
-	@echo "TODO: configure linting"
+	cd server && golangci-lint run ./...
+	cd app && npx tsc --noEmit
+	cd worker && ruff check .
 
 test:
+	cd server && go test ./...
 	cd worker && python -m pytest -q 2>/dev/null || echo "pytest not installed, skipping worker tests"
 
 clean:

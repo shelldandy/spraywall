@@ -126,27 +126,37 @@ func (q *Queries) ListGymMembers(ctx context.Context, gymID pgtype.UUID) ([]List
 }
 
 const listGymsByUser = `-- name: ListGymsByUser :many
-SELECT g.id, g.name, g.slug, g.owner_id, g.created_at FROM gyms g
+SELECT g.id, g.name, g.slug, g.owner_id, g.created_at, gm.role AS user_role FROM gyms g
 JOIN gym_members gm ON g.id = gm.gym_id
 WHERE gm.user_id = $1
 ORDER BY g.name
 `
 
-func (q *Queries) ListGymsByUser(ctx context.Context, userID pgtype.UUID) ([]Gym, error) {
+type ListGymsByUserRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	Slug      string             `json:"slug"`
+	OwnerID   pgtype.UUID        `json:"owner_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UserRole  UserRole           `json:"user_role"`
+}
+
+func (q *Queries) ListGymsByUser(ctx context.Context, userID pgtype.UUID) ([]ListGymsByUserRow, error) {
 	rows, err := q.db.Query(ctx, listGymsByUser, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Gym
+	var items []ListGymsByUserRow
 	for rows.Next() {
-		var i Gym
+		var i ListGymsByUserRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
 			&i.Slug,
 			&i.OwnerID,
 			&i.CreatedAt,
+			&i.UserRole,
 		); err != nil {
 			return nil, err
 		}

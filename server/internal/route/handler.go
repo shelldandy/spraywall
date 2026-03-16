@@ -87,6 +87,7 @@ type routeResponse struct {
 	generated.Route
 	SendCount int  `json:"send_count"`
 	HasSent   bool `json:"has_sent"`
+	IsLegacy  bool `json:"is_legacy"`
 }
 
 // ---------- endpoints ----------
@@ -244,6 +245,9 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get active wall image to determine legacy status.
+	activeImg, activeImgErr := h.queries.GetActiveWallImage(r.Context(), pgWallID)
+
 	userID := user.GetUserID(r.Context())
 	pgUserID := shared.PgUUID(userID)
 
@@ -261,10 +265,16 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		})
 		hasSent := sendErr == nil
 
+		isLegacy := false
+		if activeImgErr == nil && rt.WallImageID != activeImg.ID {
+			isLegacy = true
+		}
+
 		result = append(result, routeResponse{
 			Route:     rt,
 			SendCount: int(count),
 			HasSent:   hasSent,
+			IsLegacy:  isLegacy,
 		})
 	}
 
@@ -312,10 +322,18 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 		UserID:  shared.PgUUID(userID),
 	})
 
+	// Determine legacy status.
+	isLegacy := false
+	activeImg, activeImgErr := h.queries.GetActiveWallImage(r.Context(), rt.WallID)
+	if activeImgErr == nil && rt.WallImageID != activeImg.ID {
+		isLegacy = true
+	}
+
 	writeJSON(w, http.StatusOK, routeResponse{
 		Route:     rt,
 		SendCount: int(count),
 		HasSent:   sendErr == nil,
+		IsLegacy:  isLegacy,
 	})
 }
 
@@ -394,6 +412,13 @@ func (h *Handler) LogSend(w http.ResponseWriter, r *http.Request) {
 	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
 	if err != nil || wall.GymID != gym.ID {
 		writeError(w, http.StatusNotFound, "route not found")
+		return
+	}
+
+	// Block sends on legacy routes.
+	activeImg, activeImgErr := h.queries.GetActiveWallImage(r.Context(), rt.WallID)
+	if activeImgErr == nil && rt.WallImageID != activeImg.ID {
+		writeError(w, http.StatusBadRequest, "cannot log send on legacy route")
 		return
 	}
 

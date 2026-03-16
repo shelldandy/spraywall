@@ -4,6 +4,7 @@ export interface Gym {
   slug: string;
   owner_id: string;
   created_at: string;
+  user_role?: string;
 }
 
 export interface Wall {
@@ -47,6 +48,7 @@ export interface WallDetail {
     created_at: string;
   } | null;
   detection_status: string | null;
+  user_role?: string;
 }
 
 export interface Route {
@@ -61,6 +63,7 @@ export interface Route {
   created_at: string;
   send_count: number;
   has_sent: boolean;
+  is_legacy: boolean;
 }
 
 export interface Send {
