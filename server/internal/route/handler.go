@@ -3,12 +3,13 @@ package route
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
@@ -92,7 +93,7 @@ type routeResponse struct {
 
 // CreateRoute handles POST /gyms/{gymSlug}/walls/{wallId}/routes
 func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
-	_, _, err := h.requireGymMember(w, r)
+	gym, _, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
@@ -105,13 +106,17 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 	pgWallID := shared.PgUUID(wallUUID)
 
 	// Verify wall exists.
-	_, err = h.queries.GetWallByID(r.Context(), pgWallID)
+	wall, err := h.queries.GetWallByID(r.Context(), pgWallID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "wall not found")
 		} else {
 			writeError(w, http.StatusInternalServerError, "database error")
 		}
+		return
+	}
+	if wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "wall not found")
 		return
 	}
 
@@ -156,6 +161,23 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate hold IDs belong to this wall image.
+	existingHolds, err := h.queries.GetHoldsByWallImage(r.Context(), img.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	validHoldIDs := make(map[pgtype.UUID]bool, len(existingHolds))
+	for _, eh := range existingHolds {
+		validHoldIDs[eh.ID] = true
+	}
+	for _, hid := range holdIDs {
+		if !validHoldIDs[hid] {
+			writeError(w, http.StatusBadRequest, "one or more hold IDs do not belong to the active wall image")
+			return
+		}
+	}
+
 	userID := user.GetUserID(r.Context())
 
 	var grade pgtype.Text
@@ -190,7 +212,7 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 
 // ListRoutes handles GET /gyms/{gymSlug}/walls/{wallId}/routes
 func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
-	_, _, err := h.requireGymMember(w, r)
+	gym, _, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
@@ -201,6 +223,20 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pgWallID := shared.PgUUID(wallUUID)
+
+	wall, err := h.queries.GetWallByID(r.Context(), pgWallID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "wall not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "database error")
+		}
+		return
+	}
+	if wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "wall not found")
+		return
+	}
 
 	routes, err := h.queries.ListRoutesByWall(r.Context(), pgWallID)
 	if err != nil {
@@ -237,7 +273,7 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 
 // GetRoute handles GET /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}
 func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
-	_, _, err := h.requireGymMember(w, r)
+	gym, _, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
@@ -255,6 +291,12 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 		} else {
 			writeError(w, http.StatusInternalServerError, "database error")
 		}
+		return
+	}
+
+	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
+	if err != nil || wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "route not found")
 		return
 	}
 
@@ -279,7 +321,7 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 
 // DeleteRoute handles DELETE /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}
 func (h *Handler) DeleteRoute(w http.ResponseWriter, r *http.Request) {
-	_, member, err := h.requireGymMember(w, r)
+	gym, member, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
@@ -298,6 +340,12 @@ func (h *Handler) DeleteRoute(w http.ResponseWriter, r *http.Request) {
 		} else {
 			writeError(w, http.StatusInternalServerError, "database error")
 		}
+		return
+	}
+
+	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
+	if err != nil || wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "route not found")
 		return
 	}
 
@@ -320,7 +368,7 @@ func (h *Handler) DeleteRoute(w http.ResponseWriter, r *http.Request) {
 
 // LogSend handles POST /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/sends
 func (h *Handler) LogSend(w http.ResponseWriter, r *http.Request) {
-	_, _, err := h.requireGymMember(w, r)
+	gym, _, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
@@ -333,7 +381,7 @@ func (h *Handler) LogSend(w http.ResponseWriter, r *http.Request) {
 	pgRouteID := shared.PgUUID(routeUUID)
 
 	// Verify route exists.
-	_, err = h.queries.GetRouteByID(r.Context(), pgRouteID)
+	rt, err := h.queries.GetRouteByID(r.Context(), pgRouteID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "route not found")
@@ -343,11 +391,17 @@ func (h *Handler) LogSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
+	if err != nil || wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "route not found")
+		return
+	}
+
 	var body struct {
 		Attempts *int32  `json:"attempts"`
 		Notes    *string `json:"notes"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err.Error() != "EOF" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -385,7 +439,8 @@ func (h *Handler) LogSend(w http.ResponseWriter, r *http.Request) {
 		Notes:    notes,
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key") {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			writeError(w, http.StatusConflict, "route already sent")
 			return
 		}
@@ -398,7 +453,7 @@ func (h *Handler) LogSend(w http.ResponseWriter, r *http.Request) {
 
 // RemoveSend handles DELETE /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/sends/me
 func (h *Handler) RemoveSend(w http.ResponseWriter, r *http.Request) {
-	_, _, err := h.requireGymMember(w, r)
+	gym, _, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
@@ -406,6 +461,21 @@ func (h *Handler) RemoveSend(w http.ResponseWriter, r *http.Request) {
 	routeUUID, err := parseRouteID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid route id")
+		return
+	}
+
+	rt, err := h.queries.GetRouteByID(r.Context(), shared.PgUUID(routeUUID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "route not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "database error")
+		}
+		return
+	}
+	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
+	if err != nil || wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "route not found")
 		return
 	}
 

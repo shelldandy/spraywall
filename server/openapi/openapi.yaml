@@ -6,11 +6,7 @@ info:
 servers:
   - url: http://localhost:8080
     description: Local development
-
-security: []
-
 paths:
-  # ── Health ──────────────────────────────────────────────────────────────
   /healthz:
     get:
       operationId: healthCheck
@@ -27,13 +23,29 @@ paths:
                   status:
                     type: string
                     example: ok
-                required: [status]
+                  db:
+                    type: string
+                    example: ok
+                required: [status, db]
+        "503":
+          description: Service is degraded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: degraded
+                  db:
+                    type: string
+                    example: error
+                required: [status, db]
 
-  # ── Auth ────────────────────────────────────────────────────────────────
   /auth/register:
     post:
       operationId: register
-      summary: Create account, return access + refresh tokens
+      summary: Register a new user
       tags: [Auth]
       requestBody:
         required: true
@@ -43,20 +55,20 @@ paths:
               $ref: "#/components/schemas/RegisterRequest"
       responses:
         "201":
-          description: Account created
+          description: Registered
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TokenResponse"
+                $ref: "#/components/schemas/AuthTokens"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: Email already taken
 
   /auth/login:
     post:
       operationId: login
-      summary: Validate credentials, return tokens
+      summary: Log in
       tags: [Auth]
       requestBody:
         required: true
@@ -66,20 +78,18 @@ paths:
               $ref: "#/components/schemas/LoginRequest"
       responses:
         "200":
-          description: Login successful
+          description: Authenticated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TokenResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
+                $ref: "#/components/schemas/AuthTokens"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: Invalid credentials
 
   /auth/refresh:
     post:
       operationId: refreshToken
-      summary: Exchange refresh token for new access token
+      summary: Refresh access token
       tags: [Auth]
       requestBody:
         required: true
@@ -93,19 +103,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TokenResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
+                $ref: "#/components/schemas/AuthTokens"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: Invalid or expired refresh token
 
   /auth/logout:
     post:
       operationId: logout
       summary: Revoke refresh token
       tags: [Auth]
-      security:
-        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -113,18 +119,25 @@ paths:
             schema:
               $ref: "#/components/schemas/LogoutRequest"
       responses:
-        "204":
+        "200":
           description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                required: [status]
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
 
-  /auth/me:
+  /users/me:
     get:
       operationId: getMe
-      summary: Return current user
-      tags: [Auth]
+      summary: Get current user profile
+      tags: [User]
       security:
         - BearerAuth: []
       responses:
@@ -137,12 +150,32 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  # ── Gyms ────────────────────────────────────────────────────────────────
   /gyms:
+    get:
+      operationId: listGyms
+      summary: List gyms the user belongs to
+      tags: [Gym]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of gyms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gyms:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Gym"
+                required: [gyms]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
       operationId: createGym
-      summary: Create gym (admin only)
-      tags: [Gyms]
+      summary: Create a gym
+      tags: [Gym]
       security:
         - BearerAuth: []
       requestBody:
@@ -162,38 +195,19 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "409":
-          $ref: "#/components/responses/Conflict"
-    get:
-      operationId: listGyms
-      summary: List gyms user belongs to
-      tags: [Gyms]
-      security:
-        - BearerAuth: []
-      responses:
-        "200":
-          description: List of gyms
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Gym"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
 
   /gyms/{gymSlug}:
     get:
       operationId: getGym
-      summary: Get gym details (member)
-      tags: [Gyms]
+      summary: Get gym by slug
+      tags: [Gym]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/GymSlug"
+        - $ref: "#/components/parameters/gymSlug"
       responses:
         "200":
-          description: Gym details
+          description: Gym detail
           content:
             application/json:
               schema:
@@ -203,51 +217,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /gyms/{gymSlug}/members:
-    post:
-      operationId: inviteMember
-      summary: Invite user by email (admin)
-      tags: [Gyms]
+  /gyms/{gymSlug}/walls:
+    get:
+      operationId: listWalls
+      summary: List walls in a gym
+      tags: [Wall]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/GymSlug"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/InviteMemberRequest"
+        - $ref: "#/components/parameters/gymSlug"
       responses:
-        "201":
-          description: Member invited
+        "200":
+          description: List of walls
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GymMember"
-        "400":
-          $ref: "#/components/responses/BadRequest"
+                type: object
+                properties:
+                  walls:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Wall"
+                required: [walls]
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-
-  # ── Walls ───────────────────────────────────────────────────────────────
-  /gyms/{gymSlug}/walls:
     post:
       operationId: createWall
-      summary: Create wall (setter+)
-      tags: [Walls]
+      summary: Create a wall
+      tags: [Wall]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/GymSlug"
+        - $ref: "#/components/parameters/gymSlug"
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               $ref: "#/components/schemas/CreateWallRequest"
       responses:
@@ -261,118 +266,63 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-    get:
-      operationId: listWalls
-      summary: List walls (member)
-      tags: [Walls]
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/GymSlug"
-      responses:
-        "200":
-          description: List of walls
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Wall"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
 
   /gyms/{gymSlug}/walls/{wallId}:
     get:
       operationId: getWall
-      summary: Get wall detail + active image + job status (member)
-      tags: [Walls]
+      summary: Get wall by ID
+      tags: [Wall]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/GymSlug"
-        - $ref: "#/components/parameters/WallId"
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
       responses:
         "200":
-          description: Wall detail
+          description: Wall detail with image and detection status
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Wall"
+                $ref: "#/components/schemas/WallDetail"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /gyms/{gymSlug}/walls/{wallId}/images:
-    post:
-      operationId: uploadWallImage
-      summary: Upload wall photo (setter+, multipart)
-      tags: [Walls]
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/GymSlug"
-        - $ref: "#/components/parameters/WallId"
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: "#/components/schemas/UploadImageRequest"
-      responses:
-        "201":
-          description: Image uploaded
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WallImage"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  # ── Holds ───────────────────────────────────────────────────────────────
-  /gyms/{gymSlug}/walls/{wallId}/holds:
-    get:
-      operationId: listHolds
-      summary: Return holds for active wall image (member)
-      tags: [Holds]
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/GymSlug"
-        - $ref: "#/components/parameters/WallId"
-      responses:
-        "200":
-          description: List of holds
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Hold"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  # ── Routes ──────────────────────────────────────────────────────────────
   /gyms/{gymSlug}/walls/{wallId}/routes:
+    get:
+      operationId: listRoutes
+      summary: List routes on a wall
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+      responses:
+        "200":
+          description: List of routes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  routes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Route"
+                required: [routes]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
       operationId: createRoute
-      summary: Create route (member)
-      tags: [Routes]
+      summary: Create a route
+      tags: [Route]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/GymSlug"
-        - $ref: "#/components/parameters/WallId"
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
       requestBody:
         required: true
         content:
@@ -390,42 +340,18 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-    get:
-      operationId: listRoutes
-      summary: List routes with send counts (member)
-      tags: [Routes]
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/GymSlug"
-        - $ref: "#/components/parameters/WallId"
-      responses:
-        "200":
-          description: List of routes
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Route"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
 
   /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}:
     get:
       operationId: getRoute
-      summary: Get route detail (member)
-      tags: [Routes]
+      summary: Get route by ID
+      tags: [Route]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/GymSlug"
-        - $ref: "#/components/parameters/WallId"
-        - $ref: "#/components/parameters/RouteId"
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
       responses:
         "200":
           description: Route detail
@@ -437,113 +363,16 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-    delete:
-      operationId: deleteRoute
-      summary: Delete route (creator or setter)
-      tags: [Routes]
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/GymSlug"
-        - $ref: "#/components/parameters/WallId"
-        - $ref: "#/components/parameters/RouteId"
-      responses:
-        "204":
-          description: Route deleted
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
 
-  # ── Sends ───────────────────────────────────────────────────────────────
-  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/sends:
-    post:
-      operationId: logSend
-      summary: Log a send (member)
-      tags: [Sends]
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/GymSlug"
-        - $ref: "#/components/parameters/WallId"
-        - $ref: "#/components/parameters/RouteId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/LogSendRequest"
-      responses:
-        "201":
-          description: Send logged
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Send"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-
-  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/sends/me:
-    delete:
-      operationId: removeMySend
-      summary: Remove send (member)
-      tags: [Sends]
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/GymSlug"
-        - $ref: "#/components/parameters/WallId"
-        - $ref: "#/components/parameters/RouteId"
-      responses:
-        "204":
-          description: Send removed
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  # ── Logbook ─────────────────────────────────────────────────────────────
-  /users/me/logbook:
-    get:
-      operationId: getMyLogbook
-      summary: All sends by current user
-      tags: [Sends]
-      security:
-        - BearerAuth: []
-      responses:
-        "200":
-          description: List of sends
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Send"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-
-  # ── Invites ─────────────────────────────────────────────────────────────
   /gyms/{gymSlug}/invites:
     post:
       operationId: createInvite
-      summary: Generate invite token (admin)
-      tags: [Invites]
+      summary: Create a gym invite
+      tags: [Invite]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/GymSlug"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateInviteRequest"
+        - $ref: "#/components/parameters/gymSlug"
       responses:
         "201":
           description: Invite created
@@ -551,100 +380,77 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Invite"
-        "400":
-          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
 
-  /invites/{token}:
-    get:
-      operationId: validateInvite
-      summary: Validate invite (no auth)
-      tags: [Invites]
-      parameters:
-        - $ref: "#/components/parameters/InviteToken"
-      responses:
-        "200":
-          description: Invite details
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Invite"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /invites/{token}/accept:
+  /invites/{code}/accept:
     post:
       operationId: acceptInvite
-      summary: Accept invite (authenticated)
-      tags: [Invites]
+      summary: Accept a gym invite
+      tags: [Invite]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/InviteToken"
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
       responses:
         "200":
           description: Invite accepted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GymMember"
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                required: [status]
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
 
 components:
-  # ── Security Schemes ──────────────────────────────────────────────────
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
 
-  # ── Parameters ────────────────────────────────────────────────────────
   parameters:
-    GymSlug:
+    gymSlug:
       name: gymSlug
       in: path
       required: true
       schema:
         type: string
-    WallId:
+    wallId:
       name: wallId
       in: path
       required: true
       schema:
         type: string
         format: uuid
-    RouteId:
+    routeId:
       name: routeId
       in: path
       required: true
       schema:
         type: string
         format: uuid
-    InviteToken:
-      name: token
-      in: path
-      required: true
-      schema:
-        type: string
 
-  # ── Responses ─────────────────────────────────────────────────────────
   responses:
     BadRequest:
-      description: Invalid request
+      description: Bad request
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
     Unauthorized:
-      description: Missing or invalid authentication
+      description: Not authenticated
       content:
         application/json:
           schema:
@@ -655,16 +461,8 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
-    Conflict:
-      description: Resource already exists
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
 
-  # ── Schemas ───────────────────────────────────────────────────────────
   schemas:
-    # ─ Core models ─────────────────────────────────────────────────────
     Error:
       type: object
       properties:
@@ -672,240 +470,6 @@ components:
           type: string
       required: [error]
 
-    User:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        email:
-          type: string
-          format: email
-        display_name:
-          type: string
-        role:
-          type: string
-          enum: [admin, setter, climber]
-        created_at:
-          type: string
-          format: date-time
-      required: [id, email, display_name, role, created_at]
-
-    TokenResponse:
-      type: object
-      properties:
-        access_token:
-          type: string
-        refresh_token:
-          type: string
-      required: [access_token, refresh_token]
-
-    Gym:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        slug:
-          type: string
-        owner_id:
-          type: string
-          format: uuid
-        created_at:
-          type: string
-          format: date-time
-      required: [id, name, slug, owner_id, created_at]
-
-    GymMember:
-      type: object
-      properties:
-        gym_id:
-          type: string
-          format: uuid
-        user_id:
-          type: string
-          format: uuid
-        role:
-          type: string
-          enum: [admin, setter, climber]
-      required: [gym_id, user_id, role]
-
-    Wall:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        gym_id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        active_image:
-          oneOf:
-            - $ref: "#/components/schemas/WallImage"
-            - type: "null"
-        detection_status:
-          type: ["string", "null"]
-      required: [id, gym_id, name, created_at]
-
-    WallImage:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        wall_id:
-          type: string
-          format: uuid
-        storage_key:
-          type: string
-        image_url:
-          type: string
-          format: uri
-          description: Pre-signed URL
-        is_active:
-          type: boolean
-        created_at:
-          type: string
-          format: date-time
-      required: [id, wall_id, storage_key, image_url, is_active, created_at]
-
-    DetectionJob:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        wall_image_id:
-          type: string
-          format: uuid
-        status:
-          type: string
-          enum: [pending, processing, done, failed]
-        error:
-          type: ["string", "null"]
-        created_at:
-          type: string
-          format: date-time
-      required: [id, wall_image_id, status, created_at]
-
-    Hold:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        wall_image_id:
-          type: string
-          format: uuid
-        bbox:
-          type: object
-          properties:
-            x:
-              type: number
-            "y":
-              type: number
-            w:
-              type: number
-            h:
-              type: number
-          required: [x, "y", w, h]
-        polygon:
-          type: ["array", "null"]
-          items:
-            type: array
-            items:
-              type: number
-            minItems: 2
-            maxItems: 2
-        confidence:
-          type: number
-      required: [id, wall_image_id, bbox, confidence]
-
-    Route:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        wall_id:
-          type: string
-          format: uuid
-        wall_image_id:
-          type: string
-          format: uuid
-        created_by:
-          type: string
-          format: uuid
-        name:
-          type: string
-        grade:
-          type: ["string", "null"]
-        description:
-          type: ["string", "null"]
-        hold_ids:
-          type: array
-          items:
-            type: string
-            format: uuid
-        created_at:
-          type: string
-          format: date-time
-        send_count:
-          type: integer
-        has_sent:
-          type: boolean
-      required: [id, wall_id, wall_image_id, created_by, name, hold_ids, created_at, send_count, has_sent]
-
-    Send:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        route_id:
-          type: string
-          format: uuid
-        user_id:
-          type: string
-          format: uuid
-        sent_at:
-          type: string
-          format: date-time
-        attempts:
-          type: ["integer", "null"]
-        notes:
-          type: ["string", "null"]
-      required: [id, route_id, user_id, sent_at]
-
-    Invite:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        gym_id:
-          type: string
-          format: uuid
-        token:
-          type: string
-        role:
-          type: string
-          enum: [admin, setter, climber]
-        expires_at:
-          type: string
-          format: date-time
-        gym_name:
-          type: string
-      required: [id, gym_id, token, role, expires_at]
-
-    # ─ Request bodies ──────────────────────────────────────────────────
     RegisterRequest:
       type: object
       properties:
@@ -943,40 +507,144 @@ components:
           type: string
       required: [refresh_token]
 
-    CreateGymRequest:
+    AuthTokens:
       type: object
       properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+      required: [access_token, refresh_token]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, email, display_name]
+
+    Gym:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
         name:
           type: string
         slug:
           type: string
-      required: [name, slug]
-
-    InviteMemberRequest:
-      type: object
-      properties:
-        email:
+        created_at:
           type: string
-          format: email
-        role:
-          type: string
-          enum: [admin, setter, climber]
-      required: [email, role]
+          format: date-time
+      required: [id, name, slug]
 
-    CreateWallRequest:
+    CreateGymRequest:
       type: object
       properties:
         name:
           type: string
       required: [name]
 
-    UploadImageRequest:
+    Wall:
       type: object
       properties:
+        id:
+          type: string
+          format: uuid
+        gym_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, gym_id, name]
+
+    WallDetail:
+      type: object
+      properties:
+        wall:
+          $ref: "#/components/schemas/Wall"
+        image:
+          oneOf:
+            - $ref: "#/components/schemas/WallImage"
+            - type: "null"
+        detection_status:
+          type: ["string", "null"]
+      required: [wall]
+
+    WallImage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        wall_id:
+          type: string
+          format: uuid
+        path:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, wall_id, path]
+
+    CreateWallRequest:
+      type: object
+      properties:
+        name:
+          type: string
         image:
           type: string
           format: binary
-      required: [image]
+      required: [name, image]
+
+    Route:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        wall_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        grade:
+          type: string
+        holds:
+          type: array
+          items:
+            $ref: "#/components/schemas/Hold"
+        setter_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+      required: [id, wall_id, name]
+
+    Hold:
+      type: object
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        t:
+          type: string
+          description: "Hold type (start, middle, finish)"
+      required: [x, y, t]
 
     CreateRouteRequest:
       type: object
@@ -985,26 +653,24 @@ components:
           type: string
         grade:
           type: string
-        description:
-          type: string
-        hold_ids:
+        holds:
           type: array
           items:
-            type: string
-            format: uuid
-      required: [name, hold_ids]
+            $ref: "#/components/schemas/Hold"
+      required: [name, holds]
 
-    LogSendRequest:
+    Invite:
       type: object
       properties:
-        attempts:
-          type: integer
-        notes:
+        id:
           type: string
-
-    CreateInviteRequest:
-      type: object
-      properties:
-        role:
+          format: uuid
+        gym_id:
           type: string
-          enum: [admin, setter, climber]
+          format: uuid
+        code:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+      required: [id, gym_id, code]

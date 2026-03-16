@@ -3,7 +3,6 @@ import json
 import os
 import time
 import logging
-import traceback
 
 import psycopg
 

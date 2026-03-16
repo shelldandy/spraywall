@@ -43,7 +43,7 @@ export default function WallsScreen() {
   });
 
   const wallsQueries = useQuery<GymWithWalls[]>({
-    queryKey: ["gyms-with-walls", gymsQuery.data],
+    queryKey: ["gyms-with-walls", gymsQuery.data?.map(g => g.id)],
     queryFn: async () => {
       const gyms = gymsQuery.data;
       if (!gyms) return [];

@@ -8,7 +8,7 @@ import {
   Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useServerStore } from "../../../lib/store/server";
+import { apiFetch } from "../../../lib/api/fetch";
 
 interface InviteInfo {
   gym_name: string;
@@ -20,25 +20,11 @@ interface InviteInfo {
 export default function InviteScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const router = useRouter();
-  const { serverUrl, accessToken } = useServerStore();
 
   const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const apiFetch = async (path: string, options: RequestInit = {}) => {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (accessToken) {
-      headers["Authorization"] = `Bearer ${accessToken}`;
-    }
-    return fetch(`${serverUrl}${path}`, {
-      ...options,
-      headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
-    });
-  };
 
   useEffect(() => {
     const fetchInvite = async () => {

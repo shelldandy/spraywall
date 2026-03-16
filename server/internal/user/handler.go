@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -24,10 +26,11 @@ const (
 type Handler struct {
 	queries   *generated.Queries
 	jwtSecret string
+	pool      interface{ Begin(context.Context) (pgx.Tx, error) }
 }
 
-func NewHandler(queries *generated.Queries, jwtSecret string) *Handler {
-	return &Handler{queries: queries, jwtSecret: jwtSecret}
+func NewHandler(queries *generated.Queries, jwtSecret string, pool interface{ Begin(context.Context) (pgx.Tx, error) }) *Handler {
+	return &Handler{queries: queries, jwtSecret: jwtSecret, pool: pool}
 }
 
 type registerRequest struct {
@@ -138,17 +141,34 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Revoke old token (rotation)
-	h.queries.DeleteRefreshToken(r.Context(), rt.ID)
+	// Revoke old token and generate new ones in a transaction.
+	tx, err := h.pool.Begin(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	defer tx.Rollback(r.Context())
 
-	u, err := h.queries.GetUserByID(r.Context(), rt.UserID)
+	txq := h.queries.WithTx(tx)
+
+	if err := txq.DeleteRefreshToken(r.Context(), rt.ID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+
+	u, err := txq.GetUserByID(r.Context(), rt.UserID)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "user not found"})
 		return
 	}
 
-	tokens, err := h.generateTokens(r, u)
+	tokens, err := h.generateTokensWithTx(r, txq, u)
 	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
@@ -171,7 +191,10 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.queries.DeleteRefreshToken(r.Context(), rt.ID)
+	if err := h.queries.DeleteRefreshToken(r.Context(), rt.ID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -221,6 +244,42 @@ func (h *Handler) generateTokens(r *http.Request, u generated.User) (*tokenRespo
 
 	// Store hashed refresh token
 	_, err = h.queries.CreateRefreshToken(r.Context(), generated.CreateRefreshTokenParams{
+		UserID:    u.ID,
+		TokenHash: hashToken(refreshTokenStr),
+		ExpiresAt: pgTimestamptz(time.Now().Add(refreshTokenDuration)),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &tokenResponse{
+		AccessToken:  accessTokenStr,
+		RefreshToken: refreshTokenStr,
+	}, nil
+}
+
+func (h *Handler) generateTokensWithTx(r *http.Request, q *generated.Queries, u generated.User) (*tokenResponse, error) {
+	userID := uuidFromPg(u.ID)
+
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  userID.String(),
+		"role": string(u.Role),
+		"exp":  time.Now().Add(accessTokenDuration).Unix(),
+		"iat":  time.Now().Unix(),
+	})
+
+	accessTokenStr, err := accessToken.SignedString([]byte(h.jwtSecret))
+	if err != nil {
+		return nil, err
+	}
+
+	rawToken := make([]byte, 32)
+	if _, err := rand.Read(rawToken); err != nil {
+		return nil, err
+	}
+	refreshTokenStr := hex.EncodeToString(rawToken)
+
+	_, err = q.CreateRefreshToken(r.Context(), generated.CreateRefreshTokenParams{
 		UserID:    u.ID,
 		TokenHash: hashToken(refreshTokenStr),
 		ExpiresAt: pgTimestamptz(time.Now().Add(refreshTokenDuration)),

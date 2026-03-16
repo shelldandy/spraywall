@@ -54,6 +54,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(middleware.StripSlashes)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -83,7 +84,7 @@ func main() {
 
 	// Auth routes (rate limited)
 	authLimiter := mw.NewRateLimiter(10, time.Minute)
-	authHandler := user.NewHandler(queries, jwtSecret)
+	authHandler := user.NewHandler(queries, jwtSecret, pool)
 	r.Route("/auth", func(r chi.Router) {
 		r.Use(authLimiter.Handler)
 		r.Post("/register", authHandler.Register)
@@ -96,7 +97,7 @@ func main() {
 	// Handlers
 	routeHandler := route.NewHandler(queries)
 	wallHandler := wall.NewHandler(queries, storageClient)
-	inviteHandler := invite.NewHandler(queries)
+	inviteHandler := invite.NewHandler(queries, pool)
 
 	// Image proxy (no auth required, keys are unguessable UUIDs)
 	r.Get("/images/*", wallHandler.ServeImage)

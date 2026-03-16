@@ -1,6 +1,7 @@
 package invite
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -20,10 +21,11 @@ import (
 
 type Handler struct {
 	queries *db.Queries
+	pool    interface{ Begin(context.Context) (pgx.Tx, error) }
 }
 
-func NewHandler(queries *db.Queries) *Handler {
-	return &Handler{queries: queries}
+func NewHandler(queries *db.Queries, pool interface{ Begin(context.Context) (pgx.Tx, error) }) *Handler {
+	return &Handler{queries: queries, pool: pool}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -172,8 +174,17 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add as member
-	err = h.queries.CreateGymMember(ctx, db.CreateGymMemberParams{
+	// Add member and mark invite as used in a single transaction.
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	txq := h.queries.WithTx(tx)
+
+	err = txq.CreateGymMember(ctx, db.CreateGymMemberParams{
 		GymID:  invite.GymID,
 		UserID: shared.PgUUID(userID),
 		Role:   invite.Role,
@@ -183,13 +194,17 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mark invite as used
-	err = h.queries.UseInvite(ctx, db.UseInviteParams{
+	err = txq.UseInvite(ctx, db.UseInviteParams{
 		ID:     invite.ID,
 		UsedBy: shared.PgUUID(userID),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to mark invite as used")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit transaction")
 		return
 	}
 

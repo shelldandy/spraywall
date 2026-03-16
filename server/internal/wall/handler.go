@@ -12,7 +12,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/bowlinedandy/spraywall/server/db/generated"
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
 	"github.com/bowlinedandy/spraywall/server/internal/storage"
@@ -37,11 +39,17 @@ func NewHandler(queries *generated.Queries, storageClient *storage.Client) *Hand
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
 
+var validSlugRe = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
 func slugify(s string) string {
 	slug := strings.ToLower(strings.TrimSpace(s))
 	slug = slugRe.ReplaceAllString(slug, "-")
 	slug = strings.Trim(slug, "-")
 	return slug
+}
+
+func isValidSlug(s string) bool {
+	return validSlugRe.MatchString(s)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -92,6 +100,7 @@ func (h *Handler) requireGymMember(w http.ResponseWriter, r *http.Request) (gene
 func (h *Handler) CreateGym(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
+		Slug string `json:"slug"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
 		writeError(w, http.StatusBadRequest, "name is required")
@@ -99,9 +108,12 @@ func (h *Handler) CreateGym(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := user.GetUserID(r.Context())
-	slug := slugify(body.Name)
+	slug := body.Slug
 	if slug == "" {
-		writeError(w, http.StatusBadRequest, "invalid gym name")
+		slug = slugify(body.Name)
+	}
+	if slug == "" || !isValidSlug(slug) {
+		writeError(w, http.StatusBadRequest, "invalid slug")
 		return
 	}
 
@@ -111,7 +123,8 @@ func (h *Handler) CreateGym(w http.ResponseWriter, r *http.Request) {
 		OwnerID: shared.PgUUID(userID),
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key") {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			writeError(w, http.StatusConflict, "gym slug already taken")
 			return
 		}
@@ -198,7 +211,8 @@ func (h *Handler) AddMember(w http.ResponseWriter, r *http.Request) {
 		UserID: targetUser.ID,
 		Role:   role,
 	}); err != nil {
-		if strings.Contains(err.Error(), "duplicate key") {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			writeError(w, http.StatusConflict, "user is already a member")
 			return
 		}
@@ -206,7 +220,15 @@ func (h *Handler) AddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]string{"status": "member added"})
+	member, err = h.queries.GetGymMember(r.Context(), generated.GetGymMemberParams{
+		GymID:  gym.ID,
+		UserID: targetUser.ID,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not fetch created member")
+		return
+	}
+	writeJSON(w, http.StatusCreated, member)
 }
 
 // CreateWall handles POST /gyms/{gymSlug}/walls
@@ -261,7 +283,7 @@ func (h *Handler) ListWalls(w http.ResponseWriter, r *http.Request) {
 
 // GetWall handles GET /gyms/{gymSlug}/walls/{wallId}
 func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
-	_, _, err := h.requireGymMember(w, r)
+	gym, _, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
@@ -282,11 +304,16 @@ func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "wall not found")
+		return
+	}
 
 	type imageInfo struct {
-		ID       string `json:"id"`
-		ImageURL string `json:"image_url"`
-		IsActive bool   `json:"is_active"`
+		ID        string             `json:"id"`
+		ImageURL  string             `json:"image_url"`
+		IsActive  bool               `json:"is_active"`
+		CreatedAt pgtype.Timestamptz `json:"created_at"`
 	}
 
 	type wallDetail struct {
@@ -301,9 +328,10 @@ func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
 	img, err := h.queries.GetActiveWallImage(r.Context(), wall.ID)
 	if err == nil {
 		detail.Image = &imageInfo{
-			ID:       shared.UUIDFromPg(img.ID).String(),
-			ImageURL: "/images/" + img.StorageKey,
-			IsActive: img.IsActive,
+			ID:        shared.UUIDFromPg(img.ID).String(),
+			ImageURL:  "/images/" + img.StorageKey,
+			IsActive:  img.IsActive,
+			CreatedAt: img.CreatedAt,
 		}
 
 		job, jobErr := h.queries.GetDetectionJobByWallImage(r.Context(), img.ID)
@@ -317,7 +345,7 @@ func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
 
 // UploadImage handles POST /gyms/{gymSlug}/walls/{wallId}/images
 func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
-	_, member, err := h.requireGymMember(w, r)
+	gym, member, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
@@ -335,14 +363,18 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 	pgWallID := shared.PgUUID(wallUUID)
 
-	// Verify wall exists.
-	_, err = h.queries.GetWallByID(r.Context(), pgWallID)
+	// Verify wall exists and belongs to this gym.
+	wall, err := h.queries.GetWallByID(r.Context(), pgWallID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "wall not found")
 		} else {
 			writeError(w, http.StatusInternalServerError, "database error")
 		}
+		return
+	}
+	if wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "wall not found")
 		return
 	}
 
@@ -404,7 +436,7 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 
 // GetHolds handles GET /gyms/{gymSlug}/walls/{wallId}/holds
 func (h *Handler) GetHolds(w http.ResponseWriter, r *http.Request) {
-	_, _, err := h.requireGymMember(w, r)
+	gym, _, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
@@ -416,8 +448,22 @@ func (h *Handler) GetHolds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	wall, err := h.queries.GetWallByID(r.Context(), shared.PgUUID(wallUUID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "wall not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "database error")
+		}
+		return
+	}
+	if wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "wall not found")
+		return
+	}
+
 	// Get active image for this wall.
-	img, err := h.queries.GetActiveWallImage(r.Context(), shared.PgUUID(wallUUID))
+	img, err := h.queries.GetActiveWallImage(r.Context(), wall.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "no active image for this wall")

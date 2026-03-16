@@ -21,6 +21,10 @@ func New() (*Client, error) {
 	secretKey := os.Getenv("MINIO_ROOT_PASSWORD")
 	bucket := os.Getenv("MINIO_BUCKET")
 
+	if endpoint == "" || accessKey == "" || secretKey == "" || bucket == "" {
+		return nil, fmt.Errorf("MINIO_ENDPOINT, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD, and MINIO_BUCKET must all be set")
+	}
+
 	mc, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: false,
