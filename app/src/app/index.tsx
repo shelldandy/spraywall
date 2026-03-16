@@ -1,30 +1,42 @@
 import { useState, useEffect } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { useRouter, useNavigationContainerRef } from "expo-router";
 import { useServerStore } from "../lib/store/server";
 
 export default function ConnectScreen() {
-  const { serverUrl, setServerUrl } = useServerStore();
+  const router = useRouter();
+  const { serverUrl, setServerUrl, isAuthenticated } = useServerStore();
   const [input, setInput] = useState(serverUrl || "http://localhost:8080");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (serverUrl) setInput(serverUrl);
   }, [serverUrl]);
-  const [loading, setLoading] = useState(false);
+
+  const rootNav = useNavigationContainerRef();
+
+  useEffect(() => {
+    if (serverUrl && isAuthenticated() && rootNav?.isReady()) {
+      router.replace("/(app)/walls" as any);
+    }
+  }, [serverUrl, isAuthenticated, router, rootNav]);
 
   const handleConnect = async () => {
     setLoading(true);
+    setError(null);
     try {
       const url = input.replace(/\/+$/, "");
       const res = await fetch(`${url}/healthz`);
       const data = await res.json();
       if (data.status === "ok") {
         setServerUrl(url);
-        Alert.alert("Connected", `Server at ${url} is healthy.`);
+        router.replace("/login" as any);
       } else {
-        Alert.alert("Error", "Unexpected response from server.");
+        setError("Unexpected response from server.");
       }
     } catch {
-      Alert.alert("Error", "Could not connect to server.");
+      setError("Could not connect to server.");
     } finally {
       setLoading(false);
     }
@@ -42,6 +54,7 @@ export default function ConnectScreen() {
         autoCapitalize="none"
         autoCorrect={false}
       />
+      {error && <Text style={styles.error}>{error}</Text>}
       <Pressable
         style={[styles.button, loading && styles.buttonDisabled]}
         onPress={handleConnect}
@@ -81,6 +94,12 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     marginBottom: 16,
+  },
+  error: {
+    color: "#ff3b30",
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: "center",
   },
   button: {
     backgroundColor: "#007AFF",

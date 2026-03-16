@@ -12,3 +12,8 @@ dependencies = [
     "python-dotenv>=1.0",
     "ultralytics>=8.1",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]

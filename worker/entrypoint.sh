@@ -1,24 +1,24 @@
 #!/bin/bash
 set -e
 
-MODEL_DIR="./models"
-MODEL_FILE="${MODEL_DIR}/yolov8n.pt"
+MODEL_DIR="${MODEL_DIR:-./models}"
+MODEL_FILE="${MODEL_DIR}/yolov8n-freeclimbs-detect-2.pt"
 
 if [ ! -f "$MODEL_FILE" ]; then
-    echo "Downloading YOLOv8n model weights..."
+    echo "Downloading freeclimbs detection model..."
     mkdir -p "$MODEL_DIR"
     python -c "
-from ultralytics import YOLO
-model = YOLO('yolov8n.pt')
-import shutil, os
-# ultralytics caches to ~/.cache/ultralytics or beside the script; find and move it
-for candidate in ['yolov8n.pt', os.path.expanduser('~/.cache/ultralytics/yolov8n.pt')]:
-    if os.path.isfile(candidate):
-        shutil.move(candidate, '${MODEL_FILE}')
-        break
+from huggingface_hub import hf_hub_download
+import shutil
+path = hf_hub_download(
+    repo_id='jwlarocque/yolov8n-freeclimbs-detect-2',
+    filename='yolov8n-freeclimbs-detect-2.pt',
+)
+shutil.copy(path, '${MODEL_FILE}')
+print('Model downloaded to ${MODEL_FILE}')
 "
     if [ ! -f "$MODEL_FILE" ]; then
-        echo "ERROR: Failed to download YOLOv8n model weights" >&2
+        echo "ERROR: Failed to download model weights" >&2
         exit 1
     fi
 fi

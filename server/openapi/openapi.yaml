@@ -6,4 +6,671 @@ info:
 servers:
   - url: http://localhost:8080
     description: Local development
-paths: {}
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      tags: [Health]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  db:
+                    type: string
+                    example: ok
+                required: [status, db]
+        "503":
+          description: Service is degraded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: degraded
+                  db:
+                    type: string
+                    example: error
+                required: [status, db]
+
+  /auth/register:
+    post:
+      operationId: register
+      summary: Register a new user
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokens"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Email already taken
+
+  /auth/login:
+    post:
+      operationId: login
+      summary: Log in
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokens"
+        "401":
+          description: Invalid credentials
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      summary: Refresh access token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokens"
+        "401":
+          description: Invalid or expired refresh token
+
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke refresh token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                required: [status]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /users/me:
+    get:
+      operationId: getMe
+      summary: Get current user profile
+      tags: [User]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /gyms:
+    get:
+      operationId: listGyms
+      summary: List gyms the user belongs to
+      tags: [Gym]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of gyms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gyms:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Gym"
+                required: [gyms]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createGym
+      summary: Create a gym
+      tags: [Gym]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGymRequest"
+      responses:
+        "201":
+          description: Gym created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gym"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /gyms/{gymSlug}:
+    get:
+      operationId: getGym
+      summary: Get gym by slug
+      tags: [Gym]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+      responses:
+        "200":
+          description: Gym detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gym"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /gyms/{gymSlug}/walls:
+    get:
+      operationId: listWalls
+      summary: List walls in a gym
+      tags: [Wall]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+      responses:
+        "200":
+          description: List of walls
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  walls:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Wall"
+                required: [walls]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createWall
+      summary: Create a wall
+      tags: [Wall]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CreateWallRequest"
+      responses:
+        "201":
+          description: Wall created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wall"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /gyms/{gymSlug}/walls/{wallId}:
+    get:
+      operationId: getWall
+      summary: Get wall by ID
+      tags: [Wall]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+      responses:
+        "200":
+          description: Wall detail with image and detection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WallDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /gyms/{gymSlug}/walls/{wallId}/routes:
+    get:
+      operationId: listRoutes
+      summary: List routes on a wall
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+      responses:
+        "200":
+          description: List of routes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  routes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Route"
+                required: [routes]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createRoute
+      summary: Create a route
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRouteRequest"
+      responses:
+        "201":
+          description: Route created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Route"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}:
+    get:
+      operationId: getRoute
+      summary: Get route by ID
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
+      responses:
+        "200":
+          description: Route detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Route"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /gyms/{gymSlug}/invites:
+    post:
+      operationId: createInvite
+      summary: Create a gym invite
+      tags: [Invite]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invite"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /invites/{code}/accept:
+    post:
+      operationId: acceptInvite
+      summary: Accept a gym invite
+      tags: [Invite]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                required: [status]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    gymSlug:
+      name: gymSlug
+      in: path
+      required: true
+      schema:
+        type: string
+    wallId:
+      name: wallId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    routeId:
+      name: routeId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        display_name:
+          type: string
+      required: [email, password, display_name]
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required: [email, password]
+
+    RefreshRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+      required: [refresh_token]
+
+    LogoutRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+      required: [refresh_token]
+
+    AuthTokens:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+      required: [access_token, refresh_token]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, email, display_name]
+
+    Gym:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, name, slug]
+
+    CreateGymRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]
+
+    Wall:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        gym_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, gym_id, name]
+
+    WallDetail:
+      type: object
+      properties:
+        wall:
+          $ref: "#/components/schemas/Wall"
+        image:
+          oneOf:
+            - $ref: "#/components/schemas/WallImage"
+            - type: "null"
+        detection_status:
+          type: ["string", "null"]
+      required: [wall]
+
+    WallImage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        wall_id:
+          type: string
+          format: uuid
+        path:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, wall_id, path]
+
+    CreateWallRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        image:
+          type: string
+          format: binary
+      required: [name, image]
+
+    Route:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        wall_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        grade:
+          type: string
+        holds:
+          type: array
+          items:
+            $ref: "#/components/schemas/Hold"
+        setter_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+      required: [id, wall_id, name]
+
+    Hold:
+      type: object
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        t:
+          type: string
+          description: "Hold type (start, middle, finish)"
+      required: [x, y, t]
+
+    CreateRouteRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        grade:
+          type: string
+        holds:
+          type: array
+          items:
+            $ref: "#/components/schemas/Hold"
+      required: [name, holds]
+
+    Invite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        gym_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+      required: [id, gym_id, code]

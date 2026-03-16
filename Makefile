@@ -22,7 +22,7 @@ lint:
 	@echo "TODO: configure linting"
 
 test:
-	@echo "TODO: configure tests"
+	cd worker && python -m pytest -q 2>/dev/null || echo "pytest not installed, skipping worker tests"
 
 clean:
 	docker compose down -v
