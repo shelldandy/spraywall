@@ -1,4 +1,5 @@
 import React from "react";
+import { Platform } from "react-native";
 import Svg, { Rect } from "react-native-svg";
 import type { Hold } from "../lib/api/types";
 
@@ -30,6 +31,8 @@ export default function HoldOverlay({
         const w = hold.bbox.w * imageWidth;
         const h = hold.bbox.h * imageHeight;
 
+        const pressHandler = () => onToggle(hold.id);
+
         return (
           <Rect
             key={hold.id}
@@ -40,7 +43,9 @@ export default function HoldOverlay({
             fill={isSelected ? "rgba(0, 255, 255, 0.35)" : "rgba(255, 255, 255, 0.25)"}
             stroke={isSelected ? "#00FFFF" : "#FFFFFF"}
             strokeWidth={2}
-            onPress={() => onToggle(hold.id)}
+            {...(Platform.OS === "web"
+              ? { onClick: pressHandler }
+              : { onPress: pressHandler })}
           />
         );
       })}
