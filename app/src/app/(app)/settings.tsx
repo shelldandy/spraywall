@@ -44,6 +44,10 @@ export default function SettingsScreen() {
     setSaving(true);
     try {
       const res = await fetch(`${url}/healthz`);
+      if (!res.ok) {
+        Alert.alert("Error", "Server returned an error. Check the URL.");
+        return;
+      }
       const data = await res.json();
       if (data.status === "ok") {
         clearTokens();

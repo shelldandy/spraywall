@@ -25,7 +25,7 @@ lint:
 
 test:
 	cd server && go test ./...
-	cd worker && python -m pytest -q 2>/dev/null || echo "pytest not installed, skipping worker tests"
+	cd worker && (python -c "import pytest" 2>/dev/null && python -m pytest -q || echo "pytest not available, skipping worker tests")
 
 clean:
 	docker compose down -v

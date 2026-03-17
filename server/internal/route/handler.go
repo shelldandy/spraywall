@@ -247,6 +247,10 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 
 	// Get active wall image to determine legacy status.
 	activeImg, activeImgErr := h.queries.GetActiveWallImage(r.Context(), pgWallID)
+	if activeImgErr != nil && !errors.Is(activeImgErr, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
 
 	userID := user.GetUserID(r.Context())
 	pgUserID := shared.PgUUID(userID)
@@ -265,10 +269,7 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		})
 		hasSent := sendErr == nil
 
-		isLegacy := false
-		if activeImgErr == nil && rt.WallImageID != activeImg.ID {
-			isLegacy = true
-		}
+		isLegacy := errors.Is(activeImgErr, pgx.ErrNoRows) || rt.WallImageID != activeImg.ID
 
 		result = append(result, routeResponse{
 			Route:     rt,
@@ -323,11 +324,12 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Determine legacy status.
-	isLegacy := false
 	activeImg, activeImgErr := h.queries.GetActiveWallImage(r.Context(), rt.WallID)
-	if activeImgErr == nil && rt.WallImageID != activeImg.ID {
-		isLegacy = true
+	if activeImgErr != nil && !errors.Is(activeImgErr, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
 	}
+	isLegacy := errors.Is(activeImgErr, pgx.ErrNoRows) || rt.WallImageID != activeImg.ID
 
 	writeJSON(w, http.StatusOK, routeResponse{
 		Route:     rt,
@@ -417,7 +419,15 @@ func (h *Handler) LogSend(w http.ResponseWriter, r *http.Request) {
 
 	// Block sends on legacy routes.
 	activeImg, activeImgErr := h.queries.GetActiveWallImage(r.Context(), rt.WallID)
-	if activeImgErr == nil && rt.WallImageID != activeImg.ID {
+	if activeImgErr != nil {
+		if errors.Is(activeImgErr, pgx.ErrNoRows) {
+			writeError(w, http.StatusBadRequest, "cannot log send on legacy route")
+		} else {
+			writeError(w, http.StatusInternalServerError, "database error")
+		}
+		return
+	}
+	if rt.WallImageID != activeImg.ID {
 		writeError(w, http.StatusBadRequest, "cannot log send on legacy route")
 		return
 	}
