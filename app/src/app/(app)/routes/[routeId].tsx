@@ -150,10 +150,23 @@ export default function RouteDetailScreen() {
         <ActivityIndicator style={styles.loader} size="large" color="#007AFF" />
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {routeData?.is_legacy && (
+            <View style={styles.legacyBanner}>
+              <Text style={styles.legacyBannerText}>
+                This route was reset when a new wall photo was uploaded
+              </Text>
+            </View>
+          )}
+
           <View style={styles.metaRow}>
             {routeData?.grade && (
               <View style={styles.gradeBadge}>
                 <Text style={styles.gradeBadgeText}>{routeData.grade}</Text>
+              </View>
+            )}
+            {routeData?.is_legacy && (
+              <View style={styles.resetBadge}>
+                <Text style={styles.resetBadgeText}>Reset</Text>
               </View>
             )}
             <Text style={styles.sendCount}>
@@ -209,6 +222,13 @@ export default function RouteDetailScreen() {
                 </Text>
               </Pressable>
             </View>
+          ) : routeData?.is_legacy ? (
+            <Pressable
+              style={[styles.sendButton, styles.buttonDisabled]}
+              disabled={true}
+            >
+              <Text style={styles.sendText}>Route reset - sends disabled</Text>
+            </Pressable>
           ) : (
             <Pressable
               style={[
@@ -358,6 +378,31 @@ const styles = StyleSheet.create({
   },
   unsendText: {
     color: "#ff3b30",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  legacyBanner: {
+    backgroundColor: "#fff3e0",
+    borderWidth: 1,
+    borderColor: "#f5a623",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  legacyBannerText: {
+    color: "#e65100",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  resetBadge: {
+    backgroundColor: "#f5a623",
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  resetBadgeText: {
+    color: "#fff",
     fontSize: 14,
     fontWeight: "600",
   },

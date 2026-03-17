@@ -194,15 +194,17 @@ export default function WallDetailScreen() {
             </View>
           )}
 
-          <Pressable
-            style={[styles.uploadButton, uploading && styles.buttonDisabled]}
-            onPress={handleUpload}
-            disabled={uploading}
-          >
-            <Text style={styles.uploadText}>
-              {uploading ? "Uploading..." : "Upload Photo"}
-            </Text>
-          </Pressable>
+          {(wall?.user_role === "setter" || wall?.user_role === "admin") && (
+            <Pressable
+              style={[styles.uploadButton, uploading && styles.buttonDisabled]}
+              onPress={handleUpload}
+              disabled={uploading}
+            >
+              <Text style={styles.uploadText}>
+                {uploading ? "Uploading..." : "Upload Photo"}
+              </Text>
+            </Pressable>
+          )}
 
           {detectionStatus === "done" && holds.length > 0 && (
             <Text style={styles.holdCount}>

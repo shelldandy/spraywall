@@ -154,7 +154,7 @@ func (h *Handler) ListGyms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if gyms == nil {
-		gyms = []generated.Gym{}
+		gyms = []generated.ListGymsByUserRow{}
 	}
 	writeJSON(w, http.StatusOK, gyms)
 }
@@ -283,7 +283,7 @@ func (h *Handler) ListWalls(w http.ResponseWriter, r *http.Request) {
 
 // GetWall handles GET /gyms/{gymSlug}/walls/{wallId}
 func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
-	gym, _, err := h.requireGymMember(w, r)
+	gym, member, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
@@ -320,9 +320,10 @@ func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
 		Wall            generated.Wall `json:"wall"`
 		Image           *imageInfo     `json:"image"`
 		DetectionStatus *string        `json:"detection_status"`
+		UserRole        string         `json:"user_role"`
 	}
 
-	detail := wallDetail{Wall: wall}
+	detail := wallDetail{Wall: wall, UserRole: string(member.Role)}
 
 	// Try to get the active image and its detection status.
 	img, err := h.queries.GetActiveWallImage(r.Context(), wall.ID)

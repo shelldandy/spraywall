@@ -19,10 +19,13 @@ expo:
 	cd app && npx expo start
 
 lint:
-	@echo "TODO: configure linting"
+	cd server && golangci-lint run ./...
+	cd app && npx tsc --noEmit
+	cd worker && ruff check .
 
 test:
-	cd worker && python -m pytest -q 2>/dev/null || echo "pytest not installed, skipping worker tests"
+	cd server && go test ./...
+	cd worker && (python -c "import pytest" 2>/dev/null && python -m pytest -q || echo "pytest not available, skipping worker tests")
 
 clean:
 	docker compose down -v

@@ -174,9 +174,11 @@ export default function WallsScreen() {
             <View style={styles.gymSection}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <Text style={styles.gymName}>{gym.name}</Text>
-                <Pressable onPress={() => handleInvite(gym)}>
-                  <Text style={{ color: "#007AFF", fontSize: 14, fontWeight: "600" }}>Invite</Text>
-                </Pressable>
+                {gym.user_role === "admin" && (
+                  <Pressable onPress={() => handleInvite(gym)}>
+                    <Text style={{ color: "#007AFF", fontSize: 14, fontWeight: "600" }}>Invite</Text>
+                  </Pressable>
+                )}
               </View>
               {gym.walls.map((wall) => (
                 <Pressable
@@ -194,55 +196,57 @@ export default function WallsScreen() {
                 </Pressable>
               ))}
 
-              {wallFormGymSlug === gym.slug ? (
-                <View style={styles.inlineForm}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Wall name"
-                    value={wallName}
-                    onChangeText={setWallName}
-                    autoFocus
-                  />
-                  <View style={styles.formButtons}>
-                    <Pressable
-                      style={styles.cancelButton}
-                      onPress={() => {
-                        setWallFormGymSlug(null);
-                        setWallName("");
-                      }}
-                    >
-                      <Text style={styles.cancelText}>Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[
-                        styles.submitButton,
-                        (!wallName.trim() ||
-                          createWallMutation.isPending) &&
-                          styles.buttonDisabled,
-                      ]}
-                      onPress={() =>
-                        createWallMutation.mutate({
-                          gymSlug: gym.slug,
-                          name: wallName.trim(),
-                        })
-                      }
-                      disabled={
-                        !wallName.trim() || createWallMutation.isPending
-                      }
-                    >
-                      <Text style={styles.submitText}>
-                        {createWallMutation.isPending ? "Creating..." : "Add"}
-                      </Text>
-                    </Pressable>
+              {(gym.user_role === "admin" || gym.user_role === "setter") && (
+                wallFormGymSlug === gym.slug ? (
+                  <View style={styles.inlineForm}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Wall name"
+                      value={wallName}
+                      onChangeText={setWallName}
+                      autoFocus
+                    />
+                    <View style={styles.formButtons}>
+                      <Pressable
+                        style={styles.cancelButton}
+                        onPress={() => {
+                          setWallFormGymSlug(null);
+                          setWallName("");
+                        }}
+                      >
+                        <Text style={styles.cancelText}>Cancel</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[
+                          styles.submitButton,
+                          (!wallName.trim() ||
+                            createWallMutation.isPending) &&
+                            styles.buttonDisabled,
+                        ]}
+                        onPress={() =>
+                          createWallMutation.mutate({
+                            gymSlug: gym.slug,
+                            name: wallName.trim(),
+                          })
+                        }
+                        disabled={
+                          !wallName.trim() || createWallMutation.isPending
+                        }
+                      >
+                        <Text style={styles.submitText}>
+                          {createWallMutation.isPending ? "Creating..." : "Add"}
+                        </Text>
+                      </Pressable>
+                    </View>
                   </View>
-                </View>
-              ) : (
-                <Pressable
-                  style={styles.addWallButton}
-                  onPress={() => setWallFormGymSlug(gym.slug)}
-                >
-                  <Text style={styles.addWallText}>+ Add Wall</Text>
-                </Pressable>
+                ) : (
+                  <Pressable
+                    style={styles.addWallButton}
+                    onPress={() => setWallFormGymSlug(gym.slug)}
+                  >
+                    <Text style={styles.addWallText}>+ Add Wall</Text>
+                  </Pressable>
+                )
               )}
             </View>
           )}
