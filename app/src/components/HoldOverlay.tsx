@@ -1,6 +1,6 @@
 import React from "react";
 import { Platform } from "react-native";
-import Svg, { Rect } from "react-native-svg";
+import Svg, { Polygon, Rect } from "react-native-svg";
 import type { Hold } from "../lib/api/types";
 
 interface HoldOverlayProps {
@@ -33,6 +33,29 @@ export default function HoldOverlay({
 
         const pressHandler = () => onToggle(hold.id);
 
+        const fill = isSelected ? "rgba(0, 255, 255, 0.35)" : "rgba(255, 255, 255, 0.25)";
+        const stroke = isSelected ? "#00FFFF" : "#FFFFFF";
+        const interactionProps = Platform.OS === "web"
+          ? { onClick: pressHandler }
+          : { onPress: pressHandler };
+
+        if (hold.polygon && hold.polygon.length > 0) {
+          const points = hold.polygon
+            .map(([px, py]) => `${px * imageWidth},${py * imageHeight}`)
+            .join(" ");
+
+          return (
+            <Polygon
+              key={hold.id}
+              points={points}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={2}
+              {...interactionProps}
+            />
+          );
+        }
+
         return (
           <Rect
             key={hold.id}
@@ -40,12 +63,10 @@ export default function HoldOverlay({
             y={y}
             width={w}
             height={h}
-            fill={isSelected ? "rgba(0, 255, 255, 0.35)" : "rgba(255, 255, 255, 0.25)"}
-            stroke={isSelected ? "#00FFFF" : "#FFFFFF"}
+            fill={fill}
+            stroke={stroke}
             strokeWidth={2}
-            {...(Platform.OS === "web"
-              ? { onClick: pressHandler }
-              : { onPress: pressHandler })}
+            {...interactionProps}
           />
         );
       })}
