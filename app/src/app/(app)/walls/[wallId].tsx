@@ -28,7 +28,11 @@ export default function WallDetailScreen() {
   const queryClient = useQueryClient();
   const { serverUrl } = useServerStore();
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  type HoldRole = "normal" | "start" | "finish";
+  const [holdSelections, setHoldSelections] = useState<Map<string, HoldRole>>(
+    new Map(),
+  );
+  const selectedIds = new Set(holdSelections.keys());
   const [imageLayout, setImageLayout] = useState<{
     width: number;
     height: number;
@@ -60,12 +64,17 @@ export default function WallDetailScreen() {
   });
 
   const handleToggle = useCallback((holdId: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(holdId)) {
-        next.delete(holdId);
+    setHoldSelections((prev) => {
+      const next = new Map(prev);
+      const current = next.get(holdId);
+      if (!current) {
+        next.set(holdId, "normal");
+      } else if (current === "normal") {
+        next.set(holdId, "start");
+      } else if (current === "start") {
+        next.set(holdId, "finish");
       } else {
-        next.add(holdId);
+        next.delete(holdId);
       }
       return next;
     });
@@ -112,7 +121,7 @@ export default function WallDetailScreen() {
         queryKey: ["wall-detail", gymSlug, wallId],
       });
       queryClient.invalidateQueries({ queryKey: ["holds", gymSlug, wallId] });
-      setSelectedIds(new Set());
+      setHoldSelections(new Map());
     } catch (err: any) {
       Alert.alert("Upload Error", err.message);
     } finally {
@@ -185,6 +194,18 @@ export default function WallDetailScreen() {
                   onToggle={handleToggle}
                   imageWidth={imageLayout.width}
                   imageHeight={imageLayout.height}
+                  holdRoles={
+                    holdSelections.size > 0
+                      ? {
+                          start: [...holdSelections.entries()]
+                            .filter(([, r]) => r === "start")
+                            .map(([id]) => id),
+                          finish: [...holdSelections.entries()]
+                            .filter(([, r]) => r === "finish")
+                            .map(([id]) => id),
+                        }
+                      : null
+                  }
                 />
               )}
             </View>
@@ -215,16 +236,25 @@ export default function WallDetailScreen() {
           {selectedIds.size >= 2 && (
             <Pressable
               style={styles.createRouteButton}
-              onPress={() =>
+              onPress={() => {
+                const holdRoles = {
+                  start: [...holdSelections.entries()]
+                    .filter(([, r]) => r === "start")
+                    .map(([id]) => id),
+                  finish: [...holdSelections.entries()]
+                    .filter(([, r]) => r === "finish")
+                    .map(([id]) => id),
+                };
                 router.push({
                   pathname: "/(app)/routes/create" as any,
                   params: {
                     wallId,
                     gymSlug,
                     holdIds: JSON.stringify(Array.from(selectedIds)),
+                    holdRoles: JSON.stringify(holdRoles),
                   },
-                })
-              }
+                });
+              }}
             >
               <Text style={styles.createRouteText}>
                 Create Route ({selectedIds.size} holds)

@@ -1,7 +1,7 @@
 import React from "react";
 import { Platform } from "react-native";
 import Svg, { Rect } from "react-native-svg";
-import type { Hold } from "../lib/api/types";
+import type { Hold, HoldRoles } from "../lib/api/types";
 
 interface HoldOverlayProps {
   holds: Hold[];
@@ -9,6 +9,26 @@ interface HoldOverlayProps {
   onToggle: (holdId: string) => void;
   imageWidth: number;
   imageHeight: number;
+  mode?: "select" | "view";
+  holdRoles?: HoldRoles | null;
+}
+
+function getHoldColor(
+  holdId: string,
+  isSelected: boolean,
+  holdRoles?: HoldRoles | null,
+) {
+  if (!isSelected)
+    return { fill: "rgba(255, 255, 255, 0.25)", stroke: "#FFFFFF" };
+
+  if (holdRoles) {
+    if (holdRoles.start.includes(holdId))
+      return { fill: "rgba(0, 200, 0, 0.4)", stroke: "#00CC00" };
+    if (holdRoles.finish.includes(holdId))
+      return { fill: "rgba(255, 50, 50, 0.4)", stroke: "#FF3333" };
+  }
+
+  return { fill: "rgba(0, 255, 255, 0.35)", stroke: "#00FFFF" };
 }
 
 export default function HoldOverlay({
@@ -17,19 +37,34 @@ export default function HoldOverlay({
   onToggle,
   imageWidth,
   imageHeight,
+  mode = "select",
+  holdRoles,
 }: HoldOverlayProps) {
+  const visibleHolds =
+    mode === "view" ? holds.filter((h) => selectedIds.has(h.id)) : holds;
+
   return (
     <Svg
       width={imageWidth}
       height={imageHeight}
       style={{ position: "absolute", top: 0, left: 0 }}
     >
-      {holds.map((hold) => {
+      {mode === "view" && (
+        <Rect
+          x={0}
+          y={0}
+          width={imageWidth}
+          height={imageHeight}
+          fill="rgba(0, 0, 0, 0.5)"
+        />
+      )}
+      {visibleHolds.map((hold) => {
         const isSelected = selectedIds.has(hold.id);
         const x = hold.bbox.x * imageWidth;
         const y = hold.bbox.y * imageHeight;
         const w = hold.bbox.w * imageWidth;
         const h = hold.bbox.h * imageHeight;
+        const colors = getHoldColor(hold.id, isSelected, holdRoles);
 
         const pressHandler = () => onToggle(hold.id);
 
@@ -40,8 +75,8 @@ export default function HoldOverlay({
             y={y}
             width={w}
             height={h}
-            fill={isSelected ? "rgba(0, 255, 255, 0.35)" : "rgba(255, 255, 255, 0.25)"}
-            stroke={isSelected ? "#00FFFF" : "#FFFFFF"}
+            fill={colors.fill}
+            stroke={colors.stroke}
             strokeWidth={2}
             {...(Platform.OS === "web"
               ? { onClick: pressHandler }

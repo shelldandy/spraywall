@@ -15,14 +15,16 @@ import { apiFetch } from "../../../lib/api/fetch";
 import type { Route } from "../../../lib/api/types";
 
 export default function CreateRouteScreen() {
-  const { wallId, gymSlug, holdIds } = useLocalSearchParams<{
+  const { wallId, gymSlug, holdIds, holdRoles } = useLocalSearchParams<{
     wallId: string;
     gymSlug: string;
     holdIds: string;
+    holdRoles: string;
   }>();
   const queryClient = useQueryClient();
 
   const parsedHoldIds: string[] = holdIds ? JSON.parse(holdIds) : [];
+  const parsedHoldRoles = holdRoles ? JSON.parse(holdRoles) : null;
 
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
@@ -37,6 +39,7 @@ export default function CreateRouteScreen() {
           grade: grade.trim() || null,
           description: description.trim() || null,
           hold_ids: parsedHoldIds,
+          hold_roles: parsedHoldRoles,
         }),
       });
       if (!res.ok) {
