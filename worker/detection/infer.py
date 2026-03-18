@@ -26,6 +26,8 @@ def detect_holds(image_path: str) -> list[dict]:
     results = model(image_path, imgsz=2560, max_det=2000, verbose=False)
 
     holds = []
+    img_w = 0
+    img_h = 0
     for result in results:
         img_h, img_w = result.orig_shape
 
@@ -58,5 +60,21 @@ def detect_holds(image_path: str) -> list[dict]:
                         hold["polygon"] = polygon
 
                 holds.append(hold)
+
+    # Run SAM segmentation if enabled (only on holds without polygons)
+    from detection.segment import SAM_ENABLED, segment_holds
+
+    if SAM_ENABLED and img_w > 0 and img_h > 0:
+        holds_needing_segmentation = [h for h in holds if h["polygon"] is None]
+        if holds_needing_segmentation:
+            holds_needing_segmentation = segment_holds(
+                image_path, holds_needing_segmentation, img_w, img_h
+            )
+            # Merge back
+            seg_idx = 0
+            for i, h in enumerate(holds):
+                if h["polygon"] is None and seg_idx < len(holds_needing_segmentation):
+                    holds[i] = holds_needing_segmentation[seg_idx]
+                    seg_idx += 1
 
     return holds
