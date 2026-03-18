@@ -129,6 +129,10 @@ export default function WallDetailScreen() {
   const wall = wallQuery.data;
   const holds = holdsQuery.data ?? [];
   const filteredHolds = holds.filter((h) => h.confidence >= confidenceThreshold);
+  const filteredIds = new Set(filteredHolds.map((h) => h.id));
+  const visibleSelectedIds = new Set(
+    [...selectedIds].filter((id) => filteredIds.has(id)),
+  );
   const detectionStatus = wall?.detection_status;
 
   const statusBadge = () => {
@@ -162,7 +166,7 @@ export default function WallDetailScreen() {
           {wall?.wall.name ?? "Wall"}
         </Text>
         <Text style={styles.selectedCount}>
-          {selectedIds.size > 0 ? `${selectedIds.size} selected` : ""}
+          {visibleSelectedIds.size > 0 ? `${visibleSelectedIds.size} selected` : ""}
         </Text>
       </View>
 
@@ -244,7 +248,7 @@ export default function WallDetailScreen() {
             </Text>
           )}
 
-          {selectedIds.size >= 2 && (
+          {visibleSelectedIds.size >= 2 && (
             <Pressable
               style={styles.createRouteButton}
               onPress={() =>
@@ -253,13 +257,13 @@ export default function WallDetailScreen() {
                   params: {
                     wallId,
                     gymSlug,
-                    holdIds: JSON.stringify(Array.from(selectedIds)),
+                    holdIds: JSON.stringify(Array.from(visibleSelectedIds)),
                   },
                 })
               }
             >
               <Text style={styles.createRouteText}>
-                Create Route ({selectedIds.size} holds)
+                Create Route ({visibleSelectedIds.size} holds)
               </Text>
             </Pressable>
           )}
