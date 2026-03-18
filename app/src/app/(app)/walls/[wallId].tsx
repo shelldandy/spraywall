@@ -29,6 +29,7 @@ export default function WallDetailScreen() {
   const { serverUrl } = useServerStore();
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
   const [imageLayout, setImageLayout] = useState<{
     width: number;
     height: number;
@@ -127,6 +128,7 @@ export default function WallDetailScreen() {
 
   const wall = wallQuery.data;
   const holds = holdsQuery.data ?? [];
+  const filteredHolds = holds.filter((h) => h.confidence >= confidenceThreshold);
   const detectionStatus = wall?.detection_status;
 
   const statusBadge = () => {
@@ -178,9 +180,9 @@ export default function WallDetailScreen() {
                 resizeMode="contain"
                 onLayout={onImageLayout}
               />
-              {imageLayout && holds.length > 0 && (
+              {imageLayout && filteredHolds.length > 0 && (
                 <HoldOverlay
-                  holds={holds}
+                  holds={filteredHolds}
                   selectedIds={selectedIds}
                   onToggle={handleToggle}
                   imageWidth={imageLayout.width}
@@ -207,8 +209,38 @@ export default function WallDetailScreen() {
           )}
 
           {detectionStatus === "done" && holds.length > 0 && (
+            <View style={styles.thresholdContainer}>
+              <Text style={styles.thresholdLabel}>Confidence threshold</Text>
+              <View style={styles.thresholdButtons}>
+                {[0.1, 0.25, 0.5, 0.75, 0.9].map((t) => (
+                  <Pressable
+                    key={t}
+                    style={[
+                      styles.thresholdButton,
+                      confidenceThreshold === t && styles.thresholdButtonActive,
+                    ]}
+                    onPress={() => setConfidenceThreshold(t)}
+                  >
+                    <Text
+                      style={[
+                        styles.thresholdButtonText,
+                        confidenceThreshold === t &&
+                          styles.thresholdButtonTextActive,
+                      ]}
+                    >
+                      {Math.round(t * 100)}%
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {detectionStatus === "done" && holds.length > 0 && (
             <Text style={styles.holdCount}>
-              {holds.length} hold{holds.length !== 1 ? "s" : ""} detected
+              {filteredHolds.length} of {holds.length} hold
+              {holds.length !== 1 ? "s" : ""} ({"\u2265"}{" "}
+              {Math.round(confidenceThreshold * 100)}%)
             </Text>
           )}
 
@@ -340,6 +372,35 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  thresholdContainer: {
+    marginBottom: 12,
+  },
+  thresholdLabel: {
+    fontSize: 13,
+    color: "#666",
+    marginBottom: 6,
+  },
+  thresholdButtons: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  thresholdButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: "#f0f0f0",
+  },
+  thresholdButtonActive: {
+    backgroundColor: "#007AFF",
+  },
+  thresholdButtonText: {
+    fontSize: 13,
+    color: "#666",
+  },
+  thresholdButtonTextActive: {
+    color: "#fff",
+    fontWeight: "600",
   },
   holdCount: {
     textAlign: "center",
