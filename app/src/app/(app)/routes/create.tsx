@@ -13,6 +13,8 @@ import { useLocalSearchParams, router } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../../lib/api/fetch";
 import type { Route } from "../../../lib/api/types";
+import GradePicker from "../../../components/GradePicker";
+import { formatGrade } from "../../../lib/grades";
 
 export default function CreateRouteScreen() {
   const { wallId, gymSlug, holdIds } = useLocalSearchParams<{
@@ -25,7 +27,7 @@ export default function CreateRouteScreen() {
   const parsedHoldIds: string[] = holdIds ? JSON.parse(holdIds) : [];
 
   const [name, setName] = useState("");
-  const [grade, setGrade] = useState("");
+  const [gradeId, setGradeId] = useState<number | null>(null);
   const [description, setDescription] = useState("");
 
   const createMutation = useMutation<Route, Error>({
@@ -34,7 +36,7 @@ export default function CreateRouteScreen() {
         method: "POST",
         body: JSON.stringify({
           name: name.trim(),
-          grade: grade.trim() || null,
+          grade: gradeId !== null ? formatGrade(gradeId, "v") : null,
           description: description.trim() || null,
           hold_ids: parsedHoldIds,
         }),
@@ -81,13 +83,7 @@ export default function CreateRouteScreen() {
         />
 
         <Text style={styles.label}>Grade</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. V4, 5.11a"
-          value={grade}
-          onChangeText={setGrade}
-          autoCapitalize="none"
-        />
+        <GradePicker selectedGradeId={gradeId} onSelect={setGradeId} />
 
         <Text style={styles.label}>Description</Text>
         <TextInput
