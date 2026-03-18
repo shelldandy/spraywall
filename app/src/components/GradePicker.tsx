@@ -94,9 +94,9 @@ export default function GradePicker({
                   }}
                 >
                   <Text style={styles.gradeText}>{item[activeSystem]}</Text>
-                  {activeSystem !== "v" && (
-                    <Text style={styles.gradeSubText}>{item.v}</Text>
-                  )}
+                  <Text style={styles.gradeSubText}>
+                    {activeSystem === "v" ? item.font : item.v}
+                  </Text>
                 </Pressable>
               )}
             />
