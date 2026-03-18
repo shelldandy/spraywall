@@ -212,6 +212,47 @@ func (q *Queries) ListRoutesByWall(ctx context.Context, arg ListRoutesByWallPara
 	return items, nil
 }
 
+const updateRoute = `-- name: UpdateRoute :one
+UPDATE routes SET name = $2, grade = $3, description = $4, hold_ids = $5, hold_roles = $6
+WHERE id = $1
+RETURNING id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, hold_roles, created_at, status
+`
+
+type UpdateRouteParams struct {
+	ID          pgtype.UUID   `json:"id"`
+	Name        string        `json:"name"`
+	Grade       pgtype.Text   `json:"grade"`
+	Description pgtype.Text   `json:"description"`
+	HoldIds     []pgtype.UUID `json:"hold_ids"`
+	HoldRoles   []byte        `json:"hold_roles"`
+}
+
+func (q *Queries) UpdateRoute(ctx context.Context, arg UpdateRouteParams) (Route, error) {
+	row := q.db.QueryRow(ctx, updateRoute,
+		arg.ID,
+		arg.Name,
+		arg.Grade,
+		arg.Description,
+		arg.HoldIds,
+		arg.HoldRoles,
+	)
+	var i Route
+	err := row.Scan(
+		&i.ID,
+		&i.WallID,
+		&i.WallImageID,
+		&i.CreatedBy,
+		&i.Name,
+		&i.Grade,
+		&i.Description,
+		&i.HoldIds,
+		&i.HoldRoles,
+		&i.CreatedAt,
+		&i.Status,
+	)
+	return i, err
+}
+
 const updateRouteStatus = `-- name: UpdateRouteStatus :exec
 UPDATE routes SET status = $2 WHERE id = $1
 `

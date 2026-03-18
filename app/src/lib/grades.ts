@@ -67,3 +67,9 @@ export function formatGrade(gradeId: number, system: GradeSystem): string {
   if (!g) return "?";
   return g[system];
 }
+
+/** Find a grade ID from a V-grade string (e.g. "V4" → 10). Returns first match. */
+export function gradeIdFromV(v: string): number | null {
+  const g = grades.find((g) => g.v === v);
+  return g ? g.id : null;
+}

@@ -10,6 +10,11 @@ SELECT * FROM routes WHERE id = $1;
 SELECT * FROM routes WHERE wall_id = $1 AND (status = 'published' OR created_by = $2)
 ORDER BY created_at DESC;
 
+-- name: UpdateRoute :one
+UPDATE routes SET name = $2, grade = $3, description = $4, hold_ids = $5, hold_roles = $6
+WHERE id = $1
+RETURNING *;
+
 -- name: UpdateRouteStatus :exec
 UPDATE routes SET status = $2 WHERE id = $1;
 

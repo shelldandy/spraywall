@@ -132,6 +132,7 @@ func main() {
 						r.Get("/", routeHandler.ListRoutes)
 						r.Route("/{routeId}", func(r chi.Router) {
 							r.Get("/", routeHandler.GetRoute)
+							r.Put("/", routeHandler.UpdateRoute)
 							r.Delete("/", routeHandler.DeleteRoute)
 							r.Patch("/publish", routeHandler.PublishRoute)
 							r.Post("/sends", routeHandler.LogSend)

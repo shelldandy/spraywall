@@ -14,40 +14,51 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../../lib/api/fetch";
 import type { Route } from "../../../lib/api/types";
 import GradePicker from "../../../components/GradePicker";
-import { formatGrade } from "../../../lib/grades";
+import { formatGrade, gradeIdFromV } from "../../../lib/grades";
 
 export default function CreateRouteScreen() {
-  const { wallId, gymSlug, holdIds, holdRoles } = useLocalSearchParams<{
-    wallId: string;
-    gymSlug: string;
-    holdIds: string;
-    holdRoles: string;
-  }>();
+  const { wallId, gymSlug, holdIds, holdRoles, routeId, initialName, initialGrade, initialDescription } =
+    useLocalSearchParams<{
+      wallId: string;
+      gymSlug: string;
+      holdIds: string;
+      holdRoles: string;
+      routeId: string;
+      initialName: string;
+      initialGrade: string;
+      initialDescription: string;
+    }>();
   const queryClient = useQueryClient();
 
+  const isEditing = !!routeId;
   const parsedHoldIds: string[] = holdIds ? JSON.parse(holdIds) : [];
   const parsedHoldRoles = holdRoles ? JSON.parse(holdRoles) : null;
 
-  const [name, setName] = useState("");
-  const [gradeId, setGradeId] = useState<number | null>(null);
-  const [description, setDescription] = useState("");
+  const [name, setName] = useState(initialName ?? "");
+  const [gradeId, setGradeId] = useState<number | null>(
+    initialGrade ? gradeIdFromV(initialGrade) : null,
+  );
+  const [description, setDescription] = useState(initialDescription ?? "");
 
-  const createMutation = useMutation<Route, Error, { status: "draft" | "published" }>({
+  const saveMutation = useMutation<Route, Error, { status: "draft" | "published" }>({
     mutationFn: async ({ status }) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes`, {
-        method: "POST",
+      const url = isEditing
+        ? `/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}`
+        : `/gyms/${gymSlug}/walls/${wallId}/routes`;
+      const res = await apiFetch(url, {
+        method: isEditing ? "PUT" : "POST",
         body: JSON.stringify({
           name: name.trim(),
           grade: gradeId !== null ? formatGrade(gradeId, "v") : null,
           description: description.trim() || null,
           hold_ids: parsedHoldIds,
           hold_roles: parsedHoldRoles,
-          status,
+          ...(!isEditing && { status }),
         }),
       });
       if (!res.ok) {
         const err = await res.text();
-        throw new Error(err || "Failed to create route");
+        throw new Error(err || `Failed to ${isEditing ? "update" : "create"} route`);
       }
       return res.json();
     },
@@ -55,6 +66,11 @@ export default function CreateRouteScreen() {
       queryClient.invalidateQueries({
         queryKey: ["routes", gymSlug, wallId],
       });
+      if (isEditing) {
+        queryClient.invalidateQueries({
+          queryKey: ["route-detail", gymSlug, wallId, routeId],
+        });
+      }
       router.back();
     },
     onError: (err: Error) => Alert.alert("Error", err.message),
@@ -66,7 +82,9 @@ export default function CreateRouteScreen() {
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backText}>{"< Back"}</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>Create Route</Text>
+        <Text style={styles.headerTitle}>
+          {isEditing ? "Edit Route" : "Create Route"}
+        </Text>
         <View style={{ minWidth: 60 }} />
       </View>
 
@@ -83,7 +101,7 @@ export default function CreateRouteScreen() {
           placeholder="Route name"
           value={name}
           onChangeText={setName}
-          autoFocus
+          autoFocus={!isEditing}
         />
 
         <Text style={styles.label}>Grade</Text>
@@ -99,32 +117,48 @@ export default function CreateRouteScreen() {
           numberOfLines={3}
         />
 
-        <View style={styles.buttonRow}>
-          <Pressable
-            style={[
-              styles.draftButton,
-              (!name.trim() || createMutation.isPending) &&
-                styles.buttonDisabled,
-            ]}
-            onPress={() => createMutation.mutate({ status: "draft" })}
-            disabled={!name.trim() || createMutation.isPending}
-          >
-            <Text style={styles.draftText}>Save Draft</Text>
-          </Pressable>
+        {isEditing ? (
           <Pressable
             style={[
               styles.saveButton,
-              (!name.trim() || createMutation.isPending) &&
+              (!name.trim() || saveMutation.isPending) &&
                 styles.buttonDisabled,
             ]}
-            onPress={() => createMutation.mutate({ status: "published" })}
-            disabled={!name.trim() || createMutation.isPending}
+            onPress={() => saveMutation.mutate({ status: "published" })}
+            disabled={!name.trim() || saveMutation.isPending}
           >
             <Text style={styles.saveText}>
-              {createMutation.isPending ? "Saving..." : "Publish Route"}
+              {saveMutation.isPending ? "Saving..." : "Save Changes"}
             </Text>
           </Pressable>
-        </View>
+        ) : (
+          <View style={styles.buttonRow}>
+            <Pressable
+              style={[
+                styles.draftButton,
+                (!name.trim() || saveMutation.isPending) &&
+                  styles.buttonDisabled,
+              ]}
+              onPress={() => saveMutation.mutate({ status: "draft" })}
+              disabled={!name.trim() || saveMutation.isPending}
+            >
+              <Text style={styles.draftText}>Save Draft</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.saveButton,
+                (!name.trim() || saveMutation.isPending) &&
+                  styles.buttonDisabled,
+              ]}
+              onPress={() => saveMutation.mutate({ status: "published" })}
+              disabled={!name.trim() || saveMutation.isPending}
+            >
+              <Text style={styles.saveText}>
+                {saveMutation.isPending ? "Saving..." : "Publish Route"}
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -217,6 +251,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: "center",
+    marginTop: 8,
   },
   saveText: {
     color: "#fff",

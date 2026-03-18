@@ -1,7 +1,10 @@
-.PHONY: dev prod migrate sqlc apiclient expo lint test clean
+.PHONY: dev dev-sam prod migrate sqlc apiclient expo lint test clean
 
 dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+dev-sam:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.sam.yml up --build
 
 prod:
 	docker compose up -d --build

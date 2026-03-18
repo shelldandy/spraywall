@@ -360,6 +360,105 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// UpdateRoute handles PUT /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}
+func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
+	gym, _, err := h.requireGymMember(w, r)
+	if err != nil {
+		return
+	}
+
+	routeUUID, err := parseRouteID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid route id")
+		return
+	}
+	pgRouteID := shared.PgUUID(routeUUID)
+
+	rt, err := h.queries.GetRouteByID(r.Context(), pgRouteID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "route not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "database error")
+		}
+		return
+	}
+
+	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
+	if err != nil || wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "route not found")
+		return
+	}
+
+	// Only the creator can edit.
+	userID := user.GetUserID(r.Context())
+	if rt.CreatedBy != shared.PgUUID(userID) {
+		writeError(w, http.StatusForbidden, "only the route creator can edit")
+		return
+	}
+
+	var body struct {
+		Name        string           `json:"name"`
+		Grade       *string          `json:"grade"`
+		Description *string          `json:"description"`
+		HoldIDs     []string         `json:"hold_ids"`
+		HoldRoles   *json.RawMessage `json:"hold_roles"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if len(body.HoldIDs) < 2 {
+		writeError(w, http.StatusBadRequest, "at least 2 holds are required")
+		return
+	}
+
+	holdIDs := make([]pgtype.UUID, len(body.HoldIDs))
+	for i, idStr := range body.HoldIDs {
+		parsed, err := uuid.Parse(idStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid hold id: "+idStr)
+			return
+		}
+		holdIDs[i] = shared.PgUUID(parsed)
+	}
+
+	var grade pgtype.Text
+	if body.Grade != nil {
+		grade = pgtype.Text{String: *body.Grade, Valid: true}
+	}
+	var description pgtype.Text
+	if body.Description != nil {
+		description = pgtype.Text{String: *body.Description, Valid: true}
+	}
+	var holdRoles []byte
+	if body.HoldRoles != nil {
+		holdRoles = []byte(*body.HoldRoles)
+	}
+
+	updated, err := h.queries.UpdateRoute(r.Context(), generated.UpdateRouteParams{
+		ID:          pgRouteID,
+		Name:        body.Name,
+		Grade:       grade,
+		Description: description,
+		HoldIds:     holdIDs,
+		HoldRoles:   holdRoles,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not update route")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, routeResponse{
+		Route:     updated,
+		HoldRoles: json.RawMessage(updated.HoldRoles),
+	})
+}
+
 // DeleteRoute handles DELETE /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}
 func (h *Handler) DeleteRoute(w http.ResponseWriter, r *http.Request) {
 	gym, member, err := h.requireGymMember(w, r)
