@@ -52,6 +52,11 @@ export default function RoutesListScreen() {
         </Text>
       </View>
       <View style={styles.routeRight}>
+        {item.status === "draft" && (
+          <View style={styles.draftBadge}>
+            <Text style={styles.draftBadgeText}>Draft</Text>
+          </View>
+        )}
         {item.is_legacy && (
           <View style={styles.resetBadge}>
             <Text style={styles.resetBadgeText}>Reset</Text>
@@ -175,6 +180,17 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   sentBadgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  draftBadge: {
+    backgroundColor: "#999",
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  draftBadgeText: {
     color: "#fff",
     fontSize: 12,
     fontWeight: "600",

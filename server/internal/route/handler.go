@@ -126,6 +126,7 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 		Grade       *string  `json:"grade"`
 		Description *string  `json:"description"`
 		HoldIDs     []string `json:"hold_ids"`
+		Status      string   `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -181,6 +182,11 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 
 	userID := user.GetUserID(r.Context())
 
+	status := "published"
+	if body.Status == "draft" {
+		status = "draft"
+	}
+
 	var grade pgtype.Text
 	if body.Grade != nil {
 		grade = pgtype.Text{String: *body.Grade, Valid: true}
@@ -198,6 +204,7 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 		Grade:       grade,
 		Description: description,
 		HoldIds:     holdIDs,
+		Status:      status,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create route")
@@ -239,7 +246,10 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	routes, err := h.queries.ListRoutesByWall(r.Context(), pgWallID)
+	routes, err := h.queries.ListRoutesByWall(r.Context(), generated.ListRoutesByWallParams{
+		WallID:    pgWallID,
+		CreatedBy: shared.PgUUID(user.GetUserID(r.Context())),
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list routes")
 		return
@@ -432,6 +442,12 @@ func (h *Handler) LogSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Block sends on draft routes.
+	if rt.Status == "draft" {
+		writeError(w, http.StatusBadRequest, "cannot log send on draft route")
+		return
+	}
+
 	var body struct {
 		Attempts *int32  `json:"attempts"`
 		Notes    *string `json:"notes"`
@@ -521,6 +537,54 @@ func (h *Handler) RemoveSend(w http.ResponseWriter, r *http.Request) {
 		UserID:  shared.PgUUID(userID),
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not remove send")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PublishRoute handles PATCH /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/publish
+func (h *Handler) PublishRoute(w http.ResponseWriter, r *http.Request) {
+	gym, _, err := h.requireGymMember(w, r)
+	if err != nil {
+		return
+	}
+
+	routeUUID, err := parseRouteID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid route id")
+		return
+	}
+	pgRouteID := shared.PgUUID(routeUUID)
+
+	rt, err := h.queries.GetRouteByID(r.Context(), pgRouteID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "route not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "database error")
+		}
+		return
+	}
+
+	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
+	if err != nil || wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "route not found")
+		return
+	}
+
+	// Only creator can publish their draft.
+	userID := user.GetUserID(r.Context())
+	if rt.CreatedBy != shared.PgUUID(userID) {
+		writeError(w, http.StatusForbidden, "only the route creator can publish")
+		return
+	}
+
+	if err := h.queries.UpdateRouteStatus(r.Context(), generated.UpdateRouteStatusParams{
+		ID:     pgRouteID,
+		Status: "published",
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not publish route")
 		return
 	}
 

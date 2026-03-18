@@ -23,9 +23,9 @@ func (q *Queries) CountSendsByRoute(ctx context.Context, routeID pgtype.UUID) (i
 }
 
 const createRoute = `-- name: CreateRoute :one
-INSERT INTO routes (wall_id, wall_image_id, created_by, name, grade, description, hold_ids)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at
+INSERT INTO routes (wall_id, wall_image_id, created_by, name, grade, description, hold_ids, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, status
 `
 
 type CreateRouteParams struct {
@@ -36,6 +36,7 @@ type CreateRouteParams struct {
 	Grade       pgtype.Text   `json:"grade"`
 	Description pgtype.Text   `json:"description"`
 	HoldIds     []pgtype.UUID `json:"hold_ids"`
+	Status      string        `json:"status"`
 }
 
 func (q *Queries) CreateRoute(ctx context.Context, arg CreateRouteParams) (Route, error) {
@@ -47,6 +48,7 @@ func (q *Queries) CreateRoute(ctx context.Context, arg CreateRouteParams) (Route
 		arg.Grade,
 		arg.Description,
 		arg.HoldIds,
+		arg.Status,
 	)
 	var i Route
 	err := row.Scan(
@@ -59,6 +61,7 @@ func (q *Queries) CreateRoute(ctx context.Context, arg CreateRouteParams) (Route
 		&i.Description,
 		&i.HoldIds,
 		&i.CreatedAt,
+		&i.Status,
 	)
 	return i, err
 }
@@ -119,7 +122,7 @@ func (q *Queries) DeleteSendByUser(ctx context.Context, arg DeleteSendByUserPara
 }
 
 const getRouteByID = `-- name: GetRouteByID :one
-SELECT id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at FROM routes WHERE id = $1
+SELECT id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, status FROM routes WHERE id = $1
 `
 
 func (q *Queries) GetRouteByID(ctx context.Context, id pgtype.UUID) (Route, error) {
@@ -135,6 +138,7 @@ func (q *Queries) GetRouteByID(ctx context.Context, id pgtype.UUID) (Route, erro
 		&i.Description,
 		&i.HoldIds,
 		&i.CreatedAt,
+		&i.Status,
 	)
 	return i, err
 }
@@ -163,11 +167,17 @@ func (q *Queries) GetSendByUser(ctx context.Context, arg GetSendByUserParams) (S
 }
 
 const listRoutesByWall = `-- name: ListRoutesByWall :many
-SELECT id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at FROM routes WHERE wall_id = $1 ORDER BY created_at DESC
+SELECT id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, status FROM routes WHERE wall_id = $1 AND (status = 'published' OR created_by = $2)
+ORDER BY created_at DESC
 `
 
-func (q *Queries) ListRoutesByWall(ctx context.Context, wallID pgtype.UUID) ([]Route, error) {
-	rows, err := q.db.Query(ctx, listRoutesByWall, wallID)
+type ListRoutesByWallParams struct {
+	WallID    pgtype.UUID `json:"wall_id"`
+	CreatedBy pgtype.UUID `json:"created_by"`
+}
+
+func (q *Queries) ListRoutesByWall(ctx context.Context, arg ListRoutesByWallParams) ([]Route, error) {
+	rows, err := q.db.Query(ctx, listRoutesByWall, arg.WallID, arg.CreatedBy)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +195,7 @@ func (q *Queries) ListRoutesByWall(ctx context.Context, wallID pgtype.UUID) ([]R
 			&i.Description,
 			&i.HoldIds,
 			&i.CreatedAt,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -194,6 +205,20 @@ func (q *Queries) ListRoutesByWall(ctx context.Context, wallID pgtype.UUID) ([]R
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateRouteStatus = `-- name: UpdateRouteStatus :exec
+UPDATE routes SET status = $2 WHERE id = $1
+`
+
+type UpdateRouteStatusParams struct {
+	ID     pgtype.UUID `json:"id"`
+	Status string      `json:"status"`
+}
+
+func (q *Queries) UpdateRouteStatus(ctx context.Context, arg UpdateRouteStatusParams) error {
+	_, err := q.db.Exec(ctx, updateRouteStatus, arg.ID, arg.Status)
+	return err
 }
 
 const listSendsByUser = `-- name: ListSendsByUser :many

@@ -57,7 +57,7 @@ func main() {
 	r.Use(middleware.StripSlashes)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: false,
@@ -133,6 +133,7 @@ func main() {
 						r.Route("/{routeId}", func(r chi.Router) {
 							r.Get("/", routeHandler.GetRoute)
 							r.Delete("/", routeHandler.DeleteRoute)
+							r.Patch("/publish", routeHandler.PublishRoute)
 							r.Post("/sends", routeHandler.LogSend)
 							r.Delete("/sends/me", routeHandler.RemoveSend)
 						})

@@ -115,6 +115,7 @@ type Route struct {
 	Description pgtype.Text        `json:"description"`
 	HoldIds     []pgtype.UUID      `json:"hold_ids"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	Status      string             `json:"status"`
 }
 
 type Send struct {
