@@ -32,8 +32,8 @@ export default function CreateRouteScreen() {
   const [gradeId, setGradeId] = useState<number | null>(null);
   const [description, setDescription] = useState("");
 
-  const createMutation = useMutation<Route, Error>({
-    mutationFn: async () => {
+  const createMutation = useMutation<Route, Error, { status: "draft" | "published" }>({
+    mutationFn: async ({ status }) => {
       const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes`, {
         method: "POST",
         body: JSON.stringify({
@@ -42,6 +42,7 @@ export default function CreateRouteScreen() {
           description: description.trim() || null,
           hold_ids: parsedHoldIds,
           hold_roles: parsedHoldRoles,
+          status,
         }),
       });
       if (!res.ok) {
@@ -98,19 +99,32 @@ export default function CreateRouteScreen() {
           numberOfLines={3}
         />
 
-        <Pressable
-          style={[
-            styles.saveButton,
-            (!name.trim() || createMutation.isPending) &&
-              styles.buttonDisabled,
-          ]}
-          onPress={() => createMutation.mutate()}
-          disabled={!name.trim() || createMutation.isPending}
-        >
-          <Text style={styles.saveText}>
-            {createMutation.isPending ? "Saving..." : "Save Route"}
-          </Text>
-        </Pressable>
+        <View style={styles.buttonRow}>
+          <Pressable
+            style={[
+              styles.draftButton,
+              (!name.trim() || createMutation.isPending) &&
+                styles.buttonDisabled,
+            ]}
+            onPress={() => createMutation.mutate({ status: "draft" })}
+            disabled={!name.trim() || createMutation.isPending}
+          >
+            <Text style={styles.draftText}>Save Draft</Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.saveButton,
+              (!name.trim() || createMutation.isPending) &&
+                styles.buttonDisabled,
+            ]}
+            onPress={() => createMutation.mutate({ status: "published" })}
+            disabled={!name.trim() || createMutation.isPending}
+          >
+            <Text style={styles.saveText}>
+              {createMutation.isPending ? "Saving..." : "Publish Route"}
+            </Text>
+          </Pressable>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -178,12 +192,31 @@ const styles = StyleSheet.create({
     height: 80,
     textAlignVertical: "top",
   },
+  buttonRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  draftButton: {
+    flex: 1,
+    backgroundColor: "#f8f8f8",
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ccc",
+  },
+  draftText: {
+    color: "#666",
+    fontSize: 16,
+    fontWeight: "600",
+  },
   saveButton: {
+    flex: 1,
     backgroundColor: "#007AFF",
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: "center",
-    marginTop: 8,
   },
   saveText: {
     color: "#fff",

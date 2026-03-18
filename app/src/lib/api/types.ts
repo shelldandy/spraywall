@@ -70,6 +70,7 @@ export interface Route {
   send_count: number;
   has_sent: boolean;
   is_legacy: boolean;
+  status: "draft" | "published";
 }
 
 export interface Send {
