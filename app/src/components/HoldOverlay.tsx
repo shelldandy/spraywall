@@ -17,9 +17,12 @@ function getHoldColor(
   holdId: string,
   isSelected: boolean,
   holdRoles?: HoldRoles | null,
+  mode?: "select" | "view",
 ) {
   if (!isSelected)
-    return { fill: "rgba(255, 255, 255, 0.25)", stroke: "#FFFFFF" };
+    return mode === "view"
+      ? { fill: "rgba(255, 255, 255, 0.15)", stroke: "rgba(255, 255, 255, 0.2)" }
+      : { fill: "rgba(255, 255, 255, 0.25)", stroke: "#FFFFFF" };
 
   if (holdRoles) {
     if (holdRoles.start.includes(holdId))
@@ -40,8 +43,7 @@ export default function HoldOverlay({
   mode = "select",
   holdRoles,
 }: HoldOverlayProps) {
-  const visibleHolds =
-    mode === "view" ? holds.filter((h) => selectedIds.has(h.id)) : holds;
+  const visibleHolds = holds;
 
   return (
     <Svg
@@ -64,7 +66,7 @@ export default function HoldOverlay({
         const y = hold.bbox.y * imageHeight;
         const w = hold.bbox.w * imageWidth;
         const h = hold.bbox.h * imageHeight;
-        const colors = getHoldColor(hold.id, isSelected, holdRoles);
+        const colors = getHoldColor(hold.id, isSelected, holdRoles, mode);
 
         const pressHandler = () => onToggle(hold.id);
 

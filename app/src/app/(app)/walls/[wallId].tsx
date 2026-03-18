@@ -210,10 +210,10 @@ export default function WallDetailScreen() {
                         holdSelections.size > 0
                           ? {
                               start: [...holdSelections.entries()]
-                                .filter(([, r]) => r === "start")
+                                .filter(([id, r]) => r === "start" && visibleSelectedIds.has(id))
                                 .map(([id]) => id),
                               finish: [...holdSelections.entries()]
-                                .filter(([, r]) => r === "finish")
+                                .filter(([id, r]) => r === "finish" && visibleSelectedIds.has(id))
                                 .map(([id]) => id),
                             }
                           : null
@@ -290,10 +290,10 @@ export default function WallDetailScreen() {
               onPress={() => {
                 const holdRoles = {
                   start: [...holdSelections.entries()]
-                    .filter(([, r]) => r === "start")
+                    .filter(([id, r]) => r === "start" && visibleSelectedIds.has(id))
                     .map(([id]) => id),
                   finish: [...holdSelections.entries()]
-                    .filter(([, r]) => r === "finish")
+                    .filter(([id, r]) => r === "finish" && visibleSelectedIds.has(id))
                     .map(([id]) => id),
                 };
                 router.push({

@@ -29,6 +29,16 @@ export default function GradePicker({
 
   const displayLabel = selected ? selected[activeSystem] : "Select grade";
 
+  const displayGrades = (() => {
+    const seen = new Set<string>();
+    return grades.filter((g) => {
+      const label = g[activeSystem];
+      if (seen.has(label)) return false;
+      seen.add(label);
+      return true;
+    });
+  })();
+
   return (
     <>
       <Pressable style={styles.trigger} onPress={() => setVisible(true)}>
@@ -37,7 +47,7 @@ export default function GradePicker({
         </Text>
       </Pressable>
 
-      <Modal visible={visible} animationType="slide" transparent>
+      <Modal visible={visible} animationType="slide" transparent onRequestClose={() => setVisible(false)}>
         <View style={styles.overlay}>
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
@@ -80,7 +90,7 @@ export default function GradePicker({
             </Pressable>
 
             <FlatList
-              data={grades}
+              data={displayGrades}
               keyExtractor={(item) => String(item.id)}
               renderItem={({ item }) => (
                 <Pressable

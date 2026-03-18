@@ -85,9 +85,10 @@ func parseRouteID(r *http.Request) (uuid.UUID, error) {
 
 type routeResponse struct {
 	generated.Route
-	SendCount int  `json:"send_count"`
-	HasSent   bool `json:"has_sent"`
-	IsLegacy  bool `json:"is_legacy"`
+	HoldRoles json.RawMessage `json:"hold_roles"`
+	SendCount int             `json:"send_count"`
+	HasSent   bool            `json:"has_sent"`
+	IsLegacy  bool            `json:"is_legacy"`
 }
 
 // ---------- endpoints ----------
@@ -220,6 +221,7 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, routeResponse{
 		Route:     route,
+		HoldRoles: json.RawMessage(route.HoldRoles),
 		SendCount: 0,
 		HasSent:   false,
 	})
@@ -290,6 +292,7 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 
 		result = append(result, routeResponse{
 			Route:     rt,
+			HoldRoles: json.RawMessage(rt.HoldRoles),
 			SendCount: int(count),
 			HasSent:   hasSent,
 			IsLegacy:  isLegacy,
@@ -350,6 +353,7 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, routeResponse{
 		Route:     rt,
+		HoldRoles: json.RawMessage(rt.HoldRoles),
 		SendCount: int(count),
 		HasSent:   sendErr == nil,
 		IsLegacy:  isLegacy,
