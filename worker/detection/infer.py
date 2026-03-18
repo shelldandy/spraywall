@@ -1,6 +1,9 @@
 """Hold detection inference using YOLOv8."""
+import logging
 import os
 from ultralytics import YOLO
+
+logger = logging.getLogger(__name__)
 
 MODEL_DIR = os.environ.get("MODEL_DIR", "./models")
 MODEL_PATH = os.path.join(MODEL_DIR, "yolov8n-freeclimbs-detect-2.pt")
@@ -64,17 +67,22 @@ def detect_holds(image_path: str) -> list[dict]:
     # Run SAM segmentation if enabled (only on holds without polygons)
     from detection.segment import SAM_ENABLED, segment_holds
 
-    if SAM_ENABLED and img_w > 0 and img_h > 0:
-        holds_needing_segmentation = [h for h in holds if h["polygon"] is None]
-        if holds_needing_segmentation:
-            holds_needing_segmentation = segment_holds(
-                image_path, holds_needing_segmentation, img_w, img_h
-            )
+    logger.info("SAM_ENABLED=%s, img_w=%d, img_h=%d", SAM_ENABLED, img_w, img_h)
+    needs_seg = [h for h in holds if h["polygon"] is None]
+    logger.info("%d/%d holds need segmentation", len(needs_seg), len(holds))
+
+    if SAM_ENABLED and img_w > 0 and img_h > 0 and needs_seg:
+        try:
+            needs_seg = segment_holds(image_path, needs_seg, img_w, img_h)
+            polygons_produced = sum(1 for h in needs_seg if h["polygon"] is not None)
+            logger.info("SAM produced %d polygons", polygons_produced)
             # Merge back
             seg_idx = 0
             for i, h in enumerate(holds):
-                if h["polygon"] is None and seg_idx < len(holds_needing_segmentation):
-                    holds[i] = holds_needing_segmentation[seg_idx]
+                if h["polygon"] is None and seg_idx < len(needs_seg):
+                    holds[i] = needs_seg[seg_idx]
                     seg_idx += 1
+        except Exception:
+            logger.exception("SAM segmentation failed")
 
     return holds

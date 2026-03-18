@@ -1,8 +1,11 @@
 """SAM-based hold segmentation using bounding box prompts."""
+import logging
 import os
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 SAM_ENABLED = os.environ.get("SAM_ENABLED", "false").lower() == "true"
 SAM_MODEL_TYPE = os.environ.get("SAM_MODEL_TYPE", "vit_b")
@@ -37,7 +40,10 @@ def segment_holds(
     Returns the updated holds list.
     """
     if not SAM_ENABLED or not holds:
+        logger.info("SAM skipped: enabled=%s, holds=%d", SAM_ENABLED, len(holds))
         return holds
+
+    logger.info("Running SAM on %d holds, checkpoint=%s", len(holds), SAM_CHECKPOINT)
 
     image = cv2.imread(image_path)
     if image is None:
