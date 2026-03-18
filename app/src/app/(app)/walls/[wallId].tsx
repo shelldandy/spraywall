@@ -19,6 +19,7 @@ import { apiFetch } from "../../../lib/api/fetch";
 import { useServerStore } from "../../../lib/store/server";
 import type { WallDetail, Hold } from "../../../lib/api/types";
 import HoldOverlay from "../../../components/HoldOverlay";
+import ZoomableView from "../../../components/ZoomableView";
 
 export default function WallDetailScreen() {
   const { wallId, gymSlug } = useLocalSearchParams<{
@@ -172,19 +173,33 @@ export default function WallDetailScreen() {
 
           {wall?.image ? (
             <View style={styles.imageContainer}>
-              <Image
-                source={{ uri: `${serverUrl}${wall.image.image_url}` }}
-                style={styles.wallImage}
-                resizeMode="contain"
-                onLayout={onImageLayout}
-              />
-              {imageLayout && holds.length > 0 && (
-                <HoldOverlay
-                  holds={holds}
-                  selectedIds={selectedIds}
-                  onToggle={handleToggle}
-                  imageWidth={imageLayout.width}
-                  imageHeight={imageLayout.height}
+              {imageLayout ? (
+                <ZoomableView
+                  width={imageLayout.width}
+                  height={imageLayout.height}
+                >
+                  <Image
+                    source={{ uri: `${serverUrl}${wall.image.image_url}` }}
+                    style={styles.wallImage}
+                    resizeMode="contain"
+                    onLayout={onImageLayout}
+                  />
+                  {holds.length > 0 && (
+                    <HoldOverlay
+                      holds={holds}
+                      selectedIds={selectedIds}
+                      onToggle={handleToggle}
+                      imageWidth={imageLayout.width}
+                      imageHeight={imageLayout.height}
+                    />
+                  )}
+                </ZoomableView>
+              ) : (
+                <Image
+                  source={{ uri: `${serverUrl}${wall.image.image_url}` }}
+                  style={styles.wallImage}
+                  resizeMode="contain"
+                  onLayout={onImageLayout}
                 />
               )}
             </View>
