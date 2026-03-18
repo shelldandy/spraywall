@@ -19,6 +19,7 @@ import { apiFetch } from "../../../lib/api/fetch";
 import { useServerStore } from "../../../lib/store/server";
 import type { WallDetail, Hold } from "../../../lib/api/types";
 import HoldOverlay from "../../../components/HoldOverlay";
+import ZoomableView from "../../../components/ZoomableView";
 
 export default function WallDetailScreen() {
   const { wallId, gymSlug } = useLocalSearchParams<{
@@ -187,31 +188,45 @@ export default function WallDetailScreen() {
 
           {wall?.image ? (
             <View style={styles.imageContainer}>
-              <Image
-                source={{ uri: `${serverUrl}${wall.image.image_url}` }}
-                style={styles.wallImage}
-                resizeMode="contain"
-                onLayout={onImageLayout}
-              />
-              {imageLayout && filteredHolds.length > 0 && (
-                <HoldOverlay
-                  holds={filteredHolds}
-                  selectedIds={selectedIds}
-                  onToggle={handleToggle}
-                  imageWidth={imageLayout.width}
-                  imageHeight={imageLayout.height}
-                  holdRoles={
-                    holdSelections.size > 0
-                      ? {
-                          start: [...holdSelections.entries()]
-                            .filter(([, r]) => r === "start")
-                            .map(([id]) => id),
-                          finish: [...holdSelections.entries()]
-                            .filter(([, r]) => r === "finish")
-                            .map(([id]) => id),
-                        }
-                      : null
-                  }
+              {imageLayout ? (
+                <ZoomableView
+                  width={imageLayout.width}
+                  height={imageLayout.height}
+                >
+                  <Image
+                    source={{ uri: `${serverUrl}${wall.image.image_url}` }}
+                    style={styles.wallImage}
+                    resizeMode="contain"
+                    onLayout={onImageLayout}
+                  />
+                  {filteredHolds.length > 0 && (
+                    <HoldOverlay
+                      holds={filteredHolds}
+                      selectedIds={selectedIds}
+                      onToggle={handleToggle}
+                      imageWidth={imageLayout.width}
+                      imageHeight={imageLayout.height}
+                      holdRoles={
+                        holdSelections.size > 0
+                          ? {
+                              start: [...holdSelections.entries()]
+                                .filter(([, r]) => r === "start")
+                                .map(([id]) => id),
+                              finish: [...holdSelections.entries()]
+                                .filter(([, r]) => r === "finish")
+                                .map(([id]) => id),
+                            }
+                          : null
+                      }
+                    />
+                  )}
+                </ZoomableView>
+              ) : (
+                <Image
+                  source={{ uri: `${serverUrl}${wall.image.image_url}` }}
+                  style={styles.wallImage}
+                  resizeMode="contain"
+                  onLayout={onImageLayout}
                 />
               )}
             </View>
