@@ -1,6 +1,6 @@
 -- name: CreateRoute :one
-INSERT INTO routes (wall_id, wall_image_id, created_by, name, grade, description, hold_ids)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO routes (wall_id, wall_image_id, created_by, name, grade, description, hold_ids, hold_roles)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: GetRouteByID :one

@@ -17,14 +17,16 @@ import GradePicker from "../../../components/GradePicker";
 import { formatGrade } from "../../../lib/grades";
 
 export default function CreateRouteScreen() {
-  const { wallId, gymSlug, holdIds } = useLocalSearchParams<{
+  const { wallId, gymSlug, holdIds, holdRoles } = useLocalSearchParams<{
     wallId: string;
     gymSlug: string;
     holdIds: string;
+    holdRoles: string;
   }>();
   const queryClient = useQueryClient();
 
   const parsedHoldIds: string[] = holdIds ? JSON.parse(holdIds) : [];
+  const parsedHoldRoles = holdRoles ? JSON.parse(holdRoles) : null;
 
   const [name, setName] = useState("");
   const [gradeId, setGradeId] = useState<number | null>(null);
@@ -39,6 +41,7 @@ export default function CreateRouteScreen() {
           grade: gradeId !== null ? formatGrade(gradeId, "v") : null,
           description: description.trim() || null,
           hold_ids: parsedHoldIds,
+          hold_roles: parsedHoldRoles,
         }),
       });
       if (!res.ok) {

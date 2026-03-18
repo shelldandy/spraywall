@@ -122,10 +122,11 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Name        string   `json:"name"`
-		Grade       *string  `json:"grade"`
-		Description *string  `json:"description"`
-		HoldIDs     []string `json:"hold_ids"`
+		Name        string           `json:"name"`
+		Grade       *string          `json:"grade"`
+		Description *string          `json:"description"`
+		HoldIDs     []string         `json:"hold_ids"`
+		HoldRoles   *json.RawMessage `json:"hold_roles"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -190,6 +191,11 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 		description = pgtype.Text{String: *body.Description, Valid: true}
 	}
 
+	var holdRoles []byte
+	if body.HoldRoles != nil {
+		holdRoles = []byte(*body.HoldRoles)
+	}
+
 	route, err := h.queries.CreateRoute(r.Context(), generated.CreateRouteParams{
 		WallID:      pgWallID,
 		WallImageID: img.ID,
@@ -198,6 +204,7 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 		Grade:       grade,
 		Description: description,
 		HoldIds:     holdIDs,
+		HoldRoles:   holdRoles,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create route")
