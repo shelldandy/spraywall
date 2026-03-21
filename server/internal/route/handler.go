@@ -403,6 +403,7 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 		Description *string          `json:"description"`
 		HoldIDs     []string         `json:"hold_ids"`
 		HoldRoles   *json.RawMessage `json:"hold_roles"`
+		Status      *string          `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -451,6 +452,17 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update route")
 		return
+	}
+
+	if body.Status != nil && (*body.Status == "draft" || *body.Status == "published") && *body.Status != updated.Status {
+		if err := h.queries.UpdateRouteStatus(r.Context(), generated.UpdateRouteStatusParams{
+			ID:     pgRouteID,
+			Status: *body.Status,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not update route status")
+			return
+		}
+		updated.Status = *body.Status
 	}
 
 	writeJSON(w, http.StatusOK, routeResponse{

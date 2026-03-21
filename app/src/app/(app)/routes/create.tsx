@@ -53,7 +53,7 @@ export default function CreateRouteScreen() {
           description: description.trim() || null,
           hold_ids: parsedHoldIds,
           hold_roles: parsedHoldRoles,
-          ...(!isEditing && { status }),
+          status,
         }),
       });
       if (!res.ok) {
@@ -118,7 +118,18 @@ export default function CreateRouteScreen() {
           numberOfLines={3}
         />
 
-        {isEditing ? (
+        <View style={styles.buttonRow}>
+          <Pressable
+            style={[
+              styles.draftButton,
+              (!name.trim() || saveMutation.isPending) &&
+                styles.buttonDisabled,
+            ]}
+            onPress={() => saveMutation.mutate({ status: "draft" })}
+            disabled={!name.trim() || saveMutation.isPending}
+          >
+            <Text style={styles.draftText}>Save Draft</Text>
+          </Pressable>
           <Pressable
             style={[
               styles.saveButton,
@@ -129,37 +140,10 @@ export default function CreateRouteScreen() {
             disabled={!name.trim() || saveMutation.isPending}
           >
             <Text style={styles.saveText}>
-              {saveMutation.isPending ? "Saving..." : "Save Changes"}
+              {saveMutation.isPending ? "Saving..." : "Publish Route"}
             </Text>
           </Pressable>
-        ) : (
-          <View style={styles.buttonRow}>
-            <Pressable
-              style={[
-                styles.draftButton,
-                (!name.trim() || saveMutation.isPending) &&
-                  styles.buttonDisabled,
-              ]}
-              onPress={() => saveMutation.mutate({ status: "draft" })}
-              disabled={!name.trim() || saveMutation.isPending}
-            >
-              <Text style={styles.draftText}>Save Draft</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.saveButton,
-                (!name.trim() || saveMutation.isPending) &&
-                  styles.buttonDisabled,
-              ]}
-              onPress={() => saveMutation.mutate({ status: "published" })}
-              disabled={!name.trim() || saveMutation.isPending}
-            >
-              <Text style={styles.saveText}>
-                {saveMutation.isPending ? "Saving..." : "Publish Route"}
-              </Text>
-            </Pressable>
-          </View>
-        )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
