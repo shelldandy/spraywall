@@ -213,18 +213,18 @@ export default function RouteDetailScreen() {
             style={styles.editButton}
             onPress={() =>
               router.push({
-                pathname: "/(app)/routes/create" as any,
+                pathname: "/(app)/walls/[wallId]" as any,
                 params: {
                   wallId,
                   gymSlug,
-                  routeId,
-                  holdIds: JSON.stringify(routeData?.hold_ids ?? []),
-                  holdRoles: routeData?.hold_roles
+                  editRouteId: routeId,
+                  editHoldIds: JSON.stringify(routeData?.hold_ids ?? []),
+                  editHoldRoles: routeData?.hold_roles
                     ? JSON.stringify(routeData.hold_roles)
                     : "",
-                  initialName: routeData?.name ?? "",
-                  initialGrade: routeData?.grade ?? "",
-                  initialDescription: routeData?.description ?? "",
+                  editName: routeData?.name ?? "",
+                  editGrade: routeData?.grade ?? "",
+                  editDescription: routeData?.description ?? "",
                 },
               })
             }

@@ -22,16 +22,40 @@ import HoldOverlay from "../../../components/HoldOverlay";
 import ZoomableView from "../../../components/ZoomableView";
 
 export default function WallDetailScreen() {
-  const { wallId, gymSlug } = useLocalSearchParams<{
-    wallId: string;
-    gymSlug: string;
-  }>();
+  const { wallId, gymSlug, editRouteId, editHoldIds, editHoldRoles, editName, editGrade, editDescription } =
+    useLocalSearchParams<{
+      wallId: string;
+      gymSlug: string;
+      editRouteId?: string;
+      editHoldIds?: string;
+      editHoldRoles?: string;
+      editName?: string;
+      editGrade?: string;
+      editDescription?: string;
+    }>();
   const queryClient = useQueryClient();
   const { serverUrl } = useServerStore();
 
+  const isEditingRoute = !!editRouteId;
+
   type HoldRole = "normal" | "start" | "finish";
   const [holdSelections, setHoldSelections] = useState<Map<string, HoldRole>>(
-    new Map(),
+    () => {
+      if (!editHoldIds) return new Map();
+      const ids: string[] = JSON.parse(editHoldIds);
+      const roles = editHoldRoles ? JSON.parse(editHoldRoles) as { start: string[]; finish: string[] } : null;
+      const map = new Map<string, HoldRole>();
+      for (const id of ids) {
+        if (roles?.start.includes(id)) {
+          map.set(id, "start");
+        } else if (roles?.finish.includes(id)) {
+          map.set(id, "finish");
+        } else {
+          map.set(id, "normal");
+        }
+      }
+      return map;
+    },
   );
   const selectedIds = new Set(holdSelections.keys());
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
@@ -303,12 +327,18 @@ export default function WallDetailScreen() {
                     gymSlug,
                     holdIds: JSON.stringify(Array.from(visibleSelectedIds)),
                     holdRoles: JSON.stringify(holdRoles),
+                    ...(isEditingRoute && {
+                      routeId: editRouteId,
+                      initialName: editName ?? "",
+                      initialGrade: editGrade ?? "",
+                      initialDescription: editDescription ?? "",
+                    }),
                   },
                 });
               }}
             >
               <Text style={styles.createRouteText}>
-                Create Route ({visibleSelectedIds.size} holds)
+                {isEditingRoute ? "Update" : "Create"} Route ({visibleSelectedIds.size} holds)
               </Text>
             </Pressable>
           )}
