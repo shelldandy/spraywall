@@ -1,5 +1,5 @@
 import React from "react";
-import { Platform } from "react-native";
+
 import Svg, { Polygon, Rect } from "react-native-svg";
 import type { Hold, HoldRoles } from "../lib/api/types";
 
@@ -70,9 +70,7 @@ export default function HoldOverlay({
 
         const pressHandler = () => onToggle(hold.id);
 
-        const interactionProps = Platform.OS === "web"
-          ? { onClick: pressHandler }
-          : { onPress: pressHandler };
+        const interactionProps = { onPress: pressHandler };
 
         if (hold.polygon && hold.polygon.length > 0) {
           const points = hold.polygon
