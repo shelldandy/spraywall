@@ -70,8 +70,14 @@ export default function CreateRouteScreen() {
         queryClient.invalidateQueries({
           queryKey: ["route-detail", gymSlug, wallId, routeId],
         });
+        // Go back to route detail, skipping the wall edit screen
+        router.replace({
+          pathname: "/(app)/routes/[routeId]" as any,
+          params: { routeId, wallId, gymSlug },
+        });
+      } else {
+        router.back();
       }
-      router.back();
     },
     onError: (err: Error) => Alert.alert("Error", err.message),
   });
