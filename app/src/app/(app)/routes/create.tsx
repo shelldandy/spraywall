@@ -99,6 +99,7 @@ export default function CreateRouteScreen() {
         <TextInput
           style={styles.input}
           placeholder="Route name"
+          placeholderTextColor="#999"
           value={name}
           onChangeText={setName}
           autoFocus={!isEditing}
@@ -112,6 +113,7 @@ export default function CreateRouteScreen() {
         <TextInput
           style={[styles.input, styles.textArea]}
           placeholder="Optional description"
+          placeholderTextColor="#999"
           value={description}
           onChangeText={setDescription}
           multiline
@@ -236,7 +238,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: "center",
-    marginTop: 8,
   },
   saveText: {
     color: "#fff",
