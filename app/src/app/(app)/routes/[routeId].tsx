@@ -194,6 +194,8 @@ export default function RouteDetailScreen() {
                   onToggle={() => {}}
                   imageWidth={imageLayout.width}
                   imageHeight={imageLayout.height}
+                  mode="view"
+                  holdRoles={routeData?.hold_roles ?? null}
                 />
               )}
             </View>
@@ -206,6 +208,29 @@ export default function RouteDetailScreen() {
           <Text style={styles.holdCount}>
             {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""}
           </Text>
+
+          <Pressable
+            style={styles.editButton}
+            onPress={() =>
+              router.push({
+                pathname: "/(app)/walls/[wallId]" as any,
+                params: {
+                  wallId,
+                  gymSlug,
+                  editRouteId: routeId,
+                  editHoldIds: JSON.stringify(routeData?.hold_ids ?? []),
+                  editHoldRoles: routeData?.hold_roles
+                    ? JSON.stringify(routeData.hold_roles)
+                    : "",
+                  editName: routeData?.name ?? "",
+                  editGrade: routeData?.grade ?? "",
+                  editDescription: routeData?.description ?? "",
+                },
+              })
+            }
+          >
+            <Text style={styles.editText}>Edit Route</Text>
+          </Pressable>
 
           {routeData?.has_sent ? (
             <View style={styles.sentSection}>
@@ -341,6 +366,20 @@ const styles = StyleSheet.create({
     color: "#666",
     fontSize: 14,
     marginBottom: 16,
+  },
+  editButton: {
+    backgroundColor: "#f8f8f8",
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#007AFF",
+  },
+  editText: {
+    color: "#007AFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
   sendButton: {
     backgroundColor: "#007AFF",

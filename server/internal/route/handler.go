@@ -85,9 +85,10 @@ func parseRouteID(r *http.Request) (uuid.UUID, error) {
 
 type routeResponse struct {
 	generated.Route
-	SendCount int  `json:"send_count"`
-	HasSent   bool `json:"has_sent"`
-	IsLegacy  bool `json:"is_legacy"`
+	HoldRoles json.RawMessage `json:"hold_roles"`
+	SendCount int             `json:"send_count"`
+	HasSent   bool            `json:"has_sent"`
+	IsLegacy  bool            `json:"is_legacy"`
 }
 
 // ---------- endpoints ----------
@@ -122,10 +123,12 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Name        string   `json:"name"`
-		Grade       *string  `json:"grade"`
-		Description *string  `json:"description"`
-		HoldIDs     []string `json:"hold_ids"`
+		Name        string           `json:"name"`
+		Grade       *string          `json:"grade"`
+		Description *string          `json:"description"`
+		HoldIDs     []string         `json:"hold_ids"`
+		HoldRoles   *json.RawMessage `json:"hold_roles"`
+		Status      string           `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -181,6 +184,11 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 
 	userID := user.GetUserID(r.Context())
 
+	status := "published"
+	if body.Status == "draft" {
+		status = "draft"
+	}
+
 	var grade pgtype.Text
 	if body.Grade != nil {
 		grade = pgtype.Text{String: *body.Grade, Valid: true}
@@ -188,6 +196,11 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 	var description pgtype.Text
 	if body.Description != nil {
 		description = pgtype.Text{String: *body.Description, Valid: true}
+	}
+
+	var holdRoles []byte
+	if body.HoldRoles != nil {
+		holdRoles = []byte(*body.HoldRoles)
 	}
 
 	route, err := h.queries.CreateRoute(r.Context(), generated.CreateRouteParams{
@@ -198,6 +211,8 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 		Grade:       grade,
 		Description: description,
 		HoldIds:     holdIDs,
+		HoldRoles:   holdRoles,
+		Status:      status,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create route")
@@ -206,6 +221,7 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, routeResponse{
 		Route:     route,
+		HoldRoles: json.RawMessage(route.HoldRoles),
 		SendCount: 0,
 		HasSent:   false,
 	})
@@ -239,7 +255,10 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	routes, err := h.queries.ListRoutesByWall(r.Context(), pgWallID)
+	routes, err := h.queries.ListRoutesByWall(r.Context(), generated.ListRoutesByWallParams{
+		WallID:    pgWallID,
+		CreatedBy: shared.PgUUID(user.GetUserID(r.Context())),
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list routes")
 		return
@@ -273,6 +292,7 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 
 		result = append(result, routeResponse{
 			Route:     rt,
+			HoldRoles: json.RawMessage(rt.HoldRoles),
 			SendCount: int(count),
 			HasSent:   hasSent,
 			IsLegacy:  isLegacy,
@@ -333,9 +353,121 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, routeResponse{
 		Route:     rt,
+		HoldRoles: json.RawMessage(rt.HoldRoles),
 		SendCount: int(count),
 		HasSent:   sendErr == nil,
 		IsLegacy:  isLegacy,
+	})
+}
+
+// UpdateRoute handles PUT /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}
+func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
+	gym, _, err := h.requireGymMember(w, r)
+	if err != nil {
+		return
+	}
+
+	routeUUID, err := parseRouteID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid route id")
+		return
+	}
+	pgRouteID := shared.PgUUID(routeUUID)
+
+	rt, err := h.queries.GetRouteByID(r.Context(), pgRouteID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "route not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "database error")
+		}
+		return
+	}
+
+	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
+	if err != nil || wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "route not found")
+		return
+	}
+
+	// Only the creator can edit.
+	userID := user.GetUserID(r.Context())
+	if rt.CreatedBy != shared.PgUUID(userID) {
+		writeError(w, http.StatusForbidden, "only the route creator can edit")
+		return
+	}
+
+	var body struct {
+		Name        string           `json:"name"`
+		Grade       *string          `json:"grade"`
+		Description *string          `json:"description"`
+		HoldIDs     []string         `json:"hold_ids"`
+		HoldRoles   *json.RawMessage `json:"hold_roles"`
+		Status      *string          `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if len(body.HoldIDs) < 2 {
+		writeError(w, http.StatusBadRequest, "at least 2 holds are required")
+		return
+	}
+
+	holdIDs := make([]pgtype.UUID, len(body.HoldIDs))
+	for i, idStr := range body.HoldIDs {
+		parsed, err := uuid.Parse(idStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid hold id: "+idStr)
+			return
+		}
+		holdIDs[i] = shared.PgUUID(parsed)
+	}
+
+	var grade pgtype.Text
+	if body.Grade != nil {
+		grade = pgtype.Text{String: *body.Grade, Valid: true}
+	}
+	var description pgtype.Text
+	if body.Description != nil {
+		description = pgtype.Text{String: *body.Description, Valid: true}
+	}
+	var holdRoles []byte
+	if body.HoldRoles != nil {
+		holdRoles = []byte(*body.HoldRoles)
+	}
+
+	updated, err := h.queries.UpdateRoute(r.Context(), generated.UpdateRouteParams{
+		ID:          pgRouteID,
+		Name:        body.Name,
+		Grade:       grade,
+		Description: description,
+		HoldIds:     holdIDs,
+		HoldRoles:   holdRoles,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not update route")
+		return
+	}
+
+	if body.Status != nil && (*body.Status == "draft" || *body.Status == "published") && *body.Status != updated.Status {
+		if err := h.queries.UpdateRouteStatus(r.Context(), generated.UpdateRouteStatusParams{
+			ID:     pgRouteID,
+			Status: *body.Status,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not update route status")
+			return
+		}
+		updated.Status = *body.Status
+	}
+
+	writeJSON(w, http.StatusOK, routeResponse{
+		Route:     updated,
+		HoldRoles: json.RawMessage(updated.HoldRoles),
 	})
 }
 
@@ -432,6 +564,12 @@ func (h *Handler) LogSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Block sends on draft routes.
+	if rt.Status == "draft" {
+		writeError(w, http.StatusBadRequest, "cannot log send on draft route")
+		return
+	}
+
 	var body struct {
 		Attempts *int32  `json:"attempts"`
 		Notes    *string `json:"notes"`
@@ -521,6 +659,54 @@ func (h *Handler) RemoveSend(w http.ResponseWriter, r *http.Request) {
 		UserID:  shared.PgUUID(userID),
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not remove send")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PublishRoute handles PATCH /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/publish
+func (h *Handler) PublishRoute(w http.ResponseWriter, r *http.Request) {
+	gym, _, err := h.requireGymMember(w, r)
+	if err != nil {
+		return
+	}
+
+	routeUUID, err := parseRouteID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid route id")
+		return
+	}
+	pgRouteID := shared.PgUUID(routeUUID)
+
+	rt, err := h.queries.GetRouteByID(r.Context(), pgRouteID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "route not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "database error")
+		}
+		return
+	}
+
+	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
+	if err != nil || wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "route not found")
+		return
+	}
+
+	// Only creator can publish their draft.
+	userID := user.GetUserID(r.Context())
+	if rt.CreatedBy != shared.PgUUID(userID) {
+		writeError(w, http.StatusForbidden, "only the route creator can publish")
+		return
+	}
+
+	if err := h.queries.UpdateRouteStatus(r.Context(), generated.UpdateRouteStatusParams{
+		ID:     pgRouteID,
+		Status: "published",
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not publish route")
 		return
 	}
 

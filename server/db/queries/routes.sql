@@ -1,13 +1,22 @@
 -- name: CreateRoute :one
-INSERT INTO routes (wall_id, wall_image_id, created_by, name, grade, description, hold_ids)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO routes (wall_id, wall_image_id, created_by, name, grade, description, hold_ids, hold_roles, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: GetRouteByID :one
 SELECT * FROM routes WHERE id = $1;
 
 -- name: ListRoutesByWall :many
-SELECT * FROM routes WHERE wall_id = $1 ORDER BY created_at DESC;
+SELECT * FROM routes WHERE wall_id = $1 AND (status = 'published' OR created_by = $2)
+ORDER BY created_at DESC;
+
+-- name: UpdateRoute :one
+UPDATE routes SET name = $2, grade = $3, description = $4, hold_ids = $5, hold_roles = $6
+WHERE id = $1
+RETURNING *;
+
+-- name: UpdateRouteStatus :exec
+UPDATE routes SET status = $2 WHERE id = $1;
 
 -- name: DeleteRoute :exec
 DELETE FROM routes WHERE id = $1;

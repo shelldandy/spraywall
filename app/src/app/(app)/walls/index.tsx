@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ export default function WallsScreen() {
 
   const [wallFormGymSlug, setWallFormGymSlug] = useState<string | null>(null);
   const [wallName, setWallName] = useState("");
+  const gymSlugRef = useRef<TextInput>(null);
 
   const gymsQuery = useQuery<Gym[]>({
     queryKey: ["gyms"],
@@ -205,6 +206,15 @@ export default function WallsScreen() {
                       value={wallName}
                       onChangeText={setWallName}
                       autoFocus
+                      returnKeyType="go"
+                      onSubmitEditing={() => {
+                        if (wallName.trim() && !createWallMutation.isPending) {
+                          createWallMutation.mutate({
+                            gymSlug: gym.slug,
+                            name: wallName.trim(),
+                          });
+                        }
+                      }}
                     />
                     <View style={styles.formButtons}>
                       <Pressable
@@ -260,14 +270,27 @@ export default function WallsScreen() {
                   value={gymName}
                   onChangeText={setGymName}
                   autoFocus
+                  returnKeyType="next"
+                  onSubmitEditing={() => gymSlugRef.current?.focus()}
+                  blurOnSubmit={false}
                 />
                 <TextInput
+                  ref={gymSlugRef}
                   style={styles.input}
                   placeholder="Slug (e.g. my-gym)"
                   value={gymSlug}
                   onChangeText={setGymSlug}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  returnKeyType="go"
+                  onSubmitEditing={() => {
+                    if (gymName.trim() && gymSlug.trim() && !createGymMutation.isPending) {
+                      createGymMutation.mutate({
+                        name: gymName.trim(),
+                        slug: gymSlug.trim(),
+                      });
+                    }
+                  }}
                 />
                 <View style={styles.formButtons}>
                   <Pressable

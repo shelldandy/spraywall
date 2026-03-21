@@ -51,6 +51,11 @@ export interface WallDetail {
   user_role?: string;
 }
 
+export interface HoldRoles {
+  start: string[];
+  finish: string[];
+}
+
 export interface Route {
   id: string;
   wall_id: string;
@@ -60,10 +65,12 @@ export interface Route {
   grade: string | null;
   description: string | null;
   hold_ids: string[];
+  hold_roles: HoldRoles | null;
   created_at: string;
   send_count: number;
   has_sent: boolean;
   is_legacy: boolean;
+  status: "draft" | "published";
 }
 
 export interface Send {

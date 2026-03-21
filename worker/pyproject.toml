@@ -11,9 +11,13 @@ dependencies = [
     "boto3>=1.34",
     "python-dotenv>=1.0",
     "ultralytics>=8.1",
+    "opencv-python-headless>=4.8",
 ]
 
 [project.optional-dependencies]
+sam = [
+    "segment-anything",
+]
 dev = [
     "pytest>=7.0",
     "ruff>=0.4",

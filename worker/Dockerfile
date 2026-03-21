@@ -8,7 +8,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml .
-RUN pip install --no-cache-dir .
+ARG INSTALL_SAM=false
+RUN pip install --no-cache-dir . && if [ "$INSTALL_SAM" = "true" ]; then pip install --no-cache-dir ".[sam]"; fi
 
 COPY . .
 

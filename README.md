@@ -35,13 +35,51 @@ make expo
 
 ## Useful Commands
 
-| Command         | Description                          |
-| --------------- | ------------------------------------ |
-| `make dev`      | Start all backend services           |
-| `make expo`     | Start Expo dev server                |
-| `make migrate`  | Run database migrations              |
-| `make sqlc`     | Generate Go code from SQL queries    |
-| `make apiclient`| Generate TypeScript API client types |
-| `make clean`    | Stop services and remove volumes     |
+| Command         | Description                                      |
+| --------------- | ------------------------------------------------ |
+| `make dev`      | Start all backend services                       |
+| `make dev-sam`  | Start with SAM segmentation enabled (see below)  |
+| `make expo`     | Start Expo dev server                            |
+| `make migrate`  | Run database migrations                          |
+| `make sqlc`     | Generate Go code from SQL queries                |
+| `make apiclient`| Generate TypeScript API client types             |
+| `make lint`     | Run Go, TypeScript, and Python linters           |
+| `make test`     | Run Go and Python tests                          |
+| `make clean`    | Stop services and remove volumes                 |
 
 > **Note:** `docker compose down -v` (or `make clean`) is required to re-run `infra/postgres/init.sql`.
+
+## SAM Segmentation (optional)
+
+By default, holds are detected as bounding boxes using YOLOv8. For polygon outlines, enable [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) as a post-detection step.
+
+### Setup
+
+1. Download a SAM checkpoint into the worker models directory:
+
+```bash
+wget -P worker/models https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+```
+
+2. Start with SAM enabled:
+
+```bash
+make dev-sam
+```
+
+This builds the worker with `segment-anything` installed and sets `SAM_ENABLED=true`. Upload a new wall image to trigger detection with polygon output.
+
+### How it works
+
+- After YOLOv8 detects bounding boxes, SAM refines each box into a polygon mask
+- OpenCV post-processing (erode/dilate/contour/simplify) cleans the masks
+- Polygons are stored in the `holds.polygon` column and rendered as SVG polygons in the app
+- Holds without polygon data fall back to rectangle rendering
+
+### Environment variables
+
+| Variable         | Default                              | Description              |
+| ---------------- | ------------------------------------ | ------------------------ |
+| `SAM_ENABLED`    | `false`                              | Enable SAM segmentation  |
+| `SAM_MODEL_TYPE` | `vit_b`                              | SAM model variant        |
+| `SAM_CHECKPOINT` | `./models/sam_vit_b_01ec64.pth`      | Path to checkpoint file  |

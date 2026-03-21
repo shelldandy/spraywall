@@ -114,7 +114,9 @@ type Route struct {
 	Grade       pgtype.Text        `json:"grade"`
 	Description pgtype.Text        `json:"description"`
 	HoldIds     []pgtype.UUID      `json:"hold_ids"`
+	HoldRoles   []byte             `json:"hold_roles"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	Status      string             `json:"status"`
 }
 
 type Send struct {

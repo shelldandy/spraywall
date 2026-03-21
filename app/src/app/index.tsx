@@ -53,6 +53,8 @@ export default function ConnectScreen() {
         placeholder="http://localhost:8080"
         autoCapitalize="none"
         autoCorrect={false}
+        returnKeyType="go"
+        onSubmitEditing={handleConnect}
       />
       {error && <Text style={styles.error}>{error}</Text>}
       <Pressable

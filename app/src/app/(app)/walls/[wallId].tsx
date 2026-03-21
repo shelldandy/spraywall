@@ -19,16 +19,46 @@ import { apiFetch } from "../../../lib/api/fetch";
 import { useServerStore } from "../../../lib/store/server";
 import type { WallDetail, Hold } from "../../../lib/api/types";
 import HoldOverlay from "../../../components/HoldOverlay";
+import ZoomableView from "../../../components/ZoomableView";
 
 export default function WallDetailScreen() {
-  const { wallId, gymSlug } = useLocalSearchParams<{
-    wallId: string;
-    gymSlug: string;
-  }>();
+  const { wallId, gymSlug, editRouteId, editHoldIds, editHoldRoles, editName, editGrade, editDescription } =
+    useLocalSearchParams<{
+      wallId: string;
+      gymSlug: string;
+      editRouteId?: string;
+      editHoldIds?: string;
+      editHoldRoles?: string;
+      editName?: string;
+      editGrade?: string;
+      editDescription?: string;
+    }>();
   const queryClient = useQueryClient();
   const { serverUrl } = useServerStore();
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const isEditingRoute = !!editRouteId;
+
+  type HoldRole = "normal" | "start" | "finish";
+  const [holdSelections, setHoldSelections] = useState<Map<string, HoldRole>>(
+    () => {
+      if (!editHoldIds) return new Map();
+      const ids: string[] = JSON.parse(editHoldIds);
+      const roles = editHoldRoles ? JSON.parse(editHoldRoles) as { start: string[]; finish: string[] } : null;
+      const map = new Map<string, HoldRole>();
+      for (const id of ids) {
+        if (roles?.start.includes(id)) {
+          map.set(id, "start");
+        } else if (roles?.finish.includes(id)) {
+          map.set(id, "finish");
+        } else {
+          map.set(id, "normal");
+        }
+      }
+      return map;
+    },
+  );
+  const selectedIds = new Set(holdSelections.keys());
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
   const [imageLayout, setImageLayout] = useState<{
     width: number;
     height: number;
@@ -60,12 +90,17 @@ export default function WallDetailScreen() {
   });
 
   const handleToggle = useCallback((holdId: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(holdId)) {
-        next.delete(holdId);
+    setHoldSelections((prev) => {
+      const next = new Map(prev);
+      const current = next.get(holdId);
+      if (!current) {
+        next.set(holdId, "normal");
+      } else if (current === "normal") {
+        next.set(holdId, "start");
+      } else if (current === "start") {
+        next.set(holdId, "finish");
       } else {
-        next.add(holdId);
+        next.delete(holdId);
       }
       return next;
     });
@@ -112,7 +147,7 @@ export default function WallDetailScreen() {
         queryKey: ["wall-detail", gymSlug, wallId],
       });
       queryClient.invalidateQueries({ queryKey: ["holds", gymSlug, wallId] });
-      setSelectedIds(new Set());
+      setHoldSelections(new Map());
     } catch (err: any) {
       Alert.alert("Upload Error", err.message);
     } finally {
@@ -127,6 +162,11 @@ export default function WallDetailScreen() {
 
   const wall = wallQuery.data;
   const holds = holdsQuery.data ?? [];
+  const filteredHolds = holds.filter((h) => h.confidence >= confidenceThreshold);
+  const filteredIds = new Set(filteredHolds.map((h) => h.id));
+  const visibleSelectedIds = new Set(
+    [...selectedIds].filter((id) => filteredIds.has(id)),
+  );
   const detectionStatus = wall?.detection_status;
 
   const statusBadge = () => {
@@ -160,7 +200,7 @@ export default function WallDetailScreen() {
           {wall?.wall.name ?? "Wall"}
         </Text>
         <Text style={styles.selectedCount}>
-          {selectedIds.size > 0 ? `${selectedIds.size} selected` : ""}
+          {visibleSelectedIds.size > 0 ? `${visibleSelectedIds.size} selected` : ""}
         </Text>
       </View>
 
@@ -172,19 +212,45 @@ export default function WallDetailScreen() {
 
           {wall?.image ? (
             <View style={styles.imageContainer}>
-              <Image
-                source={{ uri: `${serverUrl}${wall.image.image_url}` }}
-                style={styles.wallImage}
-                resizeMode="contain"
-                onLayout={onImageLayout}
-              />
-              {imageLayout && holds.length > 0 && (
-                <HoldOverlay
-                  holds={holds}
-                  selectedIds={selectedIds}
-                  onToggle={handleToggle}
-                  imageWidth={imageLayout.width}
-                  imageHeight={imageLayout.height}
+              {imageLayout ? (
+                <ZoomableView
+                  width={imageLayout.width}
+                  height={imageLayout.height}
+                >
+                  <Image
+                    source={{ uri: `${serverUrl}${wall.image.image_url}` }}
+                    style={styles.wallImage}
+                    resizeMode="contain"
+                    onLayout={onImageLayout}
+                  />
+                  {filteredHolds.length > 0 && (
+                    <HoldOverlay
+                      holds={filteredHolds}
+                      selectedIds={selectedIds}
+                      onToggle={handleToggle}
+                      imageWidth={imageLayout.width}
+                      imageHeight={imageLayout.height}
+                      holdRoles={
+                        holdSelections.size > 0
+                          ? {
+                              start: [...holdSelections.entries()]
+                                .filter(([id, r]) => r === "start" && visibleSelectedIds.has(id))
+                                .map(([id]) => id),
+                              finish: [...holdSelections.entries()]
+                                .filter(([id, r]) => r === "finish" && visibleSelectedIds.has(id))
+                                .map(([id]) => id),
+                            }
+                          : null
+                      }
+                    />
+                  )}
+                </ZoomableView>
+              ) : (
+                <Image
+                  source={{ uri: `${serverUrl}${wall.image.image_url}` }}
+                  style={styles.wallImage}
+                  resizeMode="contain"
+                  onLayout={onImageLayout}
                 />
               )}
             </View>
@@ -207,27 +273,72 @@ export default function WallDetailScreen() {
           )}
 
           {detectionStatus === "done" && holds.length > 0 && (
+            <View style={styles.thresholdContainer}>
+              <Text style={styles.thresholdLabel}>Confidence threshold</Text>
+              <View style={styles.thresholdButtons}>
+                {[0.1, 0.25, 0.5, 0.75, 0.9].map((t) => (
+                  <Pressable
+                    key={t}
+                    style={[
+                      styles.thresholdButton,
+                      confidenceThreshold === t && styles.thresholdButtonActive,
+                    ]}
+                    onPress={() => setConfidenceThreshold(t)}
+                  >
+                    <Text
+                      style={[
+                        styles.thresholdButtonText,
+                        confidenceThreshold === t &&
+                          styles.thresholdButtonTextActive,
+                      ]}
+                    >
+                      {Math.round(t * 100)}%
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {detectionStatus === "done" && holds.length > 0 && (
             <Text style={styles.holdCount}>
-              {holds.length} hold{holds.length !== 1 ? "s" : ""} detected
+              {filteredHolds.length} of {holds.length} hold
+              {holds.length !== 1 ? "s" : ""} ({"\u2265"}{" "}
+              {Math.round(confidenceThreshold * 100)}%)
             </Text>
           )}
 
-          {selectedIds.size >= 2 && (
+          {visibleSelectedIds.size >= 2 && (
             <Pressable
               style={styles.createRouteButton}
-              onPress={() =>
+              onPress={() => {
+                const holdRoles = {
+                  start: [...holdSelections.entries()]
+                    .filter(([id, r]) => r === "start" && visibleSelectedIds.has(id))
+                    .map(([id]) => id),
+                  finish: [...holdSelections.entries()]
+                    .filter(([id, r]) => r === "finish" && visibleSelectedIds.has(id))
+                    .map(([id]) => id),
+                };
                 router.push({
                   pathname: "/(app)/routes/create" as any,
                   params: {
                     wallId,
                     gymSlug,
-                    holdIds: JSON.stringify(Array.from(selectedIds)),
+                    holdIds: JSON.stringify(Array.from(visibleSelectedIds)),
+                    holdRoles: JSON.stringify(holdRoles),
+                    ...(isEditingRoute && {
+                      routeId: editRouteId,
+                      initialName: editName ?? "",
+                      initialGrade: editGrade ?? "",
+                      initialDescription: editDescription ?? "",
+                    }),
                   },
-                })
-              }
+                });
+              }}
             >
               <Text style={styles.createRouteText}>
-                Create Route ({selectedIds.size} holds)
+                {isEditingRoute ? "Update" : "Create"} Route ({visibleSelectedIds.size} holds)
               </Text>
             </Pressable>
           )}
@@ -340,6 +451,35 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  thresholdContainer: {
+    marginBottom: 12,
+  },
+  thresholdLabel: {
+    fontSize: 13,
+    color: "#666",
+    marginBottom: 6,
+  },
+  thresholdButtons: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  thresholdButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: "#f0f0f0",
+  },
+  thresholdButtonActive: {
+    backgroundColor: "#007AFF",
+  },
+  thresholdButtonText: {
+    fontSize: 13,
+    color: "#666",
+  },
+  thresholdButtonTextActive: {
+    color: "#fff",
+    fontWeight: "600",
   },
   holdCount: {
     textAlign: "center",

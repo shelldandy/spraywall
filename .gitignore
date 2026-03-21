@@ -10,6 +10,7 @@ worker/__pycache__/
 worker/detection/__pycache__/
 worker/.venv/
 worker/models/*.pt
+worker/models/*.pth
 worker/models/*.onnx
 
 # IDE
