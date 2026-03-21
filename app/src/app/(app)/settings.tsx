@@ -79,6 +79,8 @@ export default function SettingsScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               placeholder="http://localhost:8080"
+              returnKeyType="go"
+              onSubmitEditing={handleSaveUrl}
             />
             <View style={styles.row}>
               <Pressable

@@ -102,6 +102,7 @@ export default function CreateRouteScreen() {
           value={name}
           onChangeText={setName}
           autoFocus={!isEditing}
+          returnKeyType="done"
         />
 
         <Text style={styles.label}>Grade</Text>

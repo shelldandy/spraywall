@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { useRouter, Link } from "expo-router";
 import { useServerStore } from "../lib/store/server";
@@ -9,6 +9,8 @@ export default function RegisterScreen() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,8 +60,12 @@ export default function RegisterScreen() {
         placeholder="Display Name"
         autoCorrect={false}
         textContentType="name"
+        returnKeyType="next"
+        onSubmitEditing={() => emailRef.current?.focus()}
+        blurOnSubmit={false}
       />
       <TextInput
+        ref={emailRef}
         style={styles.input}
         value={email}
         onChangeText={setEmail}
@@ -68,14 +74,20 @@ export default function RegisterScreen() {
         autoCorrect={false}
         keyboardType="email-address"
         textContentType="emailAddress"
+        returnKeyType="next"
+        onSubmitEditing={() => passwordRef.current?.focus()}
+        blurOnSubmit={false}
       />
       <TextInput
+        ref={passwordRef}
         style={styles.input}
         value={password}
         onChangeText={setPassword}
         placeholder="Password"
         secureTextEntry
         textContentType="newPassword"
+        returnKeyType="go"
+        onSubmitEditing={handleRegister}
       />
       {error && <Text style={styles.error}>{error}</Text>}
       <Pressable

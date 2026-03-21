@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { useRouter, Link } from "expo-router";
 import { useServerStore } from "../lib/store/server";
@@ -8,6 +8,7 @@ export default function LoginScreen() {
   const { serverUrl, setTokens } = useServerStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const passwordRef = useRef<TextInput>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,14 +56,20 @@ export default function LoginScreen() {
         autoCorrect={false}
         keyboardType="email-address"
         textContentType="emailAddress"
+        returnKeyType="next"
+        onSubmitEditing={() => passwordRef.current?.focus()}
+        blurOnSubmit={false}
       />
       <TextInput
+        ref={passwordRef}
         style={styles.input}
         value={password}
         onChangeText={setPassword}
         placeholder="Password"
         secureTextEntry
         textContentType="password"
+        returnKeyType="go"
+        onSubmitEditing={handleLogin}
       />
       {error && <Text style={styles.error}>{error}</Text>}
       <Pressable
