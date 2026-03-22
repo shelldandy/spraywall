@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install system deps for OpenCV (needed by ultralytics)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libgl1 libglib2.0-0 && \
+    apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libheif-dev && \
     rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml .
