@@ -18,7 +18,7 @@ export default function RoutesListScreen() {
     gymSlug: string;
   }>();
 
-  const routesQuery = useRoutes(wallId);
+  const routesQuery = useRoutes(wallId, gymSlug);
 
   const routes = routesQuery.data ?? [];
 

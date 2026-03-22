@@ -70,11 +70,12 @@ export default function WallDetailScreen() {
   } | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const wallQuery = useWallDetail(wallId);
+  const wallQuery = useWallDetail(wallId, gymSlug);
 
   const holdsQuery = useHolds(
     wallId,
     wallQuery.data?.detection_status === "done",
+    gymSlug,
   );
 
   const handleToggle = useCallback((holdId: string) => {

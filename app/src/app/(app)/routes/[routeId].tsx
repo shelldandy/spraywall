@@ -29,13 +29,14 @@ export default function RouteDetailScreen() {
     height: number;
   } | null>(null);
 
-  const routeQuery = useRouteDetail(routeId);
+  const routeQuery = useRouteDetail(routeId, gymSlug, wallId);
 
-  const wallQuery = useWallDetail(wallId);
+  const wallQuery = useWallDetail(wallId, gymSlug);
 
   const holdsQuery = useHolds(
     wallId,
     wallQuery.data?.detection_status === "done",
+    gymSlug,
   );
 
   const routeData = routeQuery.data;
