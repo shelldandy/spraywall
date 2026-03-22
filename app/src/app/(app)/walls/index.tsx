@@ -16,7 +16,13 @@ import { router } from "expo-router";
 import { useServerStore } from "../../../lib/store/server";
 import { apiFetch } from "../../../lib/api/fetch";
 import { useGymsWithWalls } from "../../../lib/hooks/queries";
+import { isDbAvailable } from "../../../lib/db/database";
 import type { Gym } from "../../../lib/api/types";
+
+function getDbQueries() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("../../../lib/db/queries") as typeof import("../../../lib/db/queries");
+}
 
 export default function WallsScreen() {
   const queryClient = useQueryClient();
@@ -44,7 +50,8 @@ export default function WallsScreen() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (gym) => {
+      if (isDbAvailable()) getDbQueries().upsertGyms([gym]);
       queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
       setShowGymForm(false);
       setGymName("");
@@ -71,7 +78,8 @@ export default function WallsScreen() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (wall) => {
+      if (isDbAvailable()) getDbQueries().upsertWalls([wall]);
       queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
       setWallFormGymSlug(null);
       setWallName("");

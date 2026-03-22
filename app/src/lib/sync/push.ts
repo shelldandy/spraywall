@@ -5,6 +5,7 @@ import {
   markMutationComplete,
   markMutationFailed,
   updateLocalRouteId,
+  remapTempIdInPendingMutations,
   resetFailedMutations,
 } from "../db/queries";
 
@@ -13,8 +14,15 @@ export async function pushPending(): Promise<void> {
   const mutations = getPendingMutations();
 
   for (const mutation of mutations) {
+    let payload: any;
+    try {
+      payload = JSON.parse(mutation.payload);
+    } catch (err: any) {
+      markMutationFailed(mutation.id, `Invalid payload: ${err.message}`);
+      continue;
+    }
+
     markMutationInFlight(mutation.id);
-    const payload = JSON.parse(mutation.payload);
 
     try {
       switch (mutation.type) {
@@ -59,9 +67,10 @@ export async function pushPending(): Promise<void> {
             throw new Error(`Failed to sync route creation: ${res.status}`);
           }
           const serverRoute = await res.json();
-          // Remap temp ID to server ID
+          // Remap temp ID to server ID in local DB and pending mutations
           if (payload.tempId && serverRoute.id !== payload.tempId) {
             updateLocalRouteId(payload.tempId, serverRoute.id);
+            remapTempIdInPendingMutations(payload.tempId, serverRoute.id);
           }
           break;
         }

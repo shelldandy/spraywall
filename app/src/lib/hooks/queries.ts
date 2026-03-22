@@ -111,7 +111,7 @@ export function useRouteDetail(routeId: string, gymSlug?: string, wallId?: strin
 export function useLogbook() {
   const { userId } = useServerStore();
   return useQuery<LogbookEntry[]>({
-    queryKey: ["logbook"],
+    queryKey: ["logbook", userId],
     queryFn: async () => {
       if (isDbAvailable() && userId) return getDbQueries().getLogbook(userId);
       const res = await apiFetch("/users/me/logbook");

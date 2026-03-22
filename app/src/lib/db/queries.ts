@@ -242,14 +242,30 @@ export function upsertWallImage(image: {
   is_active: boolean;
   created_at: string;
 }) {
-  getDb().runSync(
-    "INSERT OR REPLACE INTO wall_images (id, wall_id, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?)",
-    image.id,
-    image.wall_id,
-    image.image_url,
-    image.is_active ? 1 : 0,
-    image.created_at,
-  );
+  const db = getDb();
+  db.execSync("BEGIN TRANSACTION");
+  try {
+    // Deactivate other images for this wall if the new one is active
+    if (image.is_active) {
+      db.runSync(
+        "UPDATE wall_images SET is_active = 0 WHERE wall_id = ? AND id != ? AND is_active = 1",
+        image.wall_id,
+        image.id,
+      );
+    }
+    db.runSync(
+      "INSERT OR REPLACE INTO wall_images (id, wall_id, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?)",
+      image.id,
+      image.wall_id,
+      image.image_url,
+      image.is_active ? 1 : 0,
+      image.created_at,
+    );
+    db.execSync("COMMIT");
+  } catch (e) {
+    db.execSync("ROLLBACK");
+    throw e;
+  }
 }
 
 export function upsertHolds(holds: Hold[]) {
@@ -424,6 +440,12 @@ export function insertLocalSend(
   userId: string,
 ) {
   const db = getDb();
+  // Check if send already exists to avoid double-incrementing send_count
+  const existing = db.getFirstSync<{ id: string }>(
+    "SELECT id FROM sends WHERE route_id = ? AND user_id = ?",
+    routeId,
+    userId,
+  );
   db.runSync(
     "INSERT OR REPLACE INTO sends (id, route_id, user_id, sent_at, attempts, notes) VALUES (?, ?, ?, ?, NULL, NULL)",
     id,
@@ -431,23 +453,28 @@ export function insertLocalSend(
     userId,
     new Date().toISOString(),
   );
-  db.runSync(
-    "UPDATE routes SET has_sent = 1, send_count = send_count + 1 WHERE id = ?",
-    routeId,
-  );
+  if (!existing) {
+    db.runSync(
+      "UPDATE routes SET has_sent = 1, send_count = send_count + 1 WHERE id = ?",
+      routeId,
+    );
+  }
 }
 
 export function deleteLocalSend(routeId: string, userId: string) {
   const db = getDb();
-  db.runSync(
+  const result = db.runSync(
     "DELETE FROM sends WHERE route_id = ? AND user_id = ?",
     routeId,
     userId,
   );
-  db.runSync(
-    "UPDATE routes SET has_sent = 0, send_count = MAX(0, send_count - 1) WHERE id = ?",
-    routeId,
-  );
+  // Only update route counts if a row was actually deleted
+  if (result.changes > 0) {
+    db.runSync(
+      "UPDATE routes SET has_sent = 0, send_count = MAX(0, send_count - 1) WHERE id = ?",
+      routeId,
+    );
+  }
 }
 
 export function insertLocalRoute(route: Route) {
@@ -456,6 +483,32 @@ export function insertLocalRoute(route: Route) {
 
 export function updateLocalRouteId(tempId: string, serverId: string) {
   const db = getDb();
-  db.runSync("UPDATE routes SET id = ? WHERE id = ?", serverId, tempId);
-  db.runSync("UPDATE sends SET route_id = ? WHERE route_id = ?", serverId, tempId);
+  db.execSync("BEGIN TRANSACTION");
+  try {
+    // Update child rows first to avoid FK constraint violations
+    db.runSync("UPDATE sends SET route_id = ? WHERE route_id = ?", serverId, tempId);
+    db.runSync("UPDATE routes SET id = ? WHERE id = ?", serverId, tempId);
+    db.execSync("COMMIT");
+  } catch (e) {
+    db.execSync("ROLLBACK");
+    throw e;
+  }
+}
+
+export function remapTempIdInPendingMutations(tempId: string, serverId: string) {
+  const db = getDb();
+  const mutations = db.getAllSync<{ id: number; payload: string }>(
+    "SELECT id, payload FROM pending_mutations WHERE status = 'pending' AND payload LIKE ?",
+    `%${tempId}%`,
+  );
+  for (const m of mutations) {
+    const updated = m.payload.replaceAll(tempId, serverId);
+    db.runSync("UPDATE pending_mutations SET payload = ? WHERE id = ?", updated, m.id);
+  }
+}
+
+export function resetInFlightMutations() {
+  getDb().runSync(
+    "UPDATE pending_mutations SET status = 'pending' WHERE status = 'in_flight'",
+  );
 }

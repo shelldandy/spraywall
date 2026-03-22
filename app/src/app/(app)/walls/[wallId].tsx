@@ -18,7 +18,14 @@ import * as ImagePicker from "expo-image-picker";
 import { apiFetch } from "../../../lib/api/fetch";
 import { useServerStore } from "../../../lib/store/server";
 import { useWallDetail, useHolds } from "../../../lib/hooks/queries";
+import { isDbAvailable } from "../../../lib/db/database";
+import { triggerSync } from "../../../lib/sync/engine";
 import type { Hold } from "../../../lib/api/types";
+
+function getDbQueries() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("../../../lib/db/queries") as typeof import("../../../lib/db/queries");
+}
 import HoldOverlay from "../../../components/HoldOverlay";
 import ZoomableView from "../../../components/ZoomableView";
 
@@ -144,6 +151,8 @@ export default function WallDetailScreen() {
         body: JSON.stringify({ bbox }),
       });
       if (!res.ok) throw new Error("Failed to add hold");
+      const newHold = await res.json();
+      if (isDbAvailable()) getDbQueries().upsertHolds([newHold]);
       queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
     } catch (err: any) {
       Alert.alert("Error", err.message);
@@ -187,6 +196,8 @@ export default function WallDetailScreen() {
         const err = await res.text();
         throw new Error(err || "Upload failed");
       }
+      // Trigger sync to pull the new image into SQLite
+      if (isDbAvailable()) triggerSync(queryClient);
       queryClient.invalidateQueries({
         queryKey: ["wall-detail", wallId],
       });

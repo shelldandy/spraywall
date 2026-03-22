@@ -3,7 +3,7 @@ import { AppState, AppStateStatus } from "react-native";
 import { pullAll } from "./pull";
 import { pushPending } from "./push";
 import { useSyncStore } from "../store/sync";
-import { getPendingMutationCount } from "../db/queries";
+import { getPendingMutationCount, resetInFlightMutations } from "../db/queries";
 import { useServerStore } from "../store/server";
 
 const SYNC_INTERVAL_MS = 60_000;
@@ -28,9 +28,17 @@ async function runSync(queryClient: QueryClient) {
 
     // Invalidate all queries so UI re-reads from SQLite
     queryClient.invalidateQueries();
-  } catch {
-    // If fetch fails, we're likely offline
-    store.setOnline(false);
+  } catch (error: unknown) {
+    // Only treat network/transport errors as offline
+    if (
+      error instanceof TypeError &&
+      typeof error.message === "string" &&
+      error.message.includes("Network request failed")
+    ) {
+      store.setOnline(false);
+    } else {
+      console.error("Sync error:", error);
+    }
   } finally {
     store.setSyncing(false);
     store.setPendingCount(getPendingMutationCount());
@@ -38,6 +46,14 @@ async function runSync(queryClient: QueryClient) {
 }
 
 export function startSyncEngine(queryClient: QueryClient) {
+  // Guard against double-start (e.g. Fast Refresh)
+  if (syncInterval) {
+    stopSyncEngine();
+  }
+
+  // Reset any mutations stuck in_flight from a prior crash
+  resetInFlightMutations();
+
   // Initial sync
   runSync(queryClient);
 

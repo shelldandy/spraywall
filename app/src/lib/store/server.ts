@@ -5,7 +5,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 function parseUserId(token: string | null): string | null {
   if (!token) return null;
   try {
-    const payload = token.split(".")[1];
+    let payload = token.split(".")[1];
+    // Handle base64url encoding: replace URL-safe chars and add padding
+    payload = payload.replace(/-/g, "+").replace(/_/g, "/");
+    while (payload.length % 4) payload += "=";
     const decoded = JSON.parse(atob(payload));
     return decoded.sub ?? null;
   } catch {
