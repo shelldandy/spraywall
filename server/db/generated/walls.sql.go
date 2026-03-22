@@ -11,6 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createDetectionJob = `-- name: CreateDetectionJob :one
+INSERT INTO detection_jobs (wall_image_id)
+VALUES ($1)
+RETURNING id, wall_image_id, status, error, created_at, updated_at
+`
+
+func (q *Queries) CreateDetectionJob(ctx context.Context, wallImageID pgtype.UUID) (DetectionJob, error) {
+	row := q.db.QueryRow(ctx, createDetectionJob, wallImageID)
+	var i DetectionJob
+	err := row.Scan(
+		&i.ID,
+		&i.WallImageID,
+		&i.Status,
+		&i.Error,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createHold = `-- name: CreateHold :one
 INSERT INTO holds (wall_image_id, bbox, confidence)
 VALUES ($1, $2, $3)
@@ -33,40 +53,6 @@ func (q *Queries) CreateHold(ctx context.Context, arg CreateHoldParams) (Hold, e
 		&i.Polygon,
 		&i.Confidence,
 		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const deleteHold = `-- name: DeleteHold :exec
-DELETE FROM holds WHERE id = $1 AND wall_image_id = $2
-`
-
-type DeleteHoldParams struct {
-	ID          pgtype.UUID `json:"id"`
-	WallImageID pgtype.UUID `json:"wall_image_id"`
-}
-
-func (q *Queries) DeleteHold(ctx context.Context, arg DeleteHoldParams) error {
-	_, err := q.db.Exec(ctx, deleteHold, arg.ID, arg.WallImageID)
-	return err
-}
-
-const createDetectionJob = `-- name: CreateDetectionJob :one
-INSERT INTO detection_jobs (wall_image_id)
-VALUES ($1)
-RETURNING id, wall_image_id, status, error, created_at, updated_at
-`
-
-func (q *Queries) CreateDetectionJob(ctx context.Context, wallImageID pgtype.UUID) (DetectionJob, error) {
-	row := q.db.QueryRow(ctx, createDetectionJob, wallImageID)
-	var i DetectionJob
-	err := row.Scan(
-		&i.ID,
-		&i.WallImageID,
-		&i.Status,
-		&i.Error,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -125,6 +111,22 @@ UPDATE wall_images SET is_active = false WHERE wall_id = $1
 func (q *Queries) DeactivateWallImages(ctx context.Context, wallID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deactivateWallImages, wallID)
 	return err
+}
+
+const deleteHold = `-- name: DeleteHold :one
+DELETE FROM holds WHERE id = $1 AND wall_image_id = $2 RETURNING id
+`
+
+type DeleteHoldParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WallImageID pgtype.UUID `json:"wall_image_id"`
+}
+
+func (q *Queries) DeleteHold(ctx context.Context, arg DeleteHoldParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteHold, arg.ID, arg.WallImageID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getActiveWallImage = `-- name: GetActiveWallImage :one

@@ -110,33 +110,39 @@ export default function WallDetailScreen() {
     });
   }, []);
 
-  const deleteHold = async (holdId: string) => {
-    // Optimistic removal
-    queryClient.setQueryData<Hold[]>(["holds", gymSlug, wallId], (old) =>
-      old ? old.filter((h) => h.id !== holdId) : []
-    );
-    try {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds/${holdId}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete hold");
-    } catch {
-      queryClient.invalidateQueries({ queryKey: ["holds", gymSlug, wallId] });
-    }
-  };
+  const deleteHold = useCallback(
+    async (holdId: string) => {
+      // Optimistic removal
+      queryClient.setQueryData<Hold[] | undefined>(["holds", gymSlug, wallId], (old) =>
+        old ? old.filter((h) => h.id !== holdId) : old
+      );
+      try {
+        const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds/${holdId}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) throw new Error("Failed to delete hold");
+      } catch {
+        queryClient.invalidateQueries({ queryKey: ["holds", gymSlug, wallId] });
+      }
+    },
+    [queryClient, gymSlug, wallId],
+  );
 
-  const handleEditToggle = useCallback((holdId: string) => {
-    if (editHoldMode === "delete") {
-      setHoldToDelete((prev) => {
-        if (prev === holdId) {
-          // Second tap = confirm delete
-          deleteHold(holdId);
-          return null;
-        }
-        return holdId;
-      });
-    }
-  }, [editHoldMode]);
+  const handleEditToggle = useCallback(
+    (holdId: string) => {
+      if (editHoldMode === "delete") {
+        setHoldToDelete((prev) => {
+          if (prev === holdId) {
+            // Second tap = confirm delete
+            deleteHold(holdId);
+            return null;
+          }
+          return holdId;
+        });
+      }
+    },
+    [editHoldMode, deleteHold],
+  );
 
   const addHold = async (normX: number, normY: number) => {
     const size = 0.05;
@@ -282,7 +288,7 @@ export default function WallDetailScreen() {
                     resizeMode="contain"
                     onLayout={onImageLayout}
                   />
-                  {(isEditingHolds ? holds.length > 0 : filteredHolds.length > 0) && (
+                  {(isEditingHolds || filteredHolds.length > 0) && (
                     <HoldOverlay
                       holds={isEditingHolds ? holds : filteredHolds}
                       selectedIds={isEditingHolds ? new Set() : selectedIds}

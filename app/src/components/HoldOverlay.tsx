@@ -1,5 +1,6 @@
 import React from "react";
 
+import { GestureResponderEvent } from "react-native";
 import Svg, { Polygon, Rect } from "react-native-svg";
 import type { Hold, HoldRoles } from "../lib/api/types";
 
@@ -77,7 +78,7 @@ export default function HoldOverlay({
           width={imageWidth}
           height={imageHeight}
           fill="transparent"
-          onPress={(evt: any) => {
+          onPress={(evt: GestureResponderEvent) => {
             const normX = evt.nativeEvent.locationX / imageWidth;
             const normY = evt.nativeEvent.locationY / imageHeight;
             onBackgroundPress?.(normX, normY);

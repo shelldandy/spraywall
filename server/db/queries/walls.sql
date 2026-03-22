@@ -36,5 +36,5 @@ INSERT INTO holds (wall_image_id, bbox, confidence)
 VALUES ($1, $2, $3)
 RETURNING *;
 
--- name: DeleteHold :exec
-DELETE FROM holds WHERE id = $1 AND wall_image_id = $2;
+-- name: DeleteHold :one
+DELETE FROM holds WHERE id = $1 AND wall_image_id = $2 RETURNING id;

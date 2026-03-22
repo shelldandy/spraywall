@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"regexp"
 	"strings"
@@ -560,8 +561,11 @@ func (h *Handler) CreateHold(w http.ResponseWriter, r *http.Request) {
 	}
 
 	b := body.Bbox
-	if b.X < 0 || b.Y < 0 || b.W < 0 || b.H < 0 || b.X > 1 || b.Y > 1 || b.W > 1 || b.H > 1 || b.X+b.W > 1 || b.Y+b.H > 1 {
-		writeError(w, http.StatusBadRequest, "bbox values must be between 0 and 1, and x+w<=1, y+h<=1")
+	if math.IsNaN(b.X) || math.IsNaN(b.Y) || math.IsNaN(b.W) || math.IsNaN(b.H) ||
+		math.IsInf(b.X, 0) || math.IsInf(b.Y, 0) || math.IsInf(b.W, 0) || math.IsInf(b.H, 0) ||
+		b.W <= 0 || b.H <= 0 ||
+		b.X < 0 || b.Y < 0 || b.X > 1 || b.Y > 1 || b.W > 1 || b.H > 1 || b.X+b.W > 1 || b.Y+b.H > 1 {
+		writeError(w, http.StatusBadRequest, "bbox values must be between 0 and 1 with w,h > 0, and x+w<=1, y+h<=1")
 		return
 	}
 
@@ -651,11 +655,15 @@ func (h *Handler) DeleteHold(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.queries.DeleteHold(r.Context(), generated.DeleteHoldParams{
+	if _, err := h.queries.DeleteHold(r.Context(), generated.DeleteHoldParams{
 		ID:          shared.PgUUID(holdUUID),
 		WallImageID: img.ID,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete hold")
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "hold not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not delete hold")
+		}
 		return
 	}
 
