@@ -37,8 +37,7 @@ make expo
 
 | Command         | Description                                      |
 | --------------- | ------------------------------------------------ |
-| `make dev`      | Start all backend services                       |
-| `make dev-sam`  | Start with SAM segmentation enabled (see below)  |
+| `make dev`      | Start all backend services (SAM enabled)         |
 | `make expo`     | Start Expo dev server                            |
 | `make migrate`  | Run database migrations                          |
 | `make sqlc`     | Generate Go code from SQL queries                |
@@ -49,25 +48,19 @@ make expo
 
 > **Note:** `docker compose down -v` (or `make clean`) is required to re-run `infra/postgres/init.sql`.
 
-## SAM Segmentation (optional)
+## SAM Segmentation
 
-By default, holds are detected as bounding boxes using YOLOv8. For polygon outlines, enable [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) as a post-detection step.
+Hold detection uses YOLOv8 for bounding boxes and [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) to refine each box into a polygon outline.
 
 ### Setup
 
-1. Download a SAM checkpoint into the worker models directory:
+Download a SAM checkpoint into the worker models directory:
 
 ```bash
 wget -P worker/models https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
 ```
 
-2. Start with SAM enabled:
-
-```bash
-make dev-sam
-```
-
-This builds the worker with `segment-anything` installed and sets `SAM_ENABLED=true`. Upload a new wall image to trigger detection with polygon output.
+The worker installs `segment-anything` automatically. Upload a new wall image to trigger detection with polygon output.
 
 ### How it works
 
