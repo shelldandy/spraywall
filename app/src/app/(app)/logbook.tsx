@@ -8,9 +8,8 @@ import {
   ActivityIndicator,
   SafeAreaView,
 } from "react-native";
-import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { apiFetch } from "../../lib/api/fetch";
+import { useLogbook } from "../../lib/hooks/queries";
 import type { LogbookEntry } from "../../lib/api/types";
 
 interface LogbookSection {
@@ -19,14 +18,7 @@ interface LogbookSection {
 }
 
 export default function LogbookScreen() {
-  const logbookQuery = useQuery<LogbookEntry[]>({
-    queryKey: ["logbook"],
-    queryFn: async () => {
-      const res = await apiFetch("/users/me/logbook");
-      if (!res.ok) throw new Error("Failed to fetch logbook");
-      return res.json();
-    },
-  });
+  const logbookQuery = useLogbook();
 
   const entries = logbookQuery.data ?? [];
 

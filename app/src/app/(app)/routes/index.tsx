@@ -8,9 +8,8 @@ import {
   ActivityIndicator,
   SafeAreaView,
 } from "react-native";
-import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, router } from "expo-router";
-import { apiFetch } from "../../../lib/api/fetch";
+import { useRoutes } from "../../../lib/hooks/queries";
 import type { Route } from "../../../lib/api/types";
 
 export default function RoutesListScreen() {
@@ -19,16 +18,7 @@ export default function RoutesListScreen() {
     gymSlug: string;
   }>();
 
-  const routesQuery = useQuery<Route[]>({
-    queryKey: ["routes", gymSlug, wallId],
-    queryFn: async () => {
-      const res = await apiFetch(
-        `/gyms/${gymSlug}/walls/${wallId}/routes`
-      );
-      if (!res.ok) throw new Error("Failed to fetch routes");
-      return res.json();
-    },
-  });
+  const routesQuery = useRoutes(wallId);
 
   const routes = routesQuery.data ?? [];
 

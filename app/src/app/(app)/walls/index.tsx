@@ -11,15 +11,12 @@ import {
   ActivityIndicator,
   SafeAreaView,
 } from "react-native";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useServerStore } from "../../../lib/store/server";
 import { apiFetch } from "../../../lib/api/fetch";
-import type { Gym, Wall } from "../../../lib/api/types";
-
-interface GymWithWalls extends Gym {
-  walls: Wall[];
-}
+import { useGymsWithWalls } from "../../../lib/hooks/queries";
+import type { Gym } from "../../../lib/api/types";
 
 export default function WallsScreen() {
   const queryClient = useQueryClient();
@@ -33,33 +30,7 @@ export default function WallsScreen() {
   const [wallName, setWallName] = useState("");
   const gymSlugRef = useRef<TextInput>(null);
 
-  const gymsQuery = useQuery<Gym[]>({
-    queryKey: ["gyms"],
-    queryFn: async () => {
-      const res = await apiFetch("/gyms");
-      if (!res.ok) throw new Error("Failed to fetch gyms");
-      return res.json();
-    },
-    refetchInterval: 10000,
-  });
-
-  const wallsQueries = useQuery<GymWithWalls[]>({
-    queryKey: ["gyms-with-walls", gymsQuery.data?.map(g => g.id)],
-    queryFn: async () => {
-      const gyms = gymsQuery.data;
-      if (!gyms) return [];
-      const results = await Promise.all(
-        gyms.map(async (gym) => {
-          const res = await apiFetch(`/gyms/${gym.slug}/walls`);
-          const walls: Wall[] = res.ok ? await res.json() : [];
-          return { ...gym, walls };
-        })
-      );
-      return results;
-    },
-    enabled: !!gymsQuery.data,
-    refetchInterval: 10000,
-  });
+  const gymsWithWallsQuery = useGymsWithWalls();
 
   const createGymMutation = useMutation({
     mutationFn: async ({ name, slug }: { name: string; slug: string }) => {
@@ -74,7 +45,7 @@ export default function WallsScreen() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["gyms"] });
+      queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
       setShowGymForm(false);
       setGymName("");
       setGymSlug("");
@@ -132,7 +103,7 @@ export default function WallsScreen() {
     }
   };
 
-  const data = wallsQueries.data ?? [];
+  const data = gymsWithWallsQuery.data ?? [];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -159,7 +130,7 @@ export default function WallsScreen() {
         </View>
       </View>
 
-      {gymsQuery.isLoading ? (
+      {gymsWithWallsQuery.isLoading ? (
         <ActivityIndicator style={styles.loader} size="large" color="#007AFF" />
       ) : (
         <FlatList

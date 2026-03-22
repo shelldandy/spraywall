@@ -1,6 +1,8 @@
 import { useEffect } from "react";
+import { View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { useServerStore } from "../../lib/store/server";
+import SyncStatusBar from "../../components/SyncStatusBar";
 
 export default function AppLayout() {
   const router = useRouter();
@@ -16,5 +18,10 @@ export default function AppLayout() {
     return null;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <View style={{ flex: 1 }}>
+      <SyncStatusBar />
+      <Stack screenOptions={{ headerShown: false }} />
+    </View>
+  );
 }
