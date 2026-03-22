@@ -9,16 +9,23 @@ interface HoldOverlayProps {
   onToggle: (holdId: string) => void;
   imageWidth: number;
   imageHeight: number;
-  mode?: "select" | "view";
+  mode?: "select" | "view" | "edit";
   holdRoles?: HoldRoles | null;
+  editHoldMode?: "delete" | "add";
+  holdToDelete?: string | null;
+  onBackgroundPress?: (normalizedX: number, normalizedY: number) => void;
 }
 
 function getHoldColor(
   holdId: string,
   isSelected: boolean,
   holdRoles?: HoldRoles | null,
-  mode?: "select" | "view",
+  mode?: "select" | "view" | "edit",
+  holdToDelete?: string | null,
 ) {
+  if (holdToDelete === holdId)
+    return { fill: "rgba(255, 0, 0, 0.5)", stroke: "#FF0000" };
+
   if (!isSelected)
     return mode === "view"
       ? { fill: "rgba(255, 255, 255, 0.15)", stroke: "rgba(255, 255, 255, 0.2)" }
@@ -42,6 +49,9 @@ export default function HoldOverlay({
   imageHeight,
   mode = "select",
   holdRoles,
+  editHoldMode,
+  holdToDelete,
+  onBackgroundPress,
 }: HoldOverlayProps) {
   const visibleHolds = holds;
 
@@ -60,13 +70,27 @@ export default function HoldOverlay({
           fill="rgba(0, 0, 0, 0.5)"
         />
       )}
+      {mode === "edit" && editHoldMode === "add" && (
+        <Rect
+          x={0}
+          y={0}
+          width={imageWidth}
+          height={imageHeight}
+          fill="transparent"
+          onPress={(evt: any) => {
+            const normX = evt.nativeEvent.locationX / imageWidth;
+            const normY = evt.nativeEvent.locationY / imageHeight;
+            onBackgroundPress?.(normX, normY);
+          }}
+        />
+      )}
       {visibleHolds.map((hold) => {
         const isSelected = selectedIds.has(hold.id);
         const x = hold.bbox.x * imageWidth;
         const y = hold.bbox.y * imageHeight;
         const w = hold.bbox.w * imageWidth;
         const h = hold.bbox.h * imageHeight;
-        const colors = getHoldColor(hold.id, isSelected, holdRoles, mode);
+        const colors = getHoldColor(hold.id, isSelected, holdRoles, mode, holdToDelete);
 
         const pressHandler = () => onToggle(hold.id);
 

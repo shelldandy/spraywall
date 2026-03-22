@@ -38,6 +38,10 @@ export default function WallDetailScreen() {
 
   const isEditingRoute = !!editRouteId;
 
+  const [isEditingHolds, setIsEditingHolds] = useState(false);
+  const [editHoldMode, setEditHoldMode] = useState<"delete" | "add">("delete");
+  const [holdToDelete, setHoldToDelete] = useState<string | null>(null);
+
   type HoldRole = "normal" | "start" | "finish";
   const [holdSelections, setHoldSelections] = useState<Map<string, HoldRole>>(
     () => {
@@ -105,6 +109,55 @@ export default function WallDetailScreen() {
       return next;
     });
   }, []);
+
+  const deleteHold = async (holdId: string) => {
+    // Optimistic removal
+    queryClient.setQueryData<Hold[]>(["holds", gymSlug, wallId], (old) =>
+      old ? old.filter((h) => h.id !== holdId) : []
+    );
+    try {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds/${holdId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete hold");
+    } catch {
+      queryClient.invalidateQueries({ queryKey: ["holds", gymSlug, wallId] });
+    }
+  };
+
+  const handleEditToggle = useCallback((holdId: string) => {
+    if (editHoldMode === "delete") {
+      setHoldToDelete((prev) => {
+        if (prev === holdId) {
+          // Second tap = confirm delete
+          deleteHold(holdId);
+          return null;
+        }
+        return holdId;
+      });
+    }
+  }, [editHoldMode]);
+
+  const addHold = async (normX: number, normY: number) => {
+    const size = 0.05;
+    const bbox = {
+      x: Math.max(0, normX - size / 2),
+      y: Math.max(0, normY - size / 2),
+      w: Math.min(size, 1 - Math.max(0, normX - size / 2)),
+      h: Math.min(size, 1 - Math.max(0, normY - size / 2)),
+    };
+    try {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bbox }),
+      });
+      if (!res.ok) throw new Error("Failed to add hold");
+      queryClient.invalidateQueries({ queryKey: ["holds", gymSlug, wallId] });
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    }
+  };
 
   const handleUpload = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -199,9 +252,15 @@ export default function WallDetailScreen() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {wall?.wall.name ?? "Wall"}
         </Text>
-        <Text style={styles.selectedCount}>
-          {visibleSelectedIds.size > 0 ? `${visibleSelectedIds.size} selected` : ""}
-        </Text>
+        {isEditingHolds ? (
+          <Pressable onPress={() => { setIsEditingHolds(false); setHoldToDelete(null); }}>
+            <Text style={styles.backText}>Done</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.selectedCount}>
+            {visibleSelectedIds.size > 0 ? `${visibleSelectedIds.size} selected` : ""}
+          </Text>
+        )}
       </View>
 
       {wallQuery.isLoading ? (
@@ -223,13 +282,17 @@ export default function WallDetailScreen() {
                     resizeMode="contain"
                     onLayout={onImageLayout}
                   />
-                  {filteredHolds.length > 0 && (
+                  {(isEditingHolds ? holds.length > 0 : filteredHolds.length > 0) && (
                     <HoldOverlay
-                      holds={filteredHolds}
-                      selectedIds={selectedIds}
-                      onToggle={handleToggle}
+                      holds={isEditingHolds ? holds : filteredHolds}
+                      selectedIds={isEditingHolds ? new Set() : selectedIds}
+                      onToggle={isEditingHolds ? handleEditToggle : handleToggle}
                       imageWidth={imageLayout.width}
                       imageHeight={imageLayout.height}
+                      mode={isEditingHolds ? "edit" : undefined}
+                      editHoldMode={editHoldMode}
+                      holdToDelete={holdToDelete}
+                      onBackgroundPress={editHoldMode === "add" ? addHold : undefined}
                       holdRoles={
                         holdSelections.size > 0
                           ? {
@@ -272,7 +335,30 @@ export default function WallDetailScreen() {
             </Pressable>
           )}
 
-          {detectionStatus === "done" && holds.length > 0 && (
+          {(wall?.user_role === "setter" || wall?.user_role === "admin") && detectionStatus === "done" && !isEditingHolds && (
+            <Pressable style={styles.editHoldsButton} onPress={() => setIsEditingHolds(true)}>
+              <Text style={styles.editHoldsText}>Edit Holds</Text>
+            </Pressable>
+          )}
+
+          {isEditingHolds && (
+            <View style={styles.editToolbar}>
+              <Pressable
+                style={[styles.editToolButton, editHoldMode === "delete" && styles.editToolButtonActive]}
+                onPress={() => { setEditHoldMode("delete"); setHoldToDelete(null); }}
+              >
+                <Text style={[styles.editToolText, editHoldMode === "delete" && styles.editToolTextActive]}>Delete</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.editToolButton, editHoldMode === "add" && styles.editToolButtonActive]}
+                onPress={() => { setEditHoldMode("add"); setHoldToDelete(null); }}
+              >
+                <Text style={[styles.editToolText, editHoldMode === "add" && styles.editToolTextActive]}>Add</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {!isEditingHolds && detectionStatus === "done" && holds.length > 0 && (
             <View style={styles.thresholdContainer}>
               <Text style={styles.thresholdLabel}>Confidence threshold</Text>
               <View style={styles.thresholdButtons}>
@@ -300,7 +386,7 @@ export default function WallDetailScreen() {
             </View>
           )}
 
-          {detectionStatus === "done" && holds.length > 0 && (
+          {!isEditingHolds && detectionStatus === "done" && holds.length > 0 && (
             <Text style={styles.holdCount}>
               {filteredHolds.length} of {holds.length} hold
               {holds.length !== 1 ? "s" : ""} ({"\u2265"}{" "}
@@ -308,7 +394,7 @@ export default function WallDetailScreen() {
             </Text>
           )}
 
-          {visibleSelectedIds.size >= 2 && (
+          {!isEditingHolds && visibleSelectedIds.size >= 2 && (
             <Pressable
               style={styles.createRouteButton}
               onPress={() => {
@@ -343,17 +429,19 @@ export default function WallDetailScreen() {
             </Pressable>
           )}
 
-          <Pressable
-            style={styles.viewRoutesButton}
-            onPress={() =>
-              router.push({
-                pathname: "/(app)/routes" as any,
-                params: { wallId, gymSlug },
-              })
-            }
-          >
-            <Text style={styles.viewRoutesText}>View Routes</Text>
-          </Pressable>
+          {!isEditingHolds && (
+            <Pressable
+              style={styles.viewRoutesButton}
+              onPress={() =>
+                router.push({
+                  pathname: "/(app)/routes" as any,
+                  params: { wallId, gymSlug },
+                })
+              }
+            >
+              <Text style={styles.viewRoutesText}>View Routes</Text>
+            </Pressable>
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -512,5 +600,42 @@ const styles = StyleSheet.create({
     color: "#007AFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  editHoldsButton: {
+    backgroundColor: "#f0f0f0",
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#666",
+  },
+  editHoldsText: {
+    color: "#333",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  editToolbar: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  editToolButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    backgroundColor: "#f0f0f0",
+  },
+  editToolButtonActive: {
+    backgroundColor: "#007AFF",
+  },
+  editToolText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#666",
+  },
+  editToolTextActive: {
+    color: "#fff",
   },
 });

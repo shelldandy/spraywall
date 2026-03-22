@@ -30,3 +30,11 @@ SELECT * FROM detection_jobs WHERE wall_image_id = $1 ORDER BY created_at DESC L
 
 -- name: GetHoldsByWallImage :many
 SELECT * FROM holds WHERE wall_image_id = $1 ORDER BY confidence DESC;
+
+-- name: CreateHold :one
+INSERT INTO holds (wall_image_id, bbox, confidence)
+VALUES ($1, $2, $3)
+RETURNING *;
+
+-- name: DeleteHold :exec
+DELETE FROM holds WHERE id = $1 AND wall_image_id = $2;

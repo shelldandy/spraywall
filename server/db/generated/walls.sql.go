@@ -11,6 +11,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createHold = `-- name: CreateHold :one
+INSERT INTO holds (wall_image_id, bbox, confidence)
+VALUES ($1, $2, $3)
+RETURNING id, wall_image_id, bbox, polygon, confidence, created_at
+`
+
+type CreateHoldParams struct {
+	WallImageID pgtype.UUID `json:"wall_image_id"`
+	Bbox        []byte      `json:"bbox"`
+	Confidence  float32     `json:"confidence"`
+}
+
+func (q *Queries) CreateHold(ctx context.Context, arg CreateHoldParams) (Hold, error) {
+	row := q.db.QueryRow(ctx, createHold, arg.WallImageID, arg.Bbox, arg.Confidence)
+	var i Hold
+	err := row.Scan(
+		&i.ID,
+		&i.WallImageID,
+		&i.Bbox,
+		&i.Polygon,
+		&i.Confidence,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const deleteHold = `-- name: DeleteHold :exec
+DELETE FROM holds WHERE id = $1 AND wall_image_id = $2
+`
+
+type DeleteHoldParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WallImageID pgtype.UUID `json:"wall_image_id"`
+}
+
+func (q *Queries) DeleteHold(ctx context.Context, arg DeleteHoldParams) error {
+	_, err := q.db.Exec(ctx, deleteHold, arg.ID, arg.WallImageID)
+	return err
+}
+
 const createDetectionJob = `-- name: CreateDetectionJob :one
 INSERT INTO detection_jobs (wall_image_id)
 VALUES ($1)
