@@ -3,6 +3,10 @@ import os
 import tempfile
 import boto3
 from botocore.client import Config
+from PIL import Image
+import pillow_heif
+
+pillow_heif.register_heif_opener()
 
 MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "minio:9000")
 MINIO_ACCESS_KEY = os.environ.get("MINIO_ROOT_USER", "minioadmin")
@@ -22,10 +26,22 @@ def get_s3_client():
 
 
 def download_image(storage_key: str) -> str:
-    """Download image from MinIO and return local temp file path."""
+    """Download image from MinIO and return a JPEG temp file path.
+
+    Converts HEIC/WebP/PNG/etc. to JPEG so OpenCV and YOLO can read it.
+    """
     client = get_s3_client()
-    suffix = os.path.splitext(storage_key)[1] or ".jpg"
-    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    client.download_fileobj(MINIO_BUCKET, storage_key, tmp)
-    tmp.close()
-    return tmp.name
+    raw = tempfile.NamedTemporaryFile(delete=False)
+    client.download_fileobj(MINIO_BUCKET, storage_key, raw)
+    raw.close()
+
+    out = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+    out.close()
+    try:
+        img = Image.open(raw.name)
+        img = img.convert("RGB")
+        img.save(out.name, "JPEG", quality=95)
+    finally:
+        os.unlink(raw.name)
+
+    return out.name

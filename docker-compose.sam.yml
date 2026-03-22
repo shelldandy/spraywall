@@ -1,7 +1,0 @@
-services:
-  worker:
-    build:
-      args:
-        INSTALL_SAM: "true"
-    environment:
-      SAM_ENABLED: "true"
