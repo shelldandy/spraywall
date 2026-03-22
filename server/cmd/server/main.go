@@ -127,6 +127,8 @@ func main() {
 					r.Get("/", wallHandler.GetWall)
 					r.Post("/images", wallHandler.UploadImage)
 					r.Get("/holds", wallHandler.GetHolds)
+					r.Post("/holds", wallHandler.CreateHold)
+					r.Delete("/holds/{holdId}", wallHandler.DeleteHold)
 					r.Route("/routes", func(r chi.Router) {
 						r.Post("/", routeHandler.CreateRoute)
 						r.Get("/", routeHandler.ListRoutes)
