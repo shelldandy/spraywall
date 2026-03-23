@@ -38,10 +38,10 @@ def download_image(storage_key: str) -> str:
     out = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
     out.close()
     try:
-        img = Image.open(raw.name)
-        img = ImageOps.exif_transpose(img)
-        img = img.convert("RGB")
-        img.save(out.name, "JPEG", quality=95)
+        with Image.open(raw.name) as img:
+            img = ImageOps.exif_transpose(img)
+            img = img.convert("RGB")
+            img.save(out.name, "JPEG", quality=95)
     finally:
         os.unlink(raw.name)
 

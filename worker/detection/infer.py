@@ -31,7 +31,14 @@ def detect_holds(image_path: str) -> list[dict]:
     polygon is [[x,y], ...] normalized or None
     """
     model = get_model()
-    results = model(image_path, imgsz=DETECTION_IMGSZ, conf=DETECTION_CONF, iou=DETECTION_IOU, max_det=DETECTION_MAX_DET, verbose=False)
+    results = model(
+        image_path,
+        imgsz=DETECTION_IMGSZ,
+        conf=DETECTION_CONF,
+        iou=DETECTION_IOU,
+        max_det=DETECTION_MAX_DET,
+        verbose=False,
+    )
 
     holds = []
     img_w = 0
