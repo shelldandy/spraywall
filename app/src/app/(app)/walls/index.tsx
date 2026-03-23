@@ -131,7 +131,20 @@ export default function WallsScreen() {
               }
               if (isDbAvailable()) {
                 const { getDb } = require("../../../lib/db/database") as typeof import("../../../lib/db/database");
-                getDb().runSync("DELETE FROM gyms WHERE id = ?", gym.id);
+                const db = getDb();
+                db.execSync("BEGIN TRANSACTION");
+                try {
+                  // Delete children in FK order (no CASCADE in local schema)
+                  db.runSync("DELETE FROM sends WHERE route_id IN (SELECT id FROM routes WHERE wall_id IN (SELECT id FROM walls WHERE gym_id = ?))", gym.id);
+                  db.runSync("DELETE FROM routes WHERE wall_id IN (SELECT id FROM walls WHERE gym_id = ?)", gym.id);
+                  db.runSync("DELETE FROM holds WHERE wall_image_id IN (SELECT id FROM wall_images WHERE wall_id IN (SELECT id FROM walls WHERE gym_id = ?))", gym.id);
+                  db.runSync("DELETE FROM wall_images WHERE wall_id IN (SELECT id FROM walls WHERE gym_id = ?)", gym.id);
+                  db.runSync("DELETE FROM walls WHERE gym_id = ?", gym.id);
+                  db.runSync("DELETE FROM gyms WHERE id = ?", gym.id);
+                  db.execSync("COMMIT");
+                } catch {
+                  db.execSync("ROLLBACK");
+                }
               }
               queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
             } catch {
@@ -163,7 +176,18 @@ export default function WallsScreen() {
               }
               if (isDbAvailable()) {
                 const { getDb } = require("../../../lib/db/database") as typeof import("../../../lib/db/database");
-                getDb().runSync("DELETE FROM walls WHERE id = ?", wallId);
+                const db = getDb();
+                db.execSync("BEGIN TRANSACTION");
+                try {
+                  db.runSync("DELETE FROM sends WHERE route_id IN (SELECT id FROM routes WHERE wall_id = ?)", wallId);
+                  db.runSync("DELETE FROM routes WHERE wall_id = ?", wallId);
+                  db.runSync("DELETE FROM holds WHERE wall_image_id IN (SELECT id FROM wall_images WHERE wall_id = ?)", wallId);
+                  db.runSync("DELETE FROM wall_images WHERE wall_id = ?", wallId);
+                  db.runSync("DELETE FROM walls WHERE id = ?", wallId);
+                  db.execSync("COMMIT");
+                } catch {
+                  db.execSync("ROLLBACK");
+                }
               }
               queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
             } catch {
