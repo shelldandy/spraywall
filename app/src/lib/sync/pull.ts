@@ -26,41 +26,43 @@ export async function pullAll(): Promise<void> {
 
     // 3. For each wall, fetch detail (image + detection status)
     for (const wall of walls) {
+      // 3a. Fetch wall detail (image, detection status, holds)
       const detailRes = await apiFetch(
         `/gyms/${gym.slug}/walls/${wall.id}`,
       );
-      if (!detailRes.ok) continue;
-      const detail: WallDetail = await detailRes.json();
+      if (detailRes.ok) {
+        const detail: WallDetail = await detailRes.json();
 
-      if (detail.image) {
-        upsertWallImage({
-          id: detail.image.id,
-          wall_id: wall.id,
-          image_url: detail.image.image_url,
-          is_active: detail.image.is_active,
-          created_at: detail.image.created_at,
-        });
-      }
+        if (detail.image) {
+          upsertWallImage({
+            id: detail.image.id,
+            wall_id: wall.id,
+            image_url: detail.image.image_url,
+            is_active: detail.image.is_active,
+            created_at: detail.image.created_at,
+          });
+        }
 
-      if (detail.detection_status) {
-        setSyncMeta(`detection_status:${wall.id}`, detail.detection_status);
-      }
-      if (detail.user_role) {
-        setSyncMeta(`wall_user_role:${wall.id}`, detail.user_role);
-      }
+        if (detail.detection_status) {
+          setSyncMeta(`detection_status:${wall.id}`, detail.detection_status);
+        }
+        if (detail.user_role) {
+          setSyncMeta(`wall_user_role:${wall.id}`, detail.user_role);
+        }
 
-      // 4. If detection done, fetch holds
-      if (detail.detection_status === "done") {
-        const holdsRes = await apiFetch(
-          `/gyms/${gym.slug}/walls/${wall.id}/holds`,
-        );
-        if (holdsRes.ok) {
-          const holds: Hold[] = await holdsRes.json();
-          upsertHolds(holds);
+        // 4. If detection done, fetch holds
+        if (detail.detection_status === "done") {
+          const holdsRes = await apiFetch(
+            `/gyms/${gym.slug}/walls/${wall.id}/holds`,
+          );
+          if (holdsRes.ok) {
+            const holds: Hold[] = await holdsRes.json();
+            upsertHolds(holds);
+          }
         }
       }
 
-      // 5. Fetch routes for this wall
+      // 5. Fetch routes for this wall (independent of wall detail)
       const routesRes = await apiFetch(
         `/gyms/${gym.slug}/walls/${wall.id}/routes`,
       );

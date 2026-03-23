@@ -402,7 +402,7 @@ export function getPendingMutations(): PendingMutation[] {
 
 export function getPendingMutationCount(): number {
   const row = getDb().getFirstSync<{ count: number }>(
-    "SELECT COUNT(*) as count FROM pending_mutations WHERE status = 'pending'",
+    "SELECT COUNT(*) as count FROM pending_mutations WHERE status IN ('pending', 'failed')",
   );
   return row?.count ?? 0;
 }
@@ -428,7 +428,7 @@ export function markMutationFailed(id: number, error: string) {
 
 export function resetFailedMutations() {
   getDb().runSync(
-    "UPDATE pending_mutations SET status = 'pending' WHERE status = 'failed' AND retry_count < 5",
+    "UPDATE pending_mutations SET status = 'pending' WHERE status = 'failed'",
   );
 }
 

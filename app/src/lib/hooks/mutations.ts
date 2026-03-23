@@ -158,6 +158,7 @@ export function useUpdateRoute(
   routeId: string,
 ) {
   const queryClient = useQueryClient();
+  const { userId } = useServerStore();
 
   return useMutation<
     void,
@@ -173,6 +174,7 @@ export function useUpdateRoute(
   >({
     mutationFn: async (params) => {
       if (isDbAvailable()) {
+        if (!userId) throw new Error("Not authenticated");
         const db = getDbQueries();
         const { getDb } = require("../db/database") as typeof import("../db/database");
         getDb().runSync(
