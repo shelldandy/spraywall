@@ -8,6 +8,11 @@ logger = logging.getLogger(__name__)
 MODEL_DIR = os.environ.get("MODEL_DIR", "./models")
 MODEL_PATH = os.path.join(MODEL_DIR, "yolov8n-freeclimbs-detect-2.pt")
 
+DETECTION_IMGSZ = int(os.environ.get("DETECTION_IMGSZ", "1280"))
+DETECTION_CONF = float(os.environ.get("DETECTION_CONF", "0.5"))
+DETECTION_IOU = float(os.environ.get("DETECTION_IOU", "0.45"))
+DETECTION_MAX_DET = int(os.environ.get("DETECTION_MAX_DET", "500"))
+
 _model = None
 
 
@@ -26,7 +31,14 @@ def detect_holds(image_path: str) -> list[dict]:
     polygon is [[x,y], ...] normalized or None
     """
     model = get_model()
-    results = model(image_path, imgsz=2560, max_det=2000, verbose=False)
+    results = model(
+        image_path,
+        imgsz=DETECTION_IMGSZ,
+        conf=DETECTION_CONF,
+        iou=DETECTION_IOU,
+        max_det=DETECTION_MAX_DET,
+        verbose=False,
+    )
 
     holds = []
     img_w = 0

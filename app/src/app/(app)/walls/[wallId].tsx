@@ -70,7 +70,7 @@ export default function WallDetailScreen() {
     },
   );
   const selectedIds = new Set(holdSelections.keys());
-  const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [imageLayout, setImageLayout] = useState<{
     width: number;
     height: number;
@@ -364,7 +364,7 @@ export default function WallDetailScreen() {
             <View style={styles.thresholdContainer}>
               <Text style={styles.thresholdLabel}>Confidence threshold</Text>
               <View style={styles.thresholdButtons}>
-                {[0.1, 0.25, 0.5, 0.75, 0.9].map((t) => (
+                {[0.5, 0.6, 0.7, 0.8, 0.9].map((t) => (
                   <Pressable
                     key={t}
                     style={[
