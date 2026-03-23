@@ -3,7 +3,7 @@ import os
 import tempfile
 import boto3
 from botocore.client import Config
-from PIL import Image
+from PIL import Image, ImageOps
 import pillow_heif
 
 pillow_heif.register_heif_opener()
@@ -39,6 +39,7 @@ def download_image(storage_key: str) -> str:
     out.close()
     try:
         img = Image.open(raw.name)
+        img = ImageOps.exif_transpose(img)
         img = img.convert("RGB")
         img.save(out.name, "JPEG", quality=95)
     finally:
