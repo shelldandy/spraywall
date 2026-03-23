@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
-import { useRouter, useNavigationContainerRef } from "expo-router";
-import { useServerStore } from "../lib/store/server";
+import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { useRouter, Redirect } from "expo-router";
+import { useServerStore, useHasHydrated } from "../lib/store/server";
 
 export default function ConnectScreen() {
   const router = useRouter();
-  const { serverUrl, setServerUrl, isAuthenticated } = useServerStore();
+  const hasHydrated = useHasHydrated();
+  const { serverUrl, setServerUrl, accessToken } = useServerStore();
   const [input, setInput] = useState(serverUrl || "http://localhost:8080");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -14,13 +15,21 @@ export default function ConnectScreen() {
     if (serverUrl) setInput(serverUrl);
   }, [serverUrl]);
 
-  const rootNav = useNavigationContainerRef();
+  if (!hasHydrated) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
-  useEffect(() => {
-    if (serverUrl && isAuthenticated() && rootNav?.isReady()) {
-      router.replace("/(app)/walls" as any);
-    }
-  }, [serverUrl, isAuthenticated, router, rootNav]);
+  if (serverUrl && accessToken) {
+    return <Redirect href="/(app)/walls" />;
+  }
+
+  if (serverUrl && !accessToken) {
+    return <Redirect href="/login" />;
+  }
 
   const handleConnect = async () => {
     setLoading(true);

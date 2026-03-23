@@ -1,14 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
-import { AppState, AppStateStatus } from "react-native";
 import { pullAll } from "./pull";
 import { pushPending } from "./push";
 import { useSyncStore } from "../store/sync";
 import { getPendingMutationCount, resetInFlightMutations } from "../db/queries";
 import { useServerStore } from "../store/server";
 
-const SYNC_INTERVAL_MS = 60_000;
+const SYNC_INTERVAL_MS = 3_600_000; // 1 hour
 let syncInterval: ReturnType<typeof setInterval> | null = null;
-let appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
 
 async function runSync(queryClient: QueryClient) {
   const { isAuthenticated, serverUrl } = useServerStore.getState();
@@ -50,26 +48,12 @@ export function startSyncEngine(queryClient: QueryClient) {
 
   // Periodic sync
   syncInterval = setInterval(() => runSync(queryClient), SYNC_INTERVAL_MS);
-
-  // Sync on app foreground
-  appStateSubscription = AppState.addEventListener(
-    "change",
-    (state: AppStateStatus) => {
-      if (state === "active") {
-        runSync(queryClient);
-      }
-    },
-  );
 }
 
 export function stopSyncEngine() {
   if (syncInterval) {
     clearInterval(syncInterval);
     syncInterval = null;
-  }
-  if (appStateSubscription) {
-    appStateSubscription.remove();
-    appStateSubscription = null;
   }
 }
 
