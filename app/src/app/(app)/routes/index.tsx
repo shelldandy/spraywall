@@ -6,10 +6,14 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRoutes } from "../../../lib/hooks/queries";
+import { useSyncStore } from "../../../lib/store/sync";
+import { triggerSync } from "../../../lib/sync/engine";
 import type { Route } from "../../../lib/api/types";
 
 export default function RoutesListScreen() {
@@ -18,6 +22,8 @@ export default function RoutesListScreen() {
     gymSlug: string;
   }>();
 
+  const queryClient = useQueryClient();
+  const isSyncing = useSyncStore((s) => s.isSyncing);
   const routesQuery = useRoutes(wallId, gymSlug);
 
   const routes = routesQuery.data ?? [];
@@ -79,6 +85,12 @@ export default function RoutesListScreen() {
           data={routes}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isSyncing}
+              onRefresh={() => triggerSync(queryClient)}
+            />
+          }
           renderItem={renderRoute}
           ListEmptyComponent={
             <Text style={styles.emptyText}>

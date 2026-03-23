@@ -12,7 +12,7 @@ interface SyncState {
 }
 
 export const useSyncStore = create<SyncState>()((set) => ({
-  isOnline: true,
+  isOnline: false,
   isSyncing: false,
   lastSyncedAt: null,
   pendingMutationCount: 0,

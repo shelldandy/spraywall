@@ -6,10 +6,14 @@ import {
   SectionList,
   StyleSheet,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLogbook } from "../../lib/hooks/queries";
+import { useSyncStore } from "../../lib/store/sync";
+import { triggerSync } from "../../lib/sync/engine";
 import type { LogbookEntry } from "../../lib/api/types";
 
 interface LogbookSection {
@@ -18,6 +22,8 @@ interface LogbookSection {
 }
 
 export default function LogbookScreen() {
+  const queryClient = useQueryClient();
+  const isSyncing = useSyncStore((s) => s.isSyncing);
   const logbookQuery = useLogbook();
 
   const entries = logbookQuery.data ?? [];
@@ -65,6 +71,12 @@ export default function LogbookScreen() {
           sections={sections}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isSyncing}
+              onRefresh={() => triggerSync(queryClient)}
+            />
+          }
           renderSectionHeader={({ section }) => (
             <Text style={styles.sectionHeader}>{section.title}</Text>
           )}

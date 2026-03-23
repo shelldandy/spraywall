@@ -9,6 +9,7 @@ import {
   Alert,
   Share,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +18,8 @@ import { useServerStore } from "../../../lib/store/server";
 import { apiFetch } from "../../../lib/api/fetch";
 import { useGymsWithWalls, type GymWithWalls } from "../../../lib/hooks/queries";
 import { isDbAvailable } from "../../../lib/db/database";
+import { useSyncStore } from "../../../lib/store/sync";
+import { triggerSync } from "../../../lib/sync/engine";
 import SwipeToDelete from "../../../components/SwipeToDelete";
 
 function getDbQueries() {
@@ -36,6 +39,7 @@ export default function WallsScreen() {
   const [wallName, setWallName] = useState("");
   const gymSlugRef = useRef<TextInput>(null);
 
+  const isSyncing = useSyncStore((s) => s.isSyncing);
   const gymsWithWallsQuery = useGymsWithWalls();
 
   const createGymMutation = useMutation({
@@ -233,6 +237,12 @@ export default function WallsScreen() {
           data={data}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isSyncing}
+              onRefresh={() => triggerSync(queryClient)}
+            />
+          }
           ListEmptyComponent={
             <Text style={styles.emptyText}>
               No gyms yet. Create one to get started.
