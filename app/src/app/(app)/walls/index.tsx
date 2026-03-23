@@ -17,6 +17,7 @@ import { useServerStore } from "../../../lib/store/server";
 import { apiFetch } from "../../../lib/api/fetch";
 import { useGymsWithWalls, type GymWithWalls } from "../../../lib/hooks/queries";
 import { isDbAvailable } from "../../../lib/db/database";
+import SwipeToDelete from "../../../components/SwipeToDelete";
 
 function getDbQueries() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -213,23 +214,23 @@ export default function WallsScreen() {
           }
           renderItem={({ item: gym }) => (
             <View style={styles.gymSection}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Text style={styles.gymName}>{gym.name}</Text>
-                {gym.user_role === "admin" && (
-                  <View style={{ flexDirection: "row", gap: 12 }}>
+              <SwipeToDelete onDelete={() => handleDeleteGym(gym)}>
+                <View style={styles.gymHeader}>
+                  <Text style={styles.gymName}>{gym.name}</Text>
+                  {gym.user_role === "admin" && (
                     <Pressable onPress={() => handleInvite(gym)}>
                       <Text style={{ color: "#007AFF", fontSize: 14, fontWeight: "600" }}>Invite</Text>
                     </Pressable>
-                    <Pressable onPress={() => handleDeleteGym(gym)}>
-                      <Text style={{ color: "#ff3b30", fontSize: 14, fontWeight: "600" }}>Delete</Text>
-                    </Pressable>
-                  </View>
-                )}
-              </View>
+                  )}
+                </View>
+              </SwipeToDelete>
               {gym.walls.map((wall) => (
-                <View key={wall.id} style={styles.wallItem}>
+                <SwipeToDelete
+                  key={wall.id}
+                  onDelete={() => handleDeleteWall(gym, wall.id, wall.name)}
+                >
                   <Pressable
-                    style={{ flex: 1 }}
+                    style={styles.wallItem}
                     onPress={() =>
                       router.push({
                         pathname: "/(app)/walls/[wallId]" as any,
@@ -238,14 +239,9 @@ export default function WallsScreen() {
                     }
                   >
                     <Text style={styles.wallName}>{wall.name}</Text>
+                    <Text style={styles.chevron}>{">"}</Text>
                   </Pressable>
-                  {(gym.user_role === "admin" || gym.user_role === "setter") && (
-                    <Pressable onPress={() => handleDeleteWall(gym, wall.id, wall.name)} style={{ paddingLeft: 12 }}>
-                      <Text style={{ color: "#ff3b30", fontSize: 14, fontWeight: "600" }}>Delete</Text>
-                    </Pressable>
-                  )}
-                  <Text style={styles.chevron}>{">"}</Text>
-                </View>
+                </SwipeToDelete>
               ))}
 
               {(gym.user_role === "admin" || gym.user_role === "setter") && (
@@ -451,10 +447,16 @@ const styles = StyleSheet.create({
   gymSection: {
     marginBottom: 24,
   },
+  gymHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
   gymName: {
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: 8,
     color: "#333",
   },
   wallItem: {
@@ -464,7 +466,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8f8f8",
     padding: 14,
     borderRadius: 8,
-    marginBottom: 6,
   },
   wallName: {
     fontSize: 16,
