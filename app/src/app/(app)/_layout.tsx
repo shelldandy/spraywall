@@ -1,20 +1,24 @@
-import { useEffect } from "react";
-import { Stack, useRouter } from "expo-router";
-import { useServerStore } from "../../lib/store/server";
+import { View } from "react-native";
+import { Stack, Redirect } from "expo-router";
+import { useServerStore, useHasHydrated } from "../../lib/store/server";
+import SyncStatusBar from "../../components/SyncStatusBar";
 
 export default function AppLayout() {
-  const router = useRouter();
+  const hasHydrated = useHasHydrated();
   const { accessToken } = useServerStore();
 
-  useEffect(() => {
-    if (!accessToken) {
-      router.replace("/login" as any);
-    }
-  }, [accessToken, router]);
-
-  if (!accessToken) {
+  if (!hasHydrated) {
     return null;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  if (!accessToken) {
+    return <Redirect href="/login" />;
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <SyncStatusBar />
+      <Stack screenOptions={{ headerShown: false }} />
+    </View>
+  );
 }

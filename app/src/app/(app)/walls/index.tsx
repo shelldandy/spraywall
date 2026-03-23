@@ -9,16 +9,22 @@ import {
   Alert,
   Share,
   ActivityIndicator,
-  SafeAreaView,
+  RefreshControl,
 } from "react-native";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useServerStore } from "../../../lib/store/server";
 import { apiFetch } from "../../../lib/api/fetch";
-import type { Gym, Wall } from "../../../lib/api/types";
+import { useGymsWithWalls, type GymWithWalls } from "../../../lib/hooks/queries";
+import { isDbAvailable } from "../../../lib/db/database";
+import { useSyncStore } from "../../../lib/store/sync";
+import { triggerSync } from "../../../lib/sync/engine";
+import SwipeToDelete from "../../../components/SwipeToDelete";
 
-interface GymWithWalls extends Gym {
-  walls: Wall[];
+function getDbQueries() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("../../../lib/db/queries") as typeof import("../../../lib/db/queries");
 }
 
 export default function WallsScreen() {
@@ -33,33 +39,8 @@ export default function WallsScreen() {
   const [wallName, setWallName] = useState("");
   const gymSlugRef = useRef<TextInput>(null);
 
-  const gymsQuery = useQuery<Gym[]>({
-    queryKey: ["gyms"],
-    queryFn: async () => {
-      const res = await apiFetch("/gyms");
-      if (!res.ok) throw new Error("Failed to fetch gyms");
-      return res.json();
-    },
-    refetchInterval: 10000,
-  });
-
-  const wallsQueries = useQuery<GymWithWalls[]>({
-    queryKey: ["gyms-with-walls", gymsQuery.data?.map(g => g.id)],
-    queryFn: async () => {
-      const gyms = gymsQuery.data;
-      if (!gyms) return [];
-      const results = await Promise.all(
-        gyms.map(async (gym) => {
-          const res = await apiFetch(`/gyms/${gym.slug}/walls`);
-          const walls: Wall[] = res.ok ? await res.json() : [];
-          return { ...gym, walls };
-        })
-      );
-      return results;
-    },
-    enabled: !!gymsQuery.data,
-    refetchInterval: 10000,
-  });
+  const isSyncing = useSyncStore((s) => s.isSyncing);
+  const gymsWithWallsQuery = useGymsWithWalls();
 
   const createGymMutation = useMutation({
     mutationFn: async ({ name, slug }: { name: string; slug: string }) => {
@@ -73,8 +54,9 @@ export default function WallsScreen() {
       }
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["gyms"] });
+    onSuccess: (gym) => {
+      if (isDbAvailable()) getDbQueries().upsertGyms([gym]);
+      queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
       setShowGymForm(false);
       setGymName("");
       setGymSlug("");
@@ -100,7 +82,8 @@ export default function WallsScreen() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (wall) => {
+      if (isDbAvailable()) getDbQueries().upsertWalls([wall]);
       queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
       setWallFormGymSlug(null);
       setWallName("");
@@ -113,7 +96,7 @@ export default function WallsScreen() {
     router.replace("/login" as any);
   };
 
-  const handleInvite = async (gym: Gym) => {
+  const handleInvite = async (gym: GymWithWalls) => {
     try {
       const res = await apiFetch(`/gyms/${gym.slug}/invites`, {
         method: "POST",
@@ -132,7 +115,95 @@ export default function WallsScreen() {
     }
   };
 
-  const data = wallsQueries.data ?? [];
+  const handleDeleteGym = (gym: GymWithWalls) => {
+    Alert.alert(
+      "Delete Gym",
+      `Are you sure you want to delete "${gym.name}"? All walls, routes, and sends will be permanently deleted.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await apiFetch(`/gyms/${gym.slug}`, { method: "DELETE" });
+              // 404 means already deleted on server — clean up locally
+              if (!res.ok && res.status !== 404) {
+                const data = await res.json();
+                Alert.alert("Error", data.error || "Failed to delete gym");
+                return;
+              }
+              if (isDbAvailable()) {
+                const { getDb } = require("../../../lib/db/database") as typeof import("../../../lib/db/database");
+                const db = getDb();
+                db.execSync("BEGIN TRANSACTION");
+                try {
+                  // Delete children in FK order (no CASCADE in local schema)
+                  db.runSync("DELETE FROM sends WHERE route_id IN (SELECT id FROM routes WHERE wall_id IN (SELECT id FROM walls WHERE gym_id = ?))", gym.id);
+                  db.runSync("DELETE FROM routes WHERE wall_id IN (SELECT id FROM walls WHERE gym_id = ?)", gym.id);
+                  db.runSync("DELETE FROM holds WHERE wall_image_id IN (SELECT id FROM wall_images WHERE wall_id IN (SELECT id FROM walls WHERE gym_id = ?))", gym.id);
+                  db.runSync("DELETE FROM wall_images WHERE wall_id IN (SELECT id FROM walls WHERE gym_id = ?)", gym.id);
+                  db.runSync("DELETE FROM walls WHERE gym_id = ?", gym.id);
+                  db.runSync("DELETE FROM gyms WHERE id = ?", gym.id);
+                  db.execSync("COMMIT");
+                } catch {
+                  db.execSync("ROLLBACK");
+                }
+              }
+              queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
+            } catch {
+              Alert.alert("Error", "Failed to delete gym");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDeleteWall = (gym: GymWithWalls, wallId: string, wallName: string) => {
+    Alert.alert(
+      "Delete Wall",
+      `Are you sure you want to delete "${wallName}"? All routes and sends on this wall will be permanently deleted.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await apiFetch(`/gyms/${gym.slug}/walls/${wallId}`, { method: "DELETE" });
+              // 404 means already deleted on server — clean up locally
+              if (!res.ok && res.status !== 404) {
+                const data = await res.json();
+                Alert.alert("Error", data.error || "Failed to delete wall");
+                return;
+              }
+              if (isDbAvailable()) {
+                const { getDb } = require("../../../lib/db/database") as typeof import("../../../lib/db/database");
+                const db = getDb();
+                db.execSync("BEGIN TRANSACTION");
+                try {
+                  db.runSync("DELETE FROM sends WHERE route_id IN (SELECT id FROM routes WHERE wall_id = ?)", wallId);
+                  db.runSync("DELETE FROM routes WHERE wall_id = ?", wallId);
+                  db.runSync("DELETE FROM holds WHERE wall_image_id IN (SELECT id FROM wall_images WHERE wall_id = ?)", wallId);
+                  db.runSync("DELETE FROM wall_images WHERE wall_id = ?", wallId);
+                  db.runSync("DELETE FROM walls WHERE id = ?", wallId);
+                  db.execSync("COMMIT");
+                } catch {
+                  db.execSync("ROLLBACK");
+                }
+              }
+              queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
+            } catch {
+              Alert.alert("Error", "Failed to delete wall");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const data = gymsWithWallsQuery.data ?? [];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -159,13 +230,19 @@ export default function WallsScreen() {
         </View>
       </View>
 
-      {gymsQuery.isLoading ? (
+      {gymsWithWallsQuery.isLoading ? (
         <ActivityIndicator style={styles.loader} size="large" color="#007AFF" />
       ) : (
         <FlatList
           data={data}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isSyncing}
+              onRefresh={() => triggerSync(queryClient)}
+            />
+          }
           ListEmptyComponent={
             <Text style={styles.emptyText}>
               No gyms yet. Create one to get started.
@@ -173,28 +250,34 @@ export default function WallsScreen() {
           }
           renderItem={({ item: gym }) => (
             <View style={styles.gymSection}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Text style={styles.gymName}>{gym.name}</Text>
-                {gym.user_role === "admin" && (
-                  <Pressable onPress={() => handleInvite(gym)}>
-                    <Text style={{ color: "#007AFF", fontSize: 14, fontWeight: "600" }}>Invite</Text>
-                  </Pressable>
-                )}
-              </View>
+              <SwipeToDelete onDelete={() => handleDeleteGym(gym)}>
+                <View style={styles.gymHeader}>
+                  <Text style={styles.gymName}>{gym.name}</Text>
+                  {gym.user_role === "admin" && (
+                    <Pressable onPress={() => handleInvite(gym)}>
+                      <Text style={{ color: "#007AFF", fontSize: 14, fontWeight: "600" }}>Invite</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </SwipeToDelete>
               {gym.walls.map((wall) => (
-                <Pressable
+                <SwipeToDelete
                   key={wall.id}
-                  style={styles.wallItem}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(app)/walls/[wallId]" as any,
-                      params: { wallId: wall.id, gymSlug: gym.slug },
-                    })
-                  }
+                  onDelete={() => handleDeleteWall(gym, wall.id, wall.name)}
                 >
-                  <Text style={styles.wallName}>{wall.name}</Text>
-                  <Text style={styles.chevron}>{">"}</Text>
-                </Pressable>
+                  <Pressable
+                    style={styles.wallItem}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(app)/walls/[wallId]" as any,
+                        params: { wallId: wall.id, gymSlug: gym.slug },
+                      })
+                    }
+                  >
+                    <Text style={styles.wallName}>{wall.name}</Text>
+                    <Text style={styles.chevron}>{">"}</Text>
+                  </Pressable>
+                </SwipeToDelete>
               ))}
 
               {(gym.user_role === "admin" || gym.user_role === "setter") && (
@@ -400,10 +483,16 @@ const styles = StyleSheet.create({
   gymSection: {
     marginBottom: 24,
   },
+  gymHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
   gymName: {
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: 8,
     color: "#333",
   },
   wallItem: {
@@ -413,7 +502,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8f8f8",
     padding: 14,
     borderRadius: 8,
-    marginBottom: 6,
   },
   wallName: {
     fontSize: 16,

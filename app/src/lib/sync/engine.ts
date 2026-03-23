@@ -1,0 +1,63 @@
+import { QueryClient } from "@tanstack/react-query";
+import { pullAll } from "./pull";
+import { pushPending } from "./push";
+import { useSyncStore } from "../store/sync";
+import { getPendingMutationCount, resetInFlightMutations } from "../db/queries";
+import { useServerStore } from "../store/server";
+
+const SYNC_INTERVAL_MS = 3_600_000; // 1 hour
+let syncInterval: ReturnType<typeof setInterval> | null = null;
+
+async function runSync(queryClient: QueryClient) {
+  const { isAuthenticated, serverUrl } = useServerStore.getState();
+  if (!isAuthenticated() || !serverUrl) return;
+
+  const store = useSyncStore.getState();
+  if (store.isSyncing) return;
+
+  store.setSyncing(true);
+  try {
+    // Push first so local changes reach the server before we pull
+    await pushPending();
+    await pullAll();
+
+    store.setOnline(true);
+    store.setLastSynced(new Date().toISOString());
+
+    // Invalidate all queries so UI re-reads from SQLite
+    queryClient.invalidateQueries();
+  } catch {
+    store.setOnline(false);
+  } finally {
+    store.setSyncing(false);
+    store.setPendingCount(getPendingMutationCount());
+  }
+}
+
+export function startSyncEngine(queryClient: QueryClient) {
+  // Guard against double-start (e.g. Fast Refresh)
+  if (syncInterval) {
+    stopSyncEngine();
+  }
+
+  // Reset any mutations stuck in_flight from a prior crash
+  resetInFlightMutations();
+
+  // Initial sync
+  runSync(queryClient);
+
+  // Periodic sync
+  syncInterval = setInterval(() => runSync(queryClient), SYNC_INTERVAL_MS);
+}
+
+export function stopSyncEngine() {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
+}
+
+/** Trigger a sync immediately (e.g. after a local mutation) */
+export function triggerSync(queryClient: QueryClient) {
+  runSync(queryClient);
+}

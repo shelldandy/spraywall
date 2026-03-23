@@ -3,21 +3,29 @@ import {
   View,
   Text,
   Pressable,
-  Image,
   StyleSheet,
   Alert,
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   LayoutChangeEvent,
   Platform,
 } from "react-native";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { apiFetch } from "../../../lib/api/fetch";
 import { useServerStore } from "../../../lib/store/server";
-import type { WallDetail, Hold } from "../../../lib/api/types";
+import { useWallDetail, useHolds } from "../../../lib/hooks/queries";
+import { isDbAvailable } from "../../../lib/db/database";
+import { triggerSync } from "../../../lib/sync/engine";
+import type { Hold } from "../../../lib/api/types";
+
+function getDbQueries() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("../../../lib/db/queries") as typeof import("../../../lib/db/queries");
+}
 import HoldOverlay from "../../../components/HoldOverlay";
 import ZoomableView from "../../../components/ZoomableView";
 
@@ -69,29 +77,13 @@ export default function WallDetailScreen() {
   } | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const isPolling = (status: string | null | undefined) =>
-    status === "pending" || status === "processing";
+  const wallQuery = useWallDetail(wallId, gymSlug);
 
-  const wallQuery = useQuery<WallDetail>({
-    queryKey: ["wall-detail", gymSlug, wallId],
-    queryFn: async () => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}`);
-      if (!res.ok) throw new Error("Failed to fetch wall");
-      return res.json();
-    },
-    refetchInterval: (query) =>
-      isPolling(query.state.data?.detection_status) ? 3000 : false,
-  });
-
-  const holdsQuery = useQuery<Hold[]>({
-    queryKey: ["holds", gymSlug, wallId],
-    queryFn: async () => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds`);
-      if (!res.ok) throw new Error("Failed to fetch holds");
-      return res.json();
-    },
-    enabled: wallQuery.data?.detection_status === "done",
-  });
+  const holdsQuery = useHolds(
+    wallId,
+    wallQuery.data?.detection_status === "done",
+    gymSlug,
+  );
 
   const handleToggle = useCallback((holdId: string) => {
     setHoldSelections((prev) => {
@@ -113,7 +105,7 @@ export default function WallDetailScreen() {
   const deleteHold = useCallback(
     async (holdId: string) => {
       // Optimistic removal
-      queryClient.setQueryData<Hold[] | undefined>(["holds", gymSlug, wallId], (old) =>
+      queryClient.setQueryData<Hold[] | undefined>(["holds", wallId], (old) =>
         old ? old.filter((h) => h.id !== holdId) : old
       );
       try {
@@ -122,7 +114,7 @@ export default function WallDetailScreen() {
         });
         if (!res.ok) throw new Error("Failed to delete hold");
       } catch {
-        queryClient.invalidateQueries({ queryKey: ["holds", gymSlug, wallId] });
+        queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
       }
     },
     [queryClient, gymSlug, wallId],
@@ -159,7 +151,9 @@ export default function WallDetailScreen() {
         body: JSON.stringify({ bbox }),
       });
       if (!res.ok) throw new Error("Failed to add hold");
-      queryClient.invalidateQueries({ queryKey: ["holds", gymSlug, wallId] });
+      const newHold = await res.json();
+      if (isDbAvailable()) getDbQueries().upsertHolds([newHold]);
+      queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
     } catch (err: any) {
       Alert.alert("Error", err.message);
     }
@@ -202,10 +196,12 @@ export default function WallDetailScreen() {
         const err = await res.text();
         throw new Error(err || "Upload failed");
       }
+      // Trigger sync to pull the new image into SQLite
+      if (isDbAvailable()) triggerSync(queryClient);
       queryClient.invalidateQueries({
-        queryKey: ["wall-detail", gymSlug, wallId],
+        queryKey: ["wall-detail", wallId],
       });
-      queryClient.invalidateQueries({ queryKey: ["holds", gymSlug, wallId] });
+      queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
       setHoldSelections(new Map());
     } catch (err: any) {
       Alert.alert("Upload Error", err.message);
@@ -285,7 +281,7 @@ export default function WallDetailScreen() {
                   <Image
                     source={{ uri: `${serverUrl}${wall.image.image_url}` }}
                     style={styles.wallImage}
-                    resizeMode="contain"
+                    contentFit="contain"
                     onLayout={onImageLayout}
                   />
                   {(isEditingHolds || filteredHolds.length > 0) && (
@@ -318,7 +314,7 @@ export default function WallDetailScreen() {
                 <Image
                   source={{ uri: `${serverUrl}${wall.image.image_url}` }}
                   style={styles.wallImage}
-                  resizeMode="contain"
+                  contentFit="contain"
                   onLayout={onImageLayout}
                 />
               )}

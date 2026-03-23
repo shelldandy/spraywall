@@ -52,6 +52,15 @@ func (q *Queries) CreateGymMember(ctx context.Context, arg CreateGymMemberParams
 	return err
 }
 
+const deleteGym = `-- name: DeleteGym :exec
+DELETE FROM gyms WHERE id = $1
+`
+
+func (q *Queries) DeleteGym(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteGym, id)
+	return err
+}
+
 const getGymBySlug = `-- name: GetGymBySlug :one
 SELECT id, name, slug, owner_id, created_at FROM gyms WHERE slug = $1
 `

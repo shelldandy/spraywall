@@ -3,19 +3,17 @@ import {
   View,
   Text,
   Pressable,
-  Image,
   StyleSheet,
-  Alert,
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   LayoutChangeEvent,
 } from "react-native";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { useLocalSearchParams, router } from "expo-router";
-import { apiFetch } from "../../../lib/api/fetch";
 import { useServerStore } from "../../../lib/store/server";
-import type { Route, WallDetail, Hold } from "../../../lib/api/types";
+import { useRouteDetail, useWallDetail, useHolds } from "../../../lib/hooks/queries";
+import { useLogSend, useUnsend } from "../../../lib/hooks/mutations";
 import HoldOverlay from "../../../components/HoldOverlay";
 
 export default function RouteDetailScreen() {
@@ -24,7 +22,6 @@ export default function RouteDetailScreen() {
     wallId: string;
     gymSlug: string;
   }>();
-  const queryClient = useQueryClient();
   const { serverUrl } = useServerStore();
 
   const [imageLayout, setImageLayout] = useState<{
@@ -32,35 +29,15 @@ export default function RouteDetailScreen() {
     height: number;
   } | null>(null);
 
-  const routeQuery = useQuery<Route>({
-    queryKey: ["route-detail", gymSlug, wallId, routeId],
-    queryFn: async () => {
-      const res = await apiFetch(
-        `/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}`
-      );
-      if (!res.ok) throw new Error("Failed to fetch route");
-      return res.json();
-    },
-  });
+  const routeQuery = useRouteDetail(routeId, gymSlug, wallId);
 
-  const wallQuery = useQuery<WallDetail>({
-    queryKey: ["wall-detail", gymSlug, wallId],
-    queryFn: async () => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}`);
-      if (!res.ok) throw new Error("Failed to fetch wall");
-      return res.json();
-    },
-  });
+  const wallQuery = useWallDetail(wallId, gymSlug);
 
-  const holdsQuery = useQuery<Hold[]>({
-    queryKey: ["holds", gymSlug, wallId],
-    queryFn: async () => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds`);
-      if (!res.ok) throw new Error("Failed to fetch holds");
-      return res.json();
-    },
-    enabled: wallQuery.data?.detection_status === "done",
-  });
+  const holdsQuery = useHolds(
+    wallId,
+    wallQuery.data?.detection_status === "done",
+    gymSlug,
+  );
 
   const routeData = routeQuery.data;
   const wall = wallQuery.data;
@@ -76,55 +53,8 @@ export default function RouteDetailScreen() {
     [allHolds, routeHoldIds]
   );
 
-  const sendMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiFetch(
-        `/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/sends`,
-        {
-          method: "POST",
-          body: JSON.stringify({}),
-        }
-      );
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err || "Failed to log send");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["route-detail", gymSlug, wallId, routeId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["routes", gymSlug, wallId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["logbook"] });
-    },
-    onError: (err: Error) => Alert.alert("Error", err.message),
-  });
-
-  const unsendMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiFetch(
-        `/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/sends/me`,
-        { method: "DELETE" }
-      );
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err || "Failed to remove send");
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["route-detail", gymSlug, wallId, routeId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["routes", gymSlug, wallId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["logbook"] });
-    },
-    onError: (err: Error) => Alert.alert("Error", err.message),
-  });
+  const sendMutation = useLogSend(gymSlug, wallId, routeId);
+  const unsendMutation = useUnsend(gymSlug, wallId, routeId);
 
   const onImageLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -184,7 +114,7 @@ export default function RouteDetailScreen() {
               <Image
                 source={{ uri: `${serverUrl}${wall.image.image_url}` }}
                 style={styles.wallImage}
-                resizeMode="contain"
+                contentFit="contain"
                 onLayout={onImageLayout}
               />
               {imageLayout && routeHolds.length > 0 && (

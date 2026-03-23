@@ -118,6 +118,7 @@ func main() {
 		r.Get("/", wallHandler.ListGyms)
 		r.Route("/{gymSlug}", func(r chi.Router) {
 			r.Get("/", wallHandler.GetGym)
+			r.Delete("/", wallHandler.DeleteGym)
 			r.Post("/members", wallHandler.AddMember)
 			r.Post("/invites", inviteHandler.CreateInvite)
 			r.Route("/walls", func(r chi.Router) {
@@ -125,6 +126,7 @@ func main() {
 				r.Get("/", wallHandler.ListWalls)
 				r.Route("/{wallId}", func(r chi.Router) {
 					r.Get("/", wallHandler.GetWall)
+					r.Delete("/", wallHandler.DeleteWall)
 					r.Post("/images", wallHandler.UploadImage)
 					r.Get("/holds", wallHandler.GetHolds)
 					r.Post("/holds", wallHandler.CreateHold)

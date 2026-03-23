@@ -670,6 +670,70 @@ func (h *Handler) DeleteHold(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// DeleteGym handles DELETE /gyms/{gymSlug}
+func (h *Handler) DeleteGym(w http.ResponseWriter, r *http.Request) {
+	_, member, err := h.requireGymMember(w, r)
+	if err != nil {
+		return
+	}
+
+	if member.Role != generated.UserRoleAdmin {
+		writeError(w, http.StatusForbidden, "only gym admins can delete gyms")
+		return
+	}
+
+	if err := h.queries.DeleteGym(r.Context(), member.GymID); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete gym")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteWall handles DELETE /gyms/{gymSlug}/walls/{wallId}
+func (h *Handler) DeleteWall(w http.ResponseWriter, r *http.Request) {
+	gym, member, err := h.requireGymMember(w, r)
+	if err != nil {
+		return
+	}
+
+	if member.Role != generated.UserRoleAdmin && member.Role != generated.UserRoleSetter {
+		writeError(w, http.StatusForbidden, "only setters or admins can delete walls")
+		return
+	}
+
+	wallIDStr := chi.URLParam(r, "wallId")
+	wallUUID, err := uuid.Parse(wallIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid wall id")
+		return
+	}
+
+	wall, err := h.queries.GetWallByID(r.Context(), shared.PgUUID(wallUUID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "wall not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "database error")
+		}
+		return
+	}
+	if wall.GymID != gym.ID {
+		writeError(w, http.StatusNotFound, "wall not found")
+		return
+	}
+
+	if err := h.queries.DeleteWall(r.Context(), generated.DeleteWallParams{
+		ID:    wall.ID,
+		GymID: gym.ID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete wall")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ServeImage handles GET /images/*
 func (h *Handler) ServeImage(w http.ResponseWriter, r *http.Request) {
 	key := chi.URLParam(r, "*")

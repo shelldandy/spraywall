@@ -5,14 +5,11 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  Alert,
-  SafeAreaView,
   ScrollView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../../../lib/api/fetch";
-import type { Route } from "../../../lib/api/types";
+import { useCreateRoute, useUpdateRoute } from "../../../lib/hooks/mutations";
 import GradePicker from "../../../components/GradePicker";
 import { formatGrade, gradeIdFromV } from "../../../lib/grades";
 
@@ -28,8 +25,6 @@ export default function CreateRouteScreen() {
       initialGrade: string;
       initialDescription: string;
     }>();
-  const queryClient = useQueryClient();
-
   const isEditing = !!routeId;
   const parsedHoldIds: string[] = holdIds ? JSON.parse(holdIds) : [];
   const parsedHoldRoles = holdRoles ? JSON.parse(holdRoles) : null;
@@ -40,47 +35,35 @@ export default function CreateRouteScreen() {
   );
   const [description, setDescription] = useState(initialDescription ?? "");
 
-  const saveMutation = useMutation<Route, Error, { status: "draft" | "published" }>({
-    mutationFn: async ({ status }) => {
-      const url = isEditing
-        ? `/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}`
-        : `/gyms/${gymSlug}/walls/${wallId}/routes`;
-      const res = await apiFetch(url, {
-        method: isEditing ? "PUT" : "POST",
-        body: JSON.stringify({
-          name: name.trim(),
-          grade: gradeId !== null ? formatGrade(gradeId, "v") : null,
-          description: description.trim() || null,
-          hold_ids: parsedHoldIds,
-          hold_roles: parsedHoldRoles,
-          status,
-        }),
+  const createRouteMutation = useCreateRoute(gymSlug, wallId);
+  const updateRouteMutation = useUpdateRoute(gymSlug, wallId, routeId);
+
+  const saveMutation = {
+    isPending: createRouteMutation.isPending || updateRouteMutation.isPending,
+    mutate: ({ status }: { status: "draft" | "published" }) => {
+      const params = {
+        name: name.trim(),
+        grade: gradeId !== null ? formatGrade(gradeId, "v") : null,
+        description: description.trim() || null,
+        hold_ids: parsedHoldIds,
+        hold_roles: parsedHoldRoles,
+        status,
+      };
+      const mutation = isEditing ? updateRouteMutation : createRouteMutation;
+      mutation.mutate(params, {
+        onSuccess: () => {
+          if (isEditing) {
+            router.replace({
+              pathname: "/(app)/routes/[routeId]" as any,
+              params: { routeId, wallId, gymSlug },
+            });
+          } else {
+            router.back();
+          }
+        },
       });
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err || `Failed to ${isEditing ? "update" : "create"} route`);
-      }
-      return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["routes", gymSlug, wallId],
-      });
-      if (isEditing) {
-        queryClient.invalidateQueries({
-          queryKey: ["route-detail", gymSlug, wallId, routeId],
-        });
-        // Go back to route detail, skipping the wall edit screen
-        router.replace({
-          pathname: "/(app)/routes/[routeId]" as any,
-          params: { routeId, wallId, gymSlug },
-        });
-      } else {
-        router.back();
-      }
-    },
-    onError: (err: Error) => Alert.alert("Error", err.message),
-  });
+  };
 
   return (
     <SafeAreaView style={styles.container}>
