@@ -123,7 +123,8 @@ export default function WallsScreen() {
           onPress: async () => {
             try {
               const res = await apiFetch(`/gyms/${gym.slug}`, { method: "DELETE" });
-              if (!res.ok) {
+              // 404 means already deleted on server — clean up locally
+              if (!res.ok && res.status !== 404) {
                 const data = await res.json();
                 Alert.alert("Error", data.error || "Failed to delete gym");
                 return;
@@ -154,7 +155,8 @@ export default function WallsScreen() {
           onPress: async () => {
             try {
               const res = await apiFetch(`/gyms/${gym.slug}/walls/${wallId}`, { method: "DELETE" });
-              if (!res.ok) {
+              // 404 means already deleted on server — clean up locally
+              if (!res.ok && res.status !== 404) {
                 const data = await res.json();
                 Alert.alert("Error", data.error || "Failed to delete wall");
                 return;
