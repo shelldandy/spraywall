@@ -6,11 +6,11 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   LayoutChangeEvent,
   Platform,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, router } from "expo-router";

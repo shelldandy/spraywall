@@ -9,8 +9,8 @@ import {
   Alert,
   Share,
   ActivityIndicator,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useServerStore } from "../../../lib/store/server";

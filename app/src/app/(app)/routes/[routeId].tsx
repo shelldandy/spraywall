@@ -5,10 +5,10 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   LayoutChangeEvent,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { useLocalSearchParams, router } from "expo-router";
 import { useServerStore } from "../../../lib/store/server";

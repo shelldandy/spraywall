@@ -6,8 +6,8 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { useRoutes } from "../../../lib/hooks/queries";
 import type { Route } from "../../../lib/api/types";
