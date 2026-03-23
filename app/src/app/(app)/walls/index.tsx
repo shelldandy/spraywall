@@ -15,9 +15,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useServerStore } from "../../../lib/store/server";
 import { apiFetch } from "../../../lib/api/fetch";
-import { useGymsWithWalls } from "../../../lib/hooks/queries";
+import { useGymsWithWalls, type GymWithWalls } from "../../../lib/hooks/queries";
 import { isDbAvailable } from "../../../lib/db/database";
-import type { Gym } from "../../../lib/api/types";
 
 function getDbQueries() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -92,7 +91,7 @@ export default function WallsScreen() {
     router.replace("/login" as any);
   };
 
-  const handleInvite = async (gym: Gym) => {
+  const handleInvite = async (gym: GymWithWalls) => {
     try {
       const res = await apiFetch(`/gyms/${gym.slug}/invites`, {
         method: "POST",
@@ -109,6 +108,68 @@ export default function WallsScreen() {
     } catch {
       Alert.alert("Error", "Failed to create invite");
     }
+  };
+
+  const handleDeleteGym = (gym: GymWithWalls) => {
+    Alert.alert(
+      "Delete Gym",
+      `Are you sure you want to delete "${gym.name}"? All walls, routes, and sends will be permanently deleted.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await apiFetch(`/gyms/${gym.slug}`, { method: "DELETE" });
+              if (!res.ok) {
+                const data = await res.json();
+                Alert.alert("Error", data.error || "Failed to delete gym");
+                return;
+              }
+              if (isDbAvailable()) {
+                const { getDb } = require("../../../lib/db/database") as typeof import("../../../lib/db/database");
+                getDb().runSync("DELETE FROM gyms WHERE id = ?", gym.id);
+              }
+              queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
+            } catch {
+              Alert.alert("Error", "Failed to delete gym");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDeleteWall = (gym: GymWithWalls, wallId: string, wallName: string) => {
+    Alert.alert(
+      "Delete Wall",
+      `Are you sure you want to delete "${wallName}"? All routes and sends on this wall will be permanently deleted.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await apiFetch(`/gyms/${gym.slug}/walls/${wallId}`, { method: "DELETE" });
+              if (!res.ok) {
+                const data = await res.json();
+                Alert.alert("Error", data.error || "Failed to delete wall");
+                return;
+              }
+              if (isDbAvailable()) {
+                const { getDb } = require("../../../lib/db/database") as typeof import("../../../lib/db/database");
+                getDb().runSync("DELETE FROM walls WHERE id = ?", wallId);
+              }
+              queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
+            } catch {
+              Alert.alert("Error", "Failed to delete wall");
+            }
+          },
+        },
+      ],
+    );
   };
 
   const data = gymsWithWallsQuery.data ?? [];
@@ -155,25 +216,36 @@ export default function WallsScreen() {
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <Text style={styles.gymName}>{gym.name}</Text>
                 {gym.user_role === "admin" && (
-                  <Pressable onPress={() => handleInvite(gym)}>
-                    <Text style={{ color: "#007AFF", fontSize: 14, fontWeight: "600" }}>Invite</Text>
-                  </Pressable>
+                  <View style={{ flexDirection: "row", gap: 12 }}>
+                    <Pressable onPress={() => handleInvite(gym)}>
+                      <Text style={{ color: "#007AFF", fontSize: 14, fontWeight: "600" }}>Invite</Text>
+                    </Pressable>
+                    <Pressable onPress={() => handleDeleteGym(gym)}>
+                      <Text style={{ color: "#ff3b30", fontSize: 14, fontWeight: "600" }}>Delete</Text>
+                    </Pressable>
+                  </View>
                 )}
               </View>
               {gym.walls.map((wall) => (
-                <Pressable
-                  key={wall.id}
-                  style={styles.wallItem}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(app)/walls/[wallId]" as any,
-                      params: { wallId: wall.id, gymSlug: gym.slug },
-                    })
-                  }
-                >
-                  <Text style={styles.wallName}>{wall.name}</Text>
+                <View key={wall.id} style={styles.wallItem}>
+                  <Pressable
+                    style={{ flex: 1 }}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(app)/walls/[wallId]" as any,
+                        params: { wallId: wall.id, gymSlug: gym.slug },
+                      })
+                    }
+                  >
+                    <Text style={styles.wallName}>{wall.name}</Text>
+                  </Pressable>
+                  {(gym.user_role === "admin" || gym.user_role === "setter") && (
+                    <Pressable onPress={() => handleDeleteWall(gym, wall.id, wall.name)} style={{ paddingLeft: 12 }}>
+                      <Text style={{ color: "#ff3b30", fontSize: 14, fontWeight: "600" }}>Delete</Text>
+                    </Pressable>
+                  )}
                   <Text style={styles.chevron}>{">"}</Text>
-                </Pressable>
+                </View>
               ))}
 
               {(gym.user_role === "admin" || gym.user_role === "setter") && (

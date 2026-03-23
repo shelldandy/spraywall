@@ -38,3 +38,6 @@ RETURNING *;
 
 -- name: DeleteHold :one
 DELETE FROM holds WHERE id = $1 AND wall_image_id = $2 RETURNING id;
+
+-- name: DeleteWall :exec
+DELETE FROM walls WHERE id = $1 AND gym_id = $2;

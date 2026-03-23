@@ -129,6 +129,20 @@ func (q *Queries) DeleteHold(ctx context.Context, arg DeleteHoldParams) (pgtype.
 	return id, err
 }
 
+const deleteWall = `-- name: DeleteWall :exec
+DELETE FROM walls WHERE id = $1 AND gym_id = $2
+`
+
+type DeleteWallParams struct {
+	ID    pgtype.UUID `json:"id"`
+	GymID pgtype.UUID `json:"gym_id"`
+}
+
+func (q *Queries) DeleteWall(ctx context.Context, arg DeleteWallParams) error {
+	_, err := q.db.Exec(ctx, deleteWall, arg.ID, arg.GymID)
+	return err
+}
+
 const getActiveWallImage = `-- name: GetActiveWallImage :one
 SELECT id, wall_id, storage_key, is_active, created_at FROM wall_images WHERE wall_id = $1 AND is_active = true ORDER BY created_at DESC LIMIT 1
 `

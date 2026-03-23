@@ -23,3 +23,6 @@ SELECT * FROM gym_members WHERE gym_id = $1 AND user_id = $2;
 SELECT gm.*, u.email, u.display_name FROM gym_members gm
 JOIN users u ON gm.user_id = u.id
 WHERE gm.gym_id = $1;
+
+-- name: DeleteGym :exec
+DELETE FROM gyms WHERE id = $1;
