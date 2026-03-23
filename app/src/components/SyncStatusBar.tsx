@@ -1,8 +1,10 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSyncStore } from "../lib/store/sync";
 
 export default function SyncStatusBar() {
+  const insets = useSafeAreaInsets();
   const { isOnline, isSyncing, pendingMutationCount } = useSyncStore();
 
   if (isOnline && !isSyncing && pendingMutationCount === 0) {
@@ -26,7 +28,7 @@ export default function SyncStatusBar() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor }]}>
+    <View style={[styles.container, { backgroundColor, paddingTop: insets.top }]}>
       <Text style={styles.text}>{message}</Text>
     </View>
   );

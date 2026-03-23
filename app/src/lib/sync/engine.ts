@@ -28,17 +28,8 @@ async function runSync(queryClient: QueryClient) {
 
     // Invalidate all queries so UI re-reads from SQLite
     queryClient.invalidateQueries();
-  } catch (error: unknown) {
-    // Only treat network/transport errors as offline
-    if (
-      error instanceof TypeError &&
-      typeof error.message === "string" &&
-      error.message.includes("Network request failed")
-    ) {
-      store.setOnline(false);
-    } else {
-      console.error("Sync error:", error);
-    }
+  } catch {
+    store.setOnline(false);
   } finally {
     store.setSyncing(false);
     store.setPendingCount(getPendingMutationCount());
