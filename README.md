@@ -76,3 +76,30 @@ The worker installs `segment-anything` automatically. Upload a new wall image to
 | `SAM_ENABLED`    | `false`                              | Enable SAM segmentation  |
 | `SAM_MODEL_TYPE` | `vit_b`                              | SAM model variant        |
 | `SAM_CHECKPOINT` | `./models/sam_vit_b_01ec64.pth`      | Path to checkpoint file  |
+
+## Detection Backends
+
+The worker polls for detection jobs and runs inference with one of two backends, chosen by `INFERENCE_BACKEND`:
+
+- `local` (default): runs YOLOv8 + SAM in the worker process (CUDA if available, otherwise CPU)
+- `modal`: sends the image to a [Modal](https://modal.com) serverless GPU (T4, per-second billing, scales to zero)
+
+### Modal setup
+
+```bash
+cd worker
+pip install modal
+modal token new
+modal run modal_app.py::download_weights   # one-off: populate the models volume
+modal deploy modal_app.py
+modal run modal_app.py --image-path /path/to/wall.jpg   # smoke test
+```
+
+Then set these in `.env` and rebuild the worker:
+
+| Variable             | Default | Description                                 |
+| -------------------- | ------- | ------------------------------------------- |
+| `INFERENCE_BACKEND`  | `local` | `local` or `modal`                          |
+| `INSTALL_MODAL`      | `false` | Build arg: install the Modal client         |
+| `MODAL_TOKEN_ID`     |         | Modal API token ID (from `modal token new`) |
+| `MODAL_TOKEN_SECRET` |         | Modal API token secret                      |
