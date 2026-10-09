@@ -107,7 +107,7 @@ export default function InviteScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>You've been invited!</Text>
+      <Text style={styles.title}>You&apos;ve been invited!</Text>
 
       <View style={styles.card}>
         <Text style={styles.gymName}>{invite.gym_name}</Text>
