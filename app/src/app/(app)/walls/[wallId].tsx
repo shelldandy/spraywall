@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
+import { File } from "expo-file-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -161,7 +162,7 @@ export default function WallDetailScreen() {
 
   const handleUpload = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       quality: 0.8,
     });
 
@@ -169,9 +170,7 @@ export default function WallDetailScreen() {
 
     const asset = result.assets[0];
     const uri = asset.uri;
-    const filename = uri.split("/").pop() ?? "photo.jpg";
-    const match = /\.(\w+)$/.exec(filename);
-    const mimeType = match ? `image/${match[1]}` : "image/jpeg";
+    const filename = asset.fileName ?? uri.split("/").pop() ?? "photo.jpg";
 
     const formData = new FormData();
     if (Platform.OS === "web") {
@@ -179,11 +178,9 @@ export default function WallDetailScreen() {
       const blob = await response.blob();
       formData.append("image", blob, filename);
     } else {
-      formData.append("image", {
-        uri,
-        name: filename,
-        type: mimeType,
-      } as any);
+      // Expo's fetch implementation requires a Blob/File, not React Native's
+      // legacy { uri, name, type } FormData part.
+      formData.append("image", new File(uri), filename);
     }
 
     setUploading(true);
