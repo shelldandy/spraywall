@@ -1,12 +1,15 @@
 package wall
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"os/exec"
 	"regexp"
 	"strings"
 
@@ -51,6 +54,28 @@ func slugify(s string) string {
 
 func isValidSlug(s string) bool {
 	return validSlugRe.MatchString(s)
+}
+
+func isHEIC(filename, contentType string) bool {
+	filename = strings.ToLower(filename)
+	contentType = strings.ToLower(strings.SplitN(contentType, ";", 2)[0])
+	return strings.HasSuffix(filename, ".heic") ||
+		strings.HasSuffix(filename, ".heif") ||
+		strings.Contains(contentType, "heic") ||
+		strings.Contains(contentType, "heif")
+}
+
+func convertHEICToJPEG(ctx context.Context, src io.Reader) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "magick", "-", "-auto-orient", "-strip", "-quality", "85", "jpeg:-")
+	cmd.Stdin = src
+
+	var output, stderr bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("convert HEIC to JPEG: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return output.Bytes(), nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -402,7 +427,20 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		contentType = "image/jpeg"
 	}
 
-	if err := h.storage.Upload(r.Context(), storageKey, file, header.Size, contentType); err != nil {
+	var uploadReader io.Reader = file
+	uploadSize := header.Size
+	if isHEIC(header.Filename, contentType) {
+		jpegBytes, err := convertHEICToJPEG(r.Context(), file)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "could not convert HEIC image to JPEG")
+			return
+		}
+		uploadReader = bytes.NewReader(jpegBytes)
+		uploadSize = int64(len(jpegBytes))
+		contentType = "image/jpeg"
+	}
+
+	if err := h.storage.Upload(r.Context(), storageKey, uploadReader, uploadSize, contentType); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not upload image")
 		return
 	}
