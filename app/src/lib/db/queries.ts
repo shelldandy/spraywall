@@ -293,6 +293,10 @@ export function upsertHolds(holds: Hold[]) {
   }
 }
 
+export function deleteHold(holdId: string) {
+  getDb().runSync("DELETE FROM holds WHERE id = ?", holdId);
+}
+
 export function upsertRoutes(routes: Route[]) {
   const db = getDb();
   const stmt = db.prepareSync(

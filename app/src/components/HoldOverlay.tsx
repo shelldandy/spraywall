@@ -1,6 +1,6 @@
 import React from "react";
 
-import { GestureResponderEvent } from "react-native";
+import { GestureResponderEvent, Platform } from "react-native";
 import Svg, { Polygon, Rect } from "react-native-svg";
 import type { Hold, HoldRoles } from "../lib/api/types";
 
@@ -56,6 +56,22 @@ export default function HoldOverlay({
 }: HoldOverlayProps) {
   const visibleHolds = holds;
 
+  const handleBackgroundPress = (evt: GestureResponderEvent) => {
+    const normX = evt.nativeEvent.locationX / imageWidth;
+    const normY = evt.nativeEvent.locationY / imageHeight;
+    onBackgroundPress?.(normX, normY);
+  };
+  const handleBackgroundClick = (evt: MouseEvent) => {
+    const bounds = (evt.currentTarget as SVGElement).getBoundingClientRect();
+    const normX = (evt.clientX - bounds.left) / bounds.width;
+    const normY = (evt.clientY - bounds.top) / bounds.height;
+    onBackgroundPress?.(normX, normY);
+  };
+  const backgroundInteractionProps =
+    Platform.OS === "web"
+      ? { onClick: handleBackgroundClick }
+      : { onPress: handleBackgroundPress };
+
   return (
     <Svg
       width={imageWidth}
@@ -78,11 +94,7 @@ export default function HoldOverlay({
           width={imageWidth}
           height={imageHeight}
           fill="transparent"
-          onPress={(evt: GestureResponderEvent) => {
-            const normX = evt.nativeEvent.locationX / imageWidth;
-            const normY = evt.nativeEvent.locationY / imageHeight;
-            onBackgroundPress?.(normX, normY);
-          }}
+          {...backgroundInteractionProps}
         />
       )}
       {visibleHolds.map((hold) => {
@@ -95,7 +107,10 @@ export default function HoldOverlay({
 
         const pressHandler = () => onToggle(hold.id);
 
-        const interactionProps = { onPress: pressHandler };
+        const interactionProps =
+          Platform.OS === "web"
+            ? { onClick: pressHandler }
+            : { onPress: pressHandler };
 
         if (hold.polygon && hold.polygon.length > 0) {
           const points = hold.polygon

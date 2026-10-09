@@ -50,6 +50,8 @@ export default function WallDetailScreen() {
   const [isEditingHolds, setIsEditingHolds] = useState(false);
   const [editHoldMode, setEditHoldMode] = useState<"delete" | "add">("delete");
   const [holdToDelete, setHoldToDelete] = useState<string | null>(null);
+  const [deletingHoldId, setDeletingHoldId] = useState<string | null>(null);
+  const [holdDeleteError, setHoldDeleteError] = useState<string | null>(null);
 
   type HoldRole = "normal" | "start" | "finish";
   const [holdSelections, setHoldSelections] = useState<Map<string, HoldRole>>(
@@ -105,6 +107,8 @@ export default function WallDetailScreen() {
 
   const deleteHold = useCallback(
     async (holdId: string) => {
+      setDeletingHoldId(holdId);
+      setHoldDeleteError(null);
       // Optimistic removal
       queryClient.setQueryData<Hold[] | undefined>(["holds", wallId], (old) =>
         old ? old.filter((h) => h.id !== holdId) : old
@@ -113,9 +117,23 @@ export default function WallDetailScreen() {
         const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds/${holdId}`, {
           method: "DELETE",
         });
-        if (!res.ok) throw new Error("Failed to delete hold");
-      } catch {
+        if (!res.ok) {
+          const message = await res.text();
+          throw new Error(message || `Failed to delete hold (${res.status})`);
+        }
+        if (isDbAvailable()) getDbQueries().deleteHold(holdId);
+        setHoldSelections((prev) => {
+          const next = new Map(prev);
+          next.delete(holdId);
+          return next;
+        });
+        setHoldToDelete(null);
         queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
+      } catch (err) {
+        queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
+        setHoldDeleteError(err instanceof Error ? err.message : "Failed to delete hold");
+      } finally {
+        setDeletingHoldId(null);
       }
     },
     [queryClient, gymSlug, wallId],
@@ -124,17 +142,11 @@ export default function WallDetailScreen() {
   const handleEditToggle = useCallback(
     (holdId: string) => {
       if (editHoldMode === "delete") {
-        setHoldToDelete((prev) => {
-          if (prev === holdId) {
-            // Second tap = confirm delete
-            deleteHold(holdId);
-            return null;
-          }
-          return holdId;
-        });
+        setHoldToDelete(holdId);
+        setHoldDeleteError(null);
       }
     },
-    [editHoldMode, deleteHold],
+    [editHoldMode],
   );
 
   const addHold = async (normX: number, normY: number) => {
@@ -252,7 +264,7 @@ export default function WallDetailScreen() {
           {wall?.wall.name ?? "Wall"}
         </Text>
         {isEditingHolds ? (
-          <Pressable onPress={() => { setIsEditingHolds(false); setHoldToDelete(null); }}>
+          <Pressable onPress={() => { setIsEditingHolds(false); setHoldToDelete(null); setHoldDeleteError(null); }}>
             <Text style={styles.backText}>Done</Text>
           </Pressable>
         ) : (
@@ -344,17 +356,36 @@ export default function WallDetailScreen() {
             <View style={styles.editToolbar}>
               <Pressable
                 style={[styles.editToolButton, editHoldMode === "delete" && styles.editToolButtonActive]}
-                onPress={() => { setEditHoldMode("delete"); setHoldToDelete(null); }}
+                onPress={() => { setEditHoldMode("delete"); setHoldToDelete(null); setHoldDeleteError(null); }}
               >
                 <Text style={[styles.editToolText, editHoldMode === "delete" && styles.editToolTextActive]}>Delete</Text>
               </Pressable>
               <Pressable
                 style={[styles.editToolButton, editHoldMode === "add" && styles.editToolButtonActive]}
-                onPress={() => { setEditHoldMode("add"); setHoldToDelete(null); }}
+                onPress={() => { setEditHoldMode("add"); setHoldToDelete(null); setHoldDeleteError(null); }}
               >
                 <Text style={[styles.editToolText, editHoldMode === "add" && styles.editToolTextActive]}>Add</Text>
               </Pressable>
             </View>
+          )}
+
+          {isEditingHolds && editHoldMode === "delete" && (
+            holdToDelete ? (
+              <Pressable
+                style={[styles.deleteHoldConfirm, deletingHoldId !== null && styles.buttonDisabled]}
+                onPress={() => deleteHold(holdToDelete)}
+                disabled={deletingHoldId !== null}
+              >
+                <Text style={styles.deleteHoldConfirmText}>
+                  {deletingHoldId ? "Deleting..." : "Delete selected hold"}
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.holdDeleteHint}>Tap a hold to select it for deletion.</Text>
+            )
+          )}
+          {isEditingHolds && holdDeleteError && (
+            <Text style={styles.holdDeleteError}>{holdDeleteError}</Text>
           )}
 
           {!isEditingHolds && detectionStatus === "done" && holds.length > 0 && (
@@ -636,5 +667,28 @@ const styles = StyleSheet.create({
   },
   editToolTextActive: {
     color: "#fff",
+  },
+  deleteHoldConfirm: {
+    backgroundColor: "#ff3b30",
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  deleteHoldConfirmText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  holdDeleteHint: {
+    textAlign: "center",
+    color: "#666",
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  holdDeleteError: {
+    color: "#ff3b30",
+    fontSize: 14,
+    marginBottom: 12,
   },
 });
