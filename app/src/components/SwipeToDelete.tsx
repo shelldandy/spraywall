@@ -9,7 +9,6 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  runOnJS,
 } from "react-native-reanimated";
 
 const DELETE_BUTTON_WIDTH = 80;
@@ -30,26 +29,28 @@ export default function SwipeToDelete({
     .failOffsetY([-5, 5])
     .onUpdate((e) => {
       // Only allow swiping left, clamp to button width
-      translateX.value = Math.max(
-        -DELETE_BUTTON_WIDTH,
-        Math.min(0, e.translationX + (translateX.value < 0 ? -DELETE_BUTTON_WIDTH : 0)),
+      translateX.set(
+        Math.max(
+          -DELETE_BUTTON_WIDTH,
+          Math.min(0, e.translationX + (translateX.get() < 0 ? -DELETE_BUTTON_WIDTH : 0)),
+        ),
       );
     })
     .onEnd(() => {
       // Snap open if swiped past halfway, otherwise snap closed
-      if (translateX.value < -DELETE_BUTTON_WIDTH / 2) {
-        translateX.value = withTiming(-DELETE_BUTTON_WIDTH);
+      if (translateX.get() < -DELETE_BUTTON_WIDTH / 2) {
+        translateX.set(withTiming(-DELETE_BUTTON_WIDTH));
       } else {
-        translateX.value = withTiming(0);
+        translateX.set(withTiming(0));
       }
     });
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [{ translateX: translateX.get() }],
   }));
 
   const handleDelete = () => {
-    translateX.value = withTiming(0);
+    translateX.set(withTiming(0));
     onDelete();
   };
 

@@ -56,6 +56,11 @@ export function useHasHydrated() {
     const unsub = useServerStore.persist.onFinishHydration(() =>
       setHasHydrated(true),
     );
+    // Recheck after subscribing so a hydration that finishes between render
+    // and this effect cannot leave the hook stuck in the unhydrated state.
+    if (useServerStore.persist.hasHydrated()) {
+      queueMicrotask(() => setHasHydrated(true));
+    }
     return unsub;
   }, []);
   return hasHydrated;

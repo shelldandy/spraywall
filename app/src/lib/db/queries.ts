@@ -293,6 +293,36 @@ export function upsertHolds(holds: Hold[]) {
   }
 }
 
+export function replaceHoldsForWallImage(wallImageId: string, holds: Hold[]) {
+  const db = getDb();
+  const stmt = db.prepareSync(
+    "INSERT OR REPLACE INTO holds (id, wall_image_id, bbox, polygon, confidence) VALUES (?, ?, ?, ?, ?)",
+  );
+  try {
+    db.execSync("BEGIN TRANSACTION");
+    db.runSync("DELETE FROM holds WHERE wall_image_id = ?", wallImageId);
+    for (const hold of holds) {
+      stmt.executeSync(
+        hold.id,
+        hold.wall_image_id,
+        JSON.stringify(hold.bbox),
+        hold.polygon ? JSON.stringify(hold.polygon) : null,
+        hold.confidence,
+      );
+    }
+    db.execSync("COMMIT");
+  } catch (e) {
+    db.execSync("ROLLBACK");
+    throw e;
+  } finally {
+    stmt.finalizeSync();
+  }
+}
+
+export function deleteHold(holdId: string) {
+  getDb().runSync("DELETE FROM holds WHERE id = ?", holdId);
+}
+
 export function upsertRoutes(routes: Route[]) {
   const db = getDb();
   const stmt = db.prepareSync(
