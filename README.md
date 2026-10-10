@@ -82,7 +82,8 @@ The worker installs `segment-anything` automatically. Upload a new wall image to
 The worker polls for detection jobs and runs inference with one of two backends, chosen by `INFERENCE_BACKEND`:
 
 - `local` (default): runs YOLOv8 + SAM in the worker process (CUDA if available, otherwise CPU)
-- `modal`: sends the image to a [Modal](https://modal.com) serverless GPU (T4, per-second billing, scales to zero)
+- `modal`: sends the image to a [Modal](https://modal.com) serverless GPU (T4, per-second billing, scales down after 30 seconds idle).
+  At the reviewed $0.59/hour rate, the idle tail is about $0.005 per isolated request; active compute is billed separately.
 
 ### Modal setup
 

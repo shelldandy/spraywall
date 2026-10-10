@@ -58,7 +58,7 @@ def download_weights():
     models_volume.commit()
 
 
-@app.cls(image=image, gpu="T4", volumes={MODEL_DIR: models_volume}, scaledown_window=120, timeout=600)
+@app.cls(image=image, gpu="T4", volumes={MODEL_DIR: models_volume}, scaledown_window=30, timeout=600)
 class Detector:
     @modal.enter()
     def load(self):
