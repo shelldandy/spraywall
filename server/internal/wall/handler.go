@@ -70,11 +70,19 @@ func isHEIC(filename, contentType string) bool {
 const (
 	maxWallImageRequestSize = 20 << 20
 	maxHEICImagePixels      = 64_000_000
+	maxHEICImageDimension   = 10_000
 )
 
-func convertHEICToJPEG(ctx context.Context, src io.Reader) ([]byte, error) {
+func convertHEICToJPEG(ctx context.Context, src io.ReadSeeker) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+
+	if err := validateHEICDimensions(ctx, src); err != nil {
+		return nil, err
+	}
+	if _, err := src.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("rewind HEIC image: %w", err)
+	}
 
 	cmd := exec.CommandContext(ctx, "magick",
 		"-limit", "memory", "256MiB",
@@ -95,6 +103,46 @@ func convertHEICToJPEG(ctx context.Context, src io.Reader) ([]byte, error) {
 		return nil, fmt.Errorf("convert HEIC to JPEG: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return output.Bytes(), nil
+}
+
+func validateHEICDimensions(ctx context.Context, src io.ReadSeeker) error {
+	if _, err := src.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewind HEIC image for dimension check: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "magick", "identify",
+		"-ping",
+		"-limit", "memory", "64MiB",
+		"-limit", "map", "128MiB",
+		"-limit", "disk", "128MiB",
+		"-limit", "time", "10",
+		"-limit", "list-length", "2",
+		"-format", "%w %h", "-")
+	cmd.Stdin = src
+
+	var output, stderr bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("read HEIC dimensions: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	dimensions := strings.Fields(output.String())
+	if len(dimensions) != 2 {
+		return fmt.Errorf("could not read HEIC dimensions")
+	}
+	width, err := strconv.ParseInt(dimensions[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid HEIC width: %w", err)
+	}
+	height, err := strconv.ParseInt(dimensions[1], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid HEIC height: %w", err)
+	}
+	if width <= 0 || height <= 0 || width > maxHEICImageDimension || height > maxHEICImageDimension || width > maxHEICImagePixels/height {
+		return fmt.Errorf("HEIC dimensions %dx%d exceed the %d-pixel limit", width, height, maxHEICImagePixels)
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

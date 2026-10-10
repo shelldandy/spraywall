@@ -50,7 +50,7 @@ make expo
 
 ## SAM Segmentation
 
-Hold detection uses YOLOv8 for bounding boxes and [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) to refine each box into a polygon outline.
+Hold detection uses YOLOv8 for bounding boxes. When enabled, [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) refines each box into a polygon outline.
 
 ### Setup
 
@@ -60,11 +60,11 @@ Download a SAM checkpoint into the worker models directory:
 wget -P worker/models https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
 ```
 
-The worker installs `segment-anything` automatically. Upload a new wall image to trigger detection with polygon output.
+The `make dev` Compose profile installs and enables SAM automatically. For other deployments, install the optional `sam` extra (`pip install '.[sam]'` or build the Docker image with `INSTALL_SAM=true`) and set `SAM_ENABLED=true`. Without both, detection returns YOLO bounding boxes without polygon segmentation.
 
 ### How it works
 
-- After YOLOv8 detects bounding boxes, SAM refines each box into a polygon mask
+- When SAM is enabled, it refines YOLOv8 bounding boxes into polygon masks
 - OpenCV post-processing (erode/dilate/contour/simplify) cleans the masks
 - Polygons are stored in the `holds.polygon` column and rendered as SVG polygons in the app
 - Holds without polygon data fall back to rectangle rendering
@@ -81,7 +81,7 @@ The worker installs `segment-anything` automatically. Upload a new wall image to
 
 The worker polls for detection jobs and runs inference with one of two backends, chosen by `INFERENCE_BACKEND`:
 
-- `local` (default): runs YOLOv8 + SAM in the worker process (CUDA if available, otherwise CPU)
+- `local` (default): runs YOLOv8 in the worker process (CUDA if available, otherwise CPU). SAM is optional; `make dev` enables it, while other deployments must install the `sam` extra and set `SAM_ENABLED=true`.
 - `modal`: sends the image to a [Modal](https://modal.com) serverless GPU (T4, per-second billing, scales down after 30 seconds idle).
   At the reviewed $0.59/hour rate, the idle tail is about $0.005 per isolated request; active compute is billed separately.
 
