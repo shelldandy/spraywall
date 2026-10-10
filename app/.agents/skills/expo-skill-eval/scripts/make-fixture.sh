@@ -9,7 +9,7 @@
 #                 screens. "full" keeps the example tabs (Home/Explore) - use
 #                 it for evals whose prompt assumes an existing app.
 #
-# One pristine app is created per SDK version + variant with
+# One pristine app is created per resolved SDK version + variant with
 # `bunx create-expo-app -t default@sdk-<version>` and cached under
 # $EXPO_SKILL_EVAL_CACHE (default ~/.cache/expo-skill-eval/fixtures).
 # Each call clones the cache with APFS copy-on-write, so only the first
@@ -30,12 +30,12 @@ if [[ -e "$PROJECT_PATH" ]]; then
   exit 1
 fi
 
-TEMPLATE="default"
-CACHE_KEY="latest"
-if [[ -n "$SDK_VERSION" ]]; then
-  TEMPLATE="default@sdk-${SDK_VERSION}"
-  CACHE_KEY="sdk-${SDK_VERSION}"
+if [[ -z "$SDK_VERSION" ]]; then
+  SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  SDK_VERSION="$("$SCRIPT_DIR/latest-sdk.sh")"
 fi
+TEMPLATE="default@sdk-${SDK_VERSION}"
+CACHE_KEY="sdk-${SDK_VERSION}"
 if [[ "$VARIANT" == "clean" ]]; then
   CACHE_KEY="${CACHE_KEY}-clean"
 fi

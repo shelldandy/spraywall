@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -65,8 +67,25 @@ func isHEIC(filename, contentType string) bool {
 		strings.Contains(contentType, "heif")
 }
 
+const (
+	maxWallImageRequestSize = 20 << 20
+	maxHEICImagePixels      = 64_000_000
+)
+
 func convertHEICToJPEG(ctx context.Context, src io.Reader) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "magick", "-", "-auto-orient", "-strip", "-quality", "85", "jpeg:-")
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "magick",
+		"-limit", "memory", "256MiB",
+		"-limit", "map", "512MiB",
+		"-limit", "disk", "512MiB",
+		"-limit", "time", "30",
+		"-limit", "area", strconv.Itoa(maxHEICImagePixels),
+		"-limit", "width", "10000",
+		"-limit", "height", "10000",
+		"-limit", "thread", "2",
+		"-", "-auto-orient", "-strip", "-quality", "85", "jpeg:-")
 	cmd.Stdin = src
 
 	var output, stderr bytes.Buffer
@@ -405,10 +424,20 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form (max 10 MB).
+	// Limit the complete multipart request; ParseMultipartForm's argument only
+	// controls the in-memory threshold before parts spill to disk.
+	r.Body = http.MaxBytesReader(w, r.Body, maxWallImageRequestSize)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "could not parse multipart form")
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "image upload too large")
+		} else {
+			writeError(w, http.StatusBadRequest, "could not parse multipart form")
+		}
 		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
 	}
 
 	file, header, err := r.FormFile("image")
