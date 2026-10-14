@@ -2,10 +2,14 @@ import React from "react";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSyncStore } from "../lib/store/sync";
+import { isDbAvailable } from "../lib/db/database";
 
 export default function SyncStatusBar() {
   const insets = useSafeAreaInsets();
   const { isOnline, isSyncing, pendingMutationCount } = useSyncStore();
+
+  // Web uses direct API queries; the SQLite sync engine only runs on native.
+  if (!isDbAvailable()) return null;
 
   if (isOnline && !isSyncing && pendingMutationCount === 0) {
     return null;

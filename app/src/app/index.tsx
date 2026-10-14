@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter, Redirect } from "expo-router";
 import { useServerStore, useHasHydrated } from "../lib/store/server";
@@ -7,13 +7,9 @@ export default function ConnectScreen() {
   const router = useRouter();
   const hasHydrated = useHasHydrated();
   const { serverUrl, setServerUrl, accessToken } = useServerStore();
-  const [input, setInput] = useState(serverUrl || "http://localhost:8080");
+  const [input, setInput] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (serverUrl) setInput(serverUrl);
-  }, [serverUrl]);
 
   if (!hasHydrated) {
     return (
@@ -35,7 +31,7 @@ export default function ConnectScreen() {
     setLoading(true);
     setError(null);
     try {
-      const url = input.replace(/\/+$/, "");
+      const url = (input ?? serverUrl ?? "http://localhost:8080").replace(/\/+$/, "");
       const res = await fetch(`${url}/healthz`);
       const data = await res.json();
       if (data.status === "ok") {
@@ -57,7 +53,7 @@ export default function ConnectScreen() {
       <Text style={styles.subtitle}>Connect to Server</Text>
       <TextInput
         style={styles.input}
-        value={input}
+        value={input ?? serverUrl ?? "http://localhost:8080"}
         onChangeText={setInput}
         placeholder="http://localhost:8080"
         autoCapitalize="none"

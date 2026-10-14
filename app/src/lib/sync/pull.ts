@@ -4,7 +4,7 @@ import {
   upsertGyms,
   upsertWalls,
   upsertWallImage,
-  upsertHolds,
+  replaceHoldsForWallImage,
   upsertRoutes,
   upsertSends,
   setSyncMeta,
@@ -51,13 +51,13 @@ export async function pullAll(): Promise<void> {
         }
 
         // 4. If detection done, fetch holds
-        if (detail.detection_status === "done") {
+        if (detail.detection_status === "done" && detail.image) {
           const holdsRes = await apiFetch(
             `/gyms/${gym.slug}/walls/${wall.id}/holds`,
           );
           if (holdsRes.ok) {
             const holds: Hold[] = await holdsRes.json();
-            upsertHolds(holds);
+            replaceHoldsForWallImage(detail.image.id, holds);
           }
         }
       }

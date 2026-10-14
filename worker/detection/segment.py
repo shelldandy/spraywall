@@ -21,9 +21,12 @@ def get_predictor():
     """Lazy-load SAM predictor."""
     global _sam_predictor
     if _sam_predictor is None:
+        import torch
         from segment_anything import SamPredictor, sam_model_registry
 
         sam = sam_model_registry[SAM_MODEL_TYPE](checkpoint=SAM_CHECKPOINT)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        sam.to(device=device)
         _sam_predictor = SamPredictor(sam)
     return _sam_predictor
 

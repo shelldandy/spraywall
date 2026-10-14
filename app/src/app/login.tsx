@@ -82,7 +82,7 @@ export default function LoginScreen() {
         </Text>
       </Pressable>
       <Link href={"/register" as any} style={styles.link}>
-        Don't have an account? Register
+        Don&apos;t have an account? Register
       </Link>
     </View>
   );

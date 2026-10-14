@@ -3,8 +3,10 @@ set -e
 
 MODEL_DIR="${MODEL_DIR:-./models}"
 MODEL_FILE="${MODEL_DIR}/yolov8n-freeclimbs-detect-2.pt"
+INFERENCE_BACKEND="${INFERENCE_BACKEND:-local}"
+INFERENCE_BACKEND="$(printf '%s' "$INFERENCE_BACKEND" | tr '[:upper:]' '[:lower:]')"
 
-if [ ! -f "$MODEL_FILE" ]; then
+if [ "$INFERENCE_BACKEND" != "modal" ] && [ ! -f "$MODEL_FILE" ]; then
     echo "Downloading freeclimbs detection model..."
     mkdir -p "$MODEL_DIR"
     python -c "

@@ -64,7 +64,12 @@ services:
   worker:
     build:
       context: ./worker
+      args:
+        INSTALL_MODAL: ${INSTALL_MODAL:-false}
     environment:
+      INFERENCE_BACKEND: ${INFERENCE_BACKEND:-local}
+      MODAL_TOKEN_ID: ${MODAL_TOKEN_ID:-}
+      MODAL_TOKEN_SECRET: ${MODAL_TOKEN_SECRET:-}
       DATABASE_URL: ${DATABASE_URL}
       POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT}

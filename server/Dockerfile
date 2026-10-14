@@ -3,8 +3,8 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-# Install goose
-RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+# Pin dev tools to versions compatible with Go 1.25.
+RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.0
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -15,10 +15,13 @@ RUN go build -o /server ./cmd/server
 # ---- Dev target ----
 FROM golang:1.25-alpine AS dev
 
+# Server-side image normalization for HEIC uploads.
+RUN apk add --no-cache imagemagick imagemagick-jpeg imagemagick-heic
+
 WORKDIR /app
 
-RUN go install github.com/pressly/goose/v3/cmd/goose@latest && \
-    go install github.com/air-verse/air@latest
+RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.0 && \
+    go install github.com/air-verse/air@v1.67.1
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -27,6 +30,9 @@ CMD ["air", "-c", ".air.toml"]
 
 # ---- Prod target ----
 FROM alpine:3.20 AS prod
+
+# Server-side image normalization for HEIC uploads.
+RUN apk add --no-cache imagemagick imagemagick-jpeg imagemagick-heic
 
 WORKDIR /app
 

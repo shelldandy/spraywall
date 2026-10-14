@@ -1,14 +1,19 @@
 package wall
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -51,6 +56,93 @@ func slugify(s string) string {
 
 func isValidSlug(s string) bool {
 	return validSlugRe.MatchString(s)
+}
+
+func isHEIC(filename, contentType string) bool {
+	filename = strings.ToLower(filename)
+	contentType = strings.ToLower(strings.SplitN(contentType, ";", 2)[0])
+	return strings.HasSuffix(filename, ".heic") ||
+		strings.HasSuffix(filename, ".heif") ||
+		strings.Contains(contentType, "heic") ||
+		strings.Contains(contentType, "heif")
+}
+
+const (
+	maxWallImageRequestSize = 20 << 20
+	maxHEICImagePixels      = 64_000_000
+	maxHEICImageDimension   = 10_000
+)
+
+func convertHEICToJPEG(ctx context.Context, src io.ReadSeeker) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	if err := validateHEICDimensions(ctx, src); err != nil {
+		return nil, err
+	}
+	if _, err := src.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("rewind HEIC image: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "magick",
+		"-limit", "memory", "256MiB",
+		"-limit", "map", "512MiB",
+		"-limit", "disk", "512MiB",
+		"-limit", "time", "30",
+		"-limit", "area", strconv.Itoa(maxHEICImagePixels),
+		"-limit", "width", "10000",
+		"-limit", "height", "10000",
+		"-limit", "thread", "2",
+		"-", "-auto-orient", "-strip", "-quality", "85", "jpeg:-")
+	cmd.Stdin = src
+
+	var output, stderr bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("convert HEIC to JPEG: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return output.Bytes(), nil
+}
+
+func validateHEICDimensions(ctx context.Context, src io.ReadSeeker) error {
+	if _, err := src.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewind HEIC image for dimension check: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "magick", "identify",
+		"-ping",
+		"-limit", "memory", "64MiB",
+		"-limit", "map", "128MiB",
+		"-limit", "disk", "128MiB",
+		"-limit", "time", "10",
+		"-limit", "list-length", "2",
+		"-format", "%w %h", "-")
+	cmd.Stdin = src
+
+	var output, stderr bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("read HEIC dimensions: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	dimensions := strings.Fields(output.String())
+	if len(dimensions) != 2 {
+		return fmt.Errorf("could not read HEIC dimensions")
+	}
+	width, err := strconv.ParseInt(dimensions[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid HEIC width: %w", err)
+	}
+	height, err := strconv.ParseInt(dimensions[1], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid HEIC height: %w", err)
+	}
+	if width <= 0 || height <= 0 || width > maxHEICImageDimension || height > maxHEICImageDimension || width > maxHEICImagePixels/height {
+		return fmt.Errorf("HEIC dimensions %dx%d exceed the %d-pixel limit", width, height, maxHEICImagePixels)
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -380,10 +472,20 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form (max 10 MB).
+	// Limit the complete multipart request; ParseMultipartForm's argument only
+	// controls the in-memory threshold before parts spill to disk.
+	r.Body = http.MaxBytesReader(w, r.Body, maxWallImageRequestSize)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "could not parse multipart form")
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "image upload too large")
+		} else {
+			writeError(w, http.StatusBadRequest, "could not parse multipart form")
+		}
 		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
 	}
 
 	file, header, err := r.FormFile("image")
@@ -402,7 +504,20 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		contentType = "image/jpeg"
 	}
 
-	if err := h.storage.Upload(r.Context(), storageKey, file, header.Size, contentType); err != nil {
+	var uploadReader io.Reader = file
+	uploadSize := header.Size
+	if isHEIC(header.Filename, contentType) {
+		jpegBytes, err := convertHEICToJPEG(r.Context(), file)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "could not convert HEIC image to JPEG")
+			return
+		}
+		uploadReader = bytes.NewReader(jpegBytes)
+		uploadSize = int64(len(jpegBytes))
+		contentType = "image/jpeg"
+	}
+
+	if err := h.storage.Upload(r.Context(), storageKey, uploadReader, uploadSize, contentType); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not upload image")
 		return
 	}

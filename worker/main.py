@@ -6,7 +6,6 @@ import logging
 
 import psycopg
 
-from detection.infer import detect_holds
 from detection.storage import download_image
 
 logging.basicConfig(
@@ -17,6 +16,14 @@ logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL_SECONDS", "5"))
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+INFERENCE_BACKEND = os.environ.get("INFERENCE_BACKEND", "local").lower()
+
+if INFERENCE_BACKEND == "modal":
+    from detection.remote import detect_holds_remote as detect_holds
+elif INFERENCE_BACKEND == "local":
+    from detection.infer import detect_holds
+else:
+    raise SystemExit(f"Unknown INFERENCE_BACKEND: {INFERENCE_BACKEND!r} (expected 'local' or 'modal')")
 
 
 def process_job(conn, job_id: str, wall_image_id: str, storage_key: str):
@@ -109,7 +116,7 @@ def main():
         logger.error("DATABASE_URL is not set — exiting.")
         raise SystemExit(1)
 
-    logger.info("Worker starting (poll interval: %ds)", POLL_INTERVAL)
+    logger.info("Worker starting (poll interval: %ds, backend: %s)", POLL_INTERVAL, INFERENCE_BACKEND)
 
     conn = None
     while True:
