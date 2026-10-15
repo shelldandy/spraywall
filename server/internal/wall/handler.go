@@ -235,7 +235,8 @@ func (h *Handler) CreateGym(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, gym)
 }
 
-// ListGyms handles GET /gyms. Instance admins see every gym.
+// ListGyms handles GET /gyms. Instance admins (by current account role) see
+// every gym.
 func (h *Handler) ListGyms(w http.ResponseWriter, r *http.Request) {
 	if user.GetUserRole(r.Context()) == string(generated.UserRoleAdmin) {
 		all, err := h.queries.ListAllGymsAsAdmin(r.Context())

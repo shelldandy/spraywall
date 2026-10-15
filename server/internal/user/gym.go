@@ -16,8 +16,9 @@ type GymMemberGetter interface {
 }
 
 // EffectiveGymMember returns the caller's membership in the gym. Instance
-// admins (JWT role "admin") act as gym admins everywhere, even without a
-// gym_members row. Other users get pgx.ErrNoRows when they are not members.
+// admins (current account role "admin", as resolved by Authenticate) act as
+// gym admins everywhere, even without a gym_members row. Other users get
+// pgx.ErrNoRows when they are not members.
 func EffectiveGymMember(ctx context.Context, q GymMemberGetter, gymID pgtype.UUID) (generated.GymMember, error) {
 	userID := pgUUID(GetUserID(ctx))
 	member, err := q.GetGymMember(ctx, generated.GetGymMemberParams{

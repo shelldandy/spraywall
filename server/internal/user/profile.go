@@ -16,21 +16,12 @@ import (
 
 const minPasswordLength = 8
 
-// currentUser loads the authenticated user, writing an error response on
-// failure.
+// currentUser returns the user loaded by Authenticate, writing an error
+// response when the request was not authenticated.
 func (h *Handler) currentUser(w http.ResponseWriter, r *http.Request) (generated.User, bool) {
-	userID := GetUserID(r.Context())
-	if userID == uuid.Nil {
+	u, ok := CurrentUser(r.Context())
+	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-		return generated.User{}, false
-	}
-	u, err := h.queries.GetUserByID(r.Context(), pgUUID(userID))
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
-		return generated.User{}, false
-	}
-	if !SessionCurrent(r.Context(), u) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session revoked"})
 		return generated.User{}, false
 	}
 	return u, true

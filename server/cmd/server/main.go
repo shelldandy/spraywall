@@ -130,12 +130,12 @@ func main() {
 			r.Post("/login", authHandler.Login)
 			r.Post("/refresh", authHandler.Refresh)
 			r.Post("/logout", authHandler.Logout)
-			r.With(user.AuthMiddleware(jwtSecret)).Get("/me", authHandler.Me)
+			r.With(authHandler.Authenticate).Get("/me", authHandler.Me)
 
 			if oidcHandler != nil {
 				r.Get("/oidc/login", oidcHandler.Login)
 				r.Get("/oidc/callback", oidcHandler.Callback)
-				r.With(user.AuthMiddleware(jwtSecret)).Post("/oidc/link", oidcHandler.Link)
+				r.With(authHandler.Authenticate).Post("/oidc/link", oidcHandler.Link)
 			}
 		})
 	})
@@ -150,7 +150,7 @@ func main() {
 
 	// Current user's profile and logbook (authenticated, outside gyms)
 	r.Route("/users/me", func(r chi.Router) {
-		r.Use(user.AuthMiddleware(jwtSecret))
+		r.Use(authHandler.Authenticate)
 		r.Patch("/", authHandler.UpdateMe)
 		r.Put("/password", authHandler.ChangePassword)
 		r.Post("/avatar", authHandler.UploadAvatar)
@@ -162,12 +162,12 @@ func main() {
 	// Public invite routes
 	r.Route("/invites/{token}", func(r chi.Router) {
 		r.Get("/", inviteHandler.ValidateInvite)
-		r.With(user.AuthMiddleware(jwtSecret)).Post("/accept", inviteHandler.AcceptInvite)
+		r.With(authHandler.Authenticate).Post("/accept", inviteHandler.AcceptInvite)
 	})
 
 	// Gym & wall routes (authenticated)
 	r.Route("/gyms", func(r chi.Router) {
-		r.Use(user.AuthMiddleware(jwtSecret))
+		r.Use(authHandler.Authenticate)
 		r.Post("/", wallHandler.CreateGym)
 		r.Get("/", wallHandler.ListGyms)
 		r.Route("/{gymSlug}", func(r chi.Router) {

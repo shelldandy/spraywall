@@ -186,7 +186,8 @@ func (e *profileEnv) addIdentity(t *testing.T, u generated.User, sub string) gen
 	return ident
 }
 
-// do runs fn as user u with chi URL params.
+// do runs fn as user u with chi URL params, as if Authenticate had accepted
+// a token issued for u.
 func do(fn http.HandlerFunc, u generated.User, method, contentType string, body io.Reader, params map[string]string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, "/", body)
 	if contentType != "" {
@@ -198,6 +199,9 @@ func do(fn http.HandlerFunc, u generated.User, method, contentType string, body 
 	}
 	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
 	ctx = context.WithValue(ctx, UserIDKey, uuidFromPg(u.ID))
+	ctx = context.WithValue(ctx, UserRoleKey, string(u.Role))
+	ctx = context.WithValue(ctx, TokenVersionKey, u.TokenVersion)
+	ctx = context.WithValue(ctx, currentUserKey, u)
 	rec := httptest.NewRecorder()
 	fn(rec, req.WithContext(ctx))
 	return rec
