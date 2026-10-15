@@ -5,7 +5,7 @@ AI-assisted spray wall route setting and climbing app.
 ## Prerequisites
 
 - Docker & Docker Compose
-- Node.js ≥ 20 (for the web app)
+- Node.js ^20.19.0 or ≥ 22.12.0 (for the web app)
 - Go ≥ 1.22 (optional, for local dev outside Docker)
 
 ## Quick Start

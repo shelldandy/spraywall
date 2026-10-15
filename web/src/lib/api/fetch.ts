@@ -1,3 +1,4 @@
+import { logout } from "../queryClient";
 import { useAuthStore } from "../store/auth";
 
 // The API is served from the same origin, proxied by nginx (prod) or Vite (dev).
@@ -20,7 +21,7 @@ async function request(url: string, init: RequestInit) {
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshAccessToken(): Promise<boolean> {
-  const { refreshToken, setTokens, clearTokens } = useAuthStore.getState();
+  const { refreshToken, setTokens } = useAuthStore.getState();
   if (!refreshToken) return false;
 
   try {
@@ -30,7 +31,7 @@ async function refreshAccessToken(): Promise<boolean> {
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
     if (!res.ok) {
-      clearTokens();
+      await logout();
       return false;
     }
     const data = await res.json();
