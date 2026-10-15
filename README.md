@@ -5,7 +5,7 @@ AI-assisted spray wall route setting and climbing app.
 ## Prerequisites
 
 - Docker & Docker Compose
-- Node.js ≥ 18 (for Expo)
+- Node.js ≥ 20 (for the web app)
 - Go ≥ 1.22 (optional, for local dev outside Docker)
 
 ## Quick Start
@@ -19,9 +19,12 @@ cp .env.example .env
 # Start backend services (Postgres, MinIO, Go server, Python worker)
 make dev
 
-# In another terminal — start the Expo app
-make expo
+# In another terminal — start the web app (proxies /api and /images to :8080)
+make web
 ```
+
+The app is a mobile-first PWA. Open it on your phone and use "Add to Home Screen" to install it.
+It caches the app shell, wall images and recently viewed data for offline browsing; changes need a connection.
 
 ## Services (dev)
 
@@ -31,20 +34,21 @@ make expo
 | Postgres | localhost:5433         |
 | MinIO    | http://localhost:9000   |
 | MinIO UI | http://localhost:9001   |
-| Expo     | http://localhost:8081   |
+| Web app  | http://localhost:5173   |
 
 ## Useful Commands
 
 | Command         | Description                                      |
 | --------------- | ------------------------------------------------ |
 | `make dev`      | Start all backend services (SAM enabled)         |
-| `make expo`     | Start Expo dev server                            |
+| `make web`      | Start the web app (Vite) dev server              |
 | `make migrate`  | Run database migrations                          |
 | `make sqlc`     | Generate Go code from SQL queries                |
-| `make apiclient`| Generate TypeScript API client types             |
 | `make lint`     | Run Go, TypeScript, and Python linters           |
 | `make test`     | Run Go and Python tests                          |
 | `make clean`    | Stop services and remove volumes                 |
+
+In production (`make prod`), nginx serves the built web app at `/` and proxies the API at `/api/`.
 
 > **Note:** `docker compose down -v` (or `make clean`) is required to re-run `infra/postgres/init.sql`.
 

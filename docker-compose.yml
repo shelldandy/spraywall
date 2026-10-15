@@ -82,7 +82,8 @@ services:
     restart: unless-stopped
 
   nginx:
-    image: nginx:alpine
+    build:
+      context: ./web
     ports:
       - "80:80"
     volumes:
