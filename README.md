@@ -66,6 +66,14 @@ Spraywall can log users in through any OpenID Connect provider (Pocket-ID, Authe
 - Profile pictures are taken from the provider's `picture` claim unless the user has uploaded their own. They are only downloaded from the provider's own host or from public addresses.
 - On the **Profile** page (Settings → Profile) users can change their display name and avatar, link or unlink the provider, and set or change a password. The last remaining login method cannot be removed.
 
+## Releasing
+
+Releases are cut by [Release Please](https://github.com/googleapis/release-please) from [Conventional Commits](https://www.conventionalcommits.org/) on `main`.
+
+1. Squash-merge PRs with a conventional title: `fix: …` bumps the patch version, `feat: …` the minor, `feat!: …` a breaking change (minor while on 0.x). Other prefixes (`chore:`, `docs:`, …) don't trigger a release.
+2. Release Please keeps a `chore(main): release X.Y.Z` PR open with the version bump and `CHANGELOG.md`.
+3. Merging that PR tags `vX.Y.Z`, creates the GitHub release, and publishes images as `X.Y.Z`, `X.Y` and `latest` (worker also with `-cuda`).
+
 ## Development
 
 ```bash

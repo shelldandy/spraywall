@@ -3,7 +3,6 @@ name: Publish images
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -11,8 +10,23 @@ permissions:
   packages: write
 
 jobs:
+  # Release Please tags with GITHUB_TOKEN, which doesn't trigger other workflows,
+  # so the image build reads its outputs here instead of listening for tag pushes.
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v5
+
   image:
     name: ${{ matrix.image }}${{ matrix.suffix }}
+    needs: release-please
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -51,11 +65,11 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/spraywall-${{ matrix.image }}
           flavor: |
-            latest=auto
+            latest=${{ needs.release-please.outputs.release_created == 'true' }}
             suffix=${{ matrix.suffix }},onlatest=true
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.tag_name }},enable=${{ needs.release-please.outputs.release_created == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.tag_name }},enable=${{ needs.release-please.outputs.release_created == 'true' }}
             type=edge,branch=main
             type=sha
 
