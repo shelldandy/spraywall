@@ -11,7 +11,8 @@ import WallImage from "../components/WallImage";
 import RouteList from "./RouteList";
 import styles from "./WallDetail.module.css";
 
-type HoldRole = "normal" | "start" | "finish";
+type HoldRole = "normal" | "start" | "hand" | "finish" | "foot";
+type CreateTool = "start" | "hand" | "finish" | "foot" | "erase";
 
 const THRESHOLDS = [0.1, 0.25, 0.5, 0.75, 0.9];
 const POLL_INTERVAL_MS = 4000;
@@ -59,6 +60,9 @@ export default function WallDetailPage() {
   const [holdSelections, setHoldSelections] = useState<Map<string, HoldRole>>(() =>
     initialSelections(searchParams.get("editHoldIds"), searchParams.get("editHoldRoles")),
   );
+  const [createTool, setCreateTool] = useState<CreateTool>("hand");
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [imageAspectRatio, setImageAspectRatio] = useState<number>();
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -91,6 +95,30 @@ export default function WallDetailPage() {
       return next;
     });
   }, []);
+
+  const handleCreateHold = useCallback(
+    (holdId: string) => {
+      if (createTool === "erase") {
+        setHoldSelections((prev) => {
+          const next = new Map(prev);
+          next.delete(holdId);
+          return next;
+        });
+        return;
+      }
+
+      const role = createTool as Exclude<CreateTool, "erase">;
+      const isEndpoint = role === "start" || role === "finish";
+      const currentRole = holdSelections.get(holdId);
+      const roleCount = [...holdSelections.values()].filter((value) => value === role).length;
+      if (isEndpoint && currentRole !== role && roleCount >= 2) {
+        toast(`You can select up to 2 ${role} holds.`);
+        return;
+      }
+      setHoldSelections((prev) => new Map(prev).set(holdId, role));
+    },
+    [createTool, holdSelections],
+  );
 
   const deleteHold = async (holdId: string) => {
     setDeletingHoldId(holdId);
@@ -213,12 +241,20 @@ export default function WallDetailPage() {
       .map(([id]) => id),
   });
 
-  const goToCreateRoute = () => {
+  const allSelectionRoles = (): HoldRoles => ({
+    start: [...holdSelections.entries()].filter(([, role]) => role === "start").map(([id]) => id),
+    finish: [...holdSelections.entries()].filter(([, role]) => role === "finish").map(([id]) => id),
+  });
+
+  const goToCreateRoute = (
+    holdIds: Set<string> = visibleSelectedIds,
+    roles: HoldRoles = visibleRoles(),
+  ) => {
     const params = new URLSearchParams({
       wallId,
       gymSlug: gymSlug ?? "",
-      holdIds: JSON.stringify(Array.from(visibleSelectedIds)),
-      holdRoles: JSON.stringify(visibleRoles()),
+      holdIds: JSON.stringify(Array.from(holdIds)),
+      holdRoles: JSON.stringify(roles),
     });
     if (isEditingRoute) {
       params.set("routeId", editRouteId);
@@ -258,6 +294,133 @@ export default function WallDetailPage() {
     }
     return <span className={`${styles.badge} ${variant}`}>{label}</span>;
   };
+
+  if (isCreateMode && !isEditingRoute && !isEditingHolds) {
+    const startCount = [...holdSelections.values()].filter((role) => role === "start").length;
+    const finishCount = [...holdSelections.values()].filter((role) => role === "finish").length;
+    const tools: CreateTool[] = ["start", "hand", "finish", "foot", "erase"];
+    const toolLabels: Record<CreateTool, string> = {
+      start: "Start",
+      hand: "Hand",
+      finish: "Finish",
+      foot: "Foot",
+      erase: "Erase",
+    };
+    const toolColors: Record<CreateTool, string> = {
+      start: "#00f51b",
+      hand: "#00e5ff",
+      finish: "#f000e8",
+      foot: "#ffae00",
+      erase: "#f2efff",
+    };
+
+    return (
+      <div className={`screen ${styles.createScreen}`}>
+        <header className={styles.createHeader}>
+          <button
+            type="button"
+            className={styles.createExit}
+            onClick={closeCreateMode}
+            aria-label="Close new climb"
+          >
+            ×
+          </button>
+          <div className={styles.createTitleBlock}>
+            <h1 className={styles.createTitle}>New climb</h1>
+            <p className={styles.createCounts}>
+              Start: {startCount}/2 · Finish: {finishCount}/2
+            </p>
+          </div>
+          <div className={styles.createActions}>
+            <div className={styles.moreWrap}>
+              <button
+                type="button"
+                className={styles.moreButton}
+                onClick={() => setShowCreateMenu((shown) => !shown)}
+                aria-label="More climb options"
+                aria-expanded={showCreateMenu}
+              >
+                ···
+              </button>
+              {showCreateMenu && (
+                <div className={styles.createMenu}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHoldSelections(new Map());
+                      setShowCreateMenu(false);
+                    }}
+                  >
+                    Clear selection
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className={styles.createSave}
+              onClick={() => goToCreateRoute(selectedIds, allSelectionRoles())}
+              disabled={selectedIds.size < 2}
+            >
+              Save
+            </button>
+          </div>
+        </header>
+
+        <main className={styles.createBoard}>
+          {wallQuery.isLoading ? (
+            <div className={styles.createLoader}><div className="spinner" /></div>
+          ) : wall?.image ? (
+            <div className={styles.createImageContainer}>
+              <WallImage
+                src={wall.image.image_url}
+                alt={wall.wall.name}
+                fitContainer
+                onAspectRatioChange={setImageAspectRatio}
+              >
+                {holds.length > 0 && (
+                  <HoldOverlay
+                    holds={holds}
+                    selectedIds={selectedIds}
+                    onToggle={handleCreateHold}
+                    selectedRoleById={holdSelections}
+                    coordinateAspectRatio={imageAspectRatio}
+                  />
+                )}
+              </WallImage>
+            </div>
+          ) : (
+            <div className={styles.createNoImage}>
+              {wallQuery.isError ? wallQuery.error.message : "No wall photo available"}
+            </div>
+          )}
+        </main>
+
+        <nav className={styles.createToolbar} aria-label="Hold type">
+          {tools.map((tool) => (
+            <button
+              type="button"
+              key={tool}
+              className={`${styles.toolButton} ${createTool === tool ? styles.toolActive : ""}`}
+              onClick={() => setCreateTool(tool)}
+              aria-pressed={createTool === tool}
+            >
+              {tool === "erase" ? (
+                <span className={styles.eraserIcon} aria-hidden="true" />
+              ) : (
+                <span
+                  className={styles.toolDot}
+                  style={{ backgroundColor: toolColors[tool] }}
+                  aria-hidden="true"
+                />
+              )}
+              <span>{toolLabels[tool]}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
+    );
+  }
 
   return (
     <div className="screen">
@@ -420,7 +583,7 @@ export default function WallDetailPage() {
             <button
               type="button"
               className={`btn btn-block ${styles.createRouteButton}`}
-              onClick={goToCreateRoute}
+              onClick={() => goToCreateRoute()}
             >
               {isEditingRoute ? "Update" : "Create"} Route ({visibleSelectedIds.size} holds)
             </button>
