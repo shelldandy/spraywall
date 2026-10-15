@@ -2,12 +2,15 @@ const MAX_DIMENSION = 4096;
 const JPEG_QUALITY = 0.85;
 
 /**
- * Re-encode a picked photo as a JPEG no larger than MAX_DIMENSION on its longest side,
+ * Re-encode a picked photo as a JPEG no larger than `maxDimension` on its longest side,
  * so full-resolution phone photos stay under the server's upload limit.
  * Falls back to the original file if the browser can't decode it (e.g. HEIC outside Safari);
  * the server converts HEIC itself.
  */
-export async function prepareImageForUpload(file: File): Promise<Blob> {
+export async function prepareImageForUpload(
+  file: File,
+  maxDimension = MAX_DIMENSION,
+): Promise<Blob> {
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
@@ -16,7 +19,7 @@ export async function prepareImageForUpload(file: File): Promise<Blob> {
   }
 
   try {
-    const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, maxDimension /Math.max(bitmap.width, bitmap.height));
     const width = Math.round(bitmap.width * scale);
     const height = Math.round(bitmap.height * scale);
 

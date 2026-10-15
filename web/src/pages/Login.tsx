@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { API_BASE } from "../lib/api/fetch";
+import { useAuthConfig } from "../lib/hooks/queries";
+import { oidcErrorMessage, oidcLoginUrl } from "../lib/oidc";
 import { useAuthStore } from "../lib/store/auth";
 import styles from "./Auth.module.css";
 
@@ -14,6 +16,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const ssoError = searchParams.get("error");
+  const configQuery = useAuthConfig();
 
   if (accessToken) {
     return <Navigate to={from ?? "/walls"} replace />;
@@ -51,39 +56,72 @@ export default function LoginPage() {
     }
   };
 
+  // Hold the form back until we know which methods exist, so a password-less server
+  // doesn't flash an email form. If the config can't be fetched, fall back to passwords.
+  if (configQuery.isPending) {
+    return (
+      <main className="center">
+        <div className="spinner" />
+      </main>
+    );
+  }
+
+  const passwordEnabled = configQuery.data?.password_enabled ?? true;
+  const oidc = configQuery.data?.oidc.enabled ? configQuery.data.oidc : null;
+  const shownError = error ?? (ssoError ? oidcErrorMessage(ssoError) : null);
+
   return (
     <main className="center">
       <h1 className={styles.title}>Spraywall</h1>
       <p className={styles.subtitle}>Log In</p>
-      <form className={styles.form} onSubmit={handleLogin} noValidate>
-        <input
-          className="input"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
-          autoComplete="email"
-          autoCapitalize="none"
-          autoCorrect="off"
-          enterKeyHint="next"
-        />
-        <input
-          className="input"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          autoComplete="current-password"
-          enterKeyHint="go"
-        />
-        {error && <p className={`error-text ${styles.error}`}>{error}</p>}
-        <button type="submit" className={`btn btn-primary ${styles.submit}`} disabled={loading}>
-          {loading ? "Logging in..." : "Log In"}
-        </button>
-      </form>
-      <Link to="/register" state={location.state} className={styles.link}>
-        Don&apos;t have an account? Register
-      </Link>
+      {oidc && (
+        <a
+          href={oidcLoginUrl(from ?? "/walls")}
+          className={`btn ${passwordEnabled ? "" : "btn-primary"} btn-block ${styles.sso}`}
+        >
+          Sign in with {oidc.name}
+        </a>
+      )}
+      {oidc && passwordEnabled && <p className={styles.divider}>or</p>}
+      {!passwordEnabled && shownError && (
+        <p className={`error-text ${styles.error} ${styles.ssoError}`}>{shownError}</p>
+      )}
+      {!passwordEnabled && !oidc && (
+        <p className={`error-text ${styles.error}`}>No login methods are enabled on this server.</p>
+      )}
+      {passwordEnabled && (
+        <form className={styles.form} onSubmit={handleLogin} noValidate>
+          <input
+            className="input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
+            autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            enterKeyHint="next"
+          />
+          <input
+            className="input"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            autoComplete="current-password"
+            enterKeyHint="go"
+          />
+          {shownError && <p className={`error-text ${styles.error}`}>{shownError}</p>}
+          <button type="submit" className={`btn btn-primary ${styles.submit}`} disabled={loading}>
+            {loading ? "Logging in..." : "Log In"}
+          </button>
+        </form>
+      )}
+      {passwordEnabled && (
+        <Link to="/register" state={location.state} className={styles.link}>
+          Don&apos;t have an account? Register
+        </Link>
+      )}
     </main>
   );
 }
