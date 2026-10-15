@@ -39,7 +39,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// requireGymMember loads the gym by slug, verifies the caller is a member,
+// requireGymMember loads the gym by slug, verifies the caller is a member
+// (instance admins count as admins of every gym),
 // and returns the gym and membership. If the check fails it writes an HTTP
 // error and returns a non-nil error.
 func (h *Handler) requireGymMember(w http.ResponseWriter, r *http.Request) (generated.Gym, generated.GymMember, error) {
@@ -54,11 +55,7 @@ func (h *Handler) requireGymMember(w http.ResponseWriter, r *http.Request) (gene
 		return generated.Gym{}, generated.GymMember{}, err
 	}
 
-	userID := user.GetUserID(r.Context())
-	member, err := h.queries.GetGymMember(r.Context(), generated.GetGymMemberParams{
-		GymID:  gym.ID,
-		UserID: shared.PgUUID(userID),
-	})
+	member, err := user.EffectiveGymMember(r.Context(), h.queries, gym.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusForbidden, "not a member of this gym")

@@ -7,11 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
@@ -23,14 +24,32 @@ const (
 	bcryptCost           = 12
 )
 
+// TxBeginner starts database transactions (satisfied by *pgxpool.Pool).
+type TxBeginner interface {
+	Begin(context.Context) (pgx.Tx, error)
+}
+
+// Options configures optional Handler features.
+type Options struct {
+	// PasswordEnabled allows email/password registration, login, and
+	// password changes.
+	PasswordEnabled bool
+	// Storage holds avatar images. Required for avatar endpoints.
+	Storage AvatarStorage
+	// OIDCIssuer and OIDCProviderName label linked identities in /auth/me.
+	OIDCIssuer       string
+	OIDCProviderName string
+}
+
 type Handler struct {
 	queries   *generated.Queries
 	jwtSecret string
-	pool      interface{ Begin(context.Context) (pgx.Tx, error) }
+	pool      TxBeginner
+	opts      Options
 }
 
-func NewHandler(queries *generated.Queries, jwtSecret string, pool interface{ Begin(context.Context) (pgx.Tx, error) }) *Handler {
-	return &Handler{queries: queries, jwtSecret: jwtSecret, pool: pool}
+func NewHandler(queries *generated.Queries, jwtSecret string, pool TxBeginner, opts Options) *Handler {
+	return &Handler{queries: queries, jwtSecret: jwtSecret, pool: pool, opts: opts}
 }
 
 type registerRequest struct {
@@ -48,20 +67,39 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-type tokenResponse struct {
+// TokenPair is the JSON body returned by every endpoint that issues tokens.
+type TokenPair struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 }
 
-type userResponse struct {
-	ID          uuid.UUID `json:"id"`
-	Email       string    `json:"email"`
-	DisplayName string    `json:"display_name"`
-	Role        string    `json:"role"`
-	CreatedAt   time.Time `json:"created_at"`
+type identityResponse struct {
+	ID           uuid.UUID `json:"id"`
+	Issuer       string    `json:"issuer"`
+	ProviderName string    `json:"provider_name"`
+	Email        string    `json:"email"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
+type userResponse struct {
+	ID          uuid.UUID          `json:"id"`
+	Email       string             `json:"email"`
+	DisplayName string             `json:"display_name"`
+	Role        string             `json:"role"`
+	CreatedAt   time.Time          `json:"created_at"`
+	AvatarURL   *string            `json:"avatar_url"`
+	HasPassword bool               `json:"has_password"`
+	Identities  []identityResponse `json:"identities"`
+}
+
+var errPasswordDisabled = map[string]string{"error": "password login disabled"}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	if !h.opts.PasswordEnabled {
+		writeJSON(w, http.StatusForbidden, errPasswordDisabled)
+		return
+	}
+
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -90,7 +128,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, err := h.generateTokens(r, u)
+	tokens, err := h.IssueTokens(r.Context(), h.queries, u)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
@@ -100,6 +138,11 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	if !h.opts.PasswordEnabled {
+		writeJSON(w, http.StatusForbidden, errPasswordDisabled)
+		return
+	}
+
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -112,12 +155,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// OIDC-only accounts have no password hash and can never log in here.
+	if u.PasswordHash == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
+		return
+	}
+
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
 
-	tokens, err := h.generateTokens(r, u)
+	tokens, err := h.IssueTokens(r.Context(), h.queries, u)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
@@ -162,7 +211,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, err := h.generateTokensWithTx(r, txq, u)
+	tokens, err := h.IssueTokens(r.Context(), txq, u)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
@@ -211,16 +260,65 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, userResponse{
+	h.writeMe(w, r.Context(), u)
+}
+
+// writeMe renders the full /auth/me representation of u.
+func (h *Handler) writeMe(w http.ResponseWriter, ctx context.Context, u generated.User) {
+	resp, err := h.buildMe(ctx, u)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) buildMe(ctx context.Context, u generated.User) (userResponse, error) {
+	identities, err := h.queries.ListUserIdentities(ctx, u.ID)
+	if err != nil {
+		return userResponse{}, err
+	}
+
+	resp := userResponse{
 		ID:          uuidFromPg(u.ID),
 		Email:       u.Email,
 		DisplayName: u.DisplayName,
 		Role:        string(u.Role),
 		CreatedAt:   u.CreatedAt.Time,
-	})
+		AvatarURL:   AvatarURL(u),
+		HasPassword: u.PasswordHash != "",
+		Identities:  make([]identityResponse, 0, len(identities)),
+	}
+	for _, ident := range identities {
+		resp.Identities = append(resp.Identities, identityResponse{
+			ID:           uuidFromPg(ident.ID),
+			Issuer:       ident.Issuer,
+			ProviderName: h.providerName(ident.Issuer),
+			Email:        ident.Email,
+			CreatedAt:    ident.CreatedAt.Time,
+		})
+	}
+	return resp, nil
 }
 
-func (h *Handler) generateTokens(r *http.Request, u generated.User) (*tokenResponse, error) {
+// providerName returns the configured display name for the OIDC issuer, or
+// the raw issuer for identities from a previously configured provider.
+func (h *Handler) providerName(issuer string) string {
+	if h.opts.OIDCIssuer != "" && SameIssuer(issuer, h.opts.OIDCIssuer) {
+		return h.opts.OIDCProviderName
+	}
+	return issuer
+}
+
+// SameIssuer compares issuer URLs, ignoring a trailing slash.
+func SameIssuer(a, b string) bool {
+	return strings.TrimSuffix(a, "/") == strings.TrimSuffix(b, "/")
+}
+
+// IssueTokens creates a signed access token and a stored refresh token for u.
+// Pass a transaction-bound *generated.Queries to make issuance part of a
+// larger transaction.
+func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u generated.User) (*TokenPair, error) {
 	userID := uuidFromPg(u.ID)
 
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -243,7 +341,7 @@ func (h *Handler) generateTokens(r *http.Request, u generated.User) (*tokenRespo
 	refreshTokenStr := hex.EncodeToString(rawToken)
 
 	// Store hashed refresh token
-	_, err = h.queries.CreateRefreshToken(r.Context(), generated.CreateRefreshTokenParams{
+	_, err = q.CreateRefreshToken(ctx, generated.CreateRefreshTokenParams{
 		UserID:    u.ID,
 		TokenHash: hashToken(refreshTokenStr),
 		ExpiresAt: pgTimestamptz(time.Now().Add(refreshTokenDuration)),
@@ -252,43 +350,7 @@ func (h *Handler) generateTokens(r *http.Request, u generated.User) (*tokenRespo
 		return nil, err
 	}
 
-	return &tokenResponse{
-		AccessToken:  accessTokenStr,
-		RefreshToken: refreshTokenStr,
-	}, nil
-}
-
-func (h *Handler) generateTokensWithTx(r *http.Request, q *generated.Queries, u generated.User) (*tokenResponse, error) {
-	userID := uuidFromPg(u.ID)
-
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  userID.String(),
-		"role": string(u.Role),
-		"exp":  time.Now().Add(accessTokenDuration).Unix(),
-		"iat":  time.Now().Unix(),
-	})
-
-	accessTokenStr, err := accessToken.SignedString([]byte(h.jwtSecret))
-	if err != nil {
-		return nil, err
-	}
-
-	rawToken := make([]byte, 32)
-	if _, err := rand.Read(rawToken); err != nil {
-		return nil, err
-	}
-	refreshTokenStr := hex.EncodeToString(rawToken)
-
-	_, err = q.CreateRefreshToken(r.Context(), generated.CreateRefreshTokenParams{
-		UserID:    u.ID,
-		TokenHash: hashToken(refreshTokenStr),
-		ExpiresAt: pgTimestamptz(time.Now().Add(refreshTokenDuration)),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &tokenResponse{
+	return &TokenPair{
 		AccessToken:  accessTokenStr,
 		RefreshToken: refreshTokenStr,
 	}, nil

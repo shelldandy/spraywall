@@ -58,10 +58,7 @@ func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	member, err := h.queries.GetGymMember(ctx, db.GetGymMemberParams{
-		GymID:  gym.ID,
-		UserID: shared.PgUUID(userID),
-	})
+	member, err := user.EffectiveGymMember(ctx, h.queries, gym.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusForbidden, "not a member of this gym")
