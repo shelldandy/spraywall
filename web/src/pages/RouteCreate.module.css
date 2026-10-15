@@ -1,0 +1,70 @@
+.side {
+  min-width: 72px;
+  justify-content: flex-start;
+}
+
+.title {
+  text-align: center;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.holdsBadge {
+  align-self: flex-start;
+  margin-bottom: 20px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: var(--success);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.label {
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field::placeholder {
+  color: var(--text-faint);
+}
+
+.textArea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.buttonRow {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.draftButton,
+.saveButton {
+  flex: 1;
+  padding: 14px;
+}
+
+.draftButton {
+  border: 1px solid #ccc;
+  background: #f8f8f8;
+  color: var(--text-muted);
+}
+
+.draftButton:disabled,
+.saveButton:disabled {
+  opacity: 0.5;
+}
