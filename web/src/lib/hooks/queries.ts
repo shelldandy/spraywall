@@ -37,7 +37,7 @@ export function useGymsWithWalls() {
 }
 
 export function useWallDetail(wallId: string, gymSlug?: string) {
-  return useQuery<WallDetail | null>({
+  const query = useQuery<WallDetail | null>({
     queryKey: ["wall-detail", wallId],
     queryFn: async () => {
       if (!gymSlug) return null;
@@ -45,7 +45,12 @@ export function useWallDetail(wallId: string, gymSlug?: string) {
       if (!res.ok) throw new Error("Failed to fetch wall");
       return res.json();
     },
+    refetchInterval: (query) => {
+      const status = query.state.data?.detection_status;
+      return status === "pending" || status === "processing" ? 3000 : false;
+    },
   });
+  return query;
 }
 
 export function useHolds(wallId: string, enabled = true, gymSlug?: string) {
