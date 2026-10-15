@@ -38,7 +38,7 @@ func (q *Queries) BumpTokenVersion(ctx context.Context, id pgtype.UUID) (User, e
 
 const consumeRefreshToken = `-- name: ConsumeRefreshToken :one
 DELETE FROM refresh_tokens WHERE token_hash = $1 AND expires_at > now()
-RETURNING id, user_id, token_hash, expires_at, created_at
+RETURNING id, user_id, token_hash, expires_at, created_at, token_version
 `
 
 func (q *Queries) ConsumeRefreshToken(ctx context.Context, tokenHash string) (RefreshToken, error) {
@@ -50,6 +50,7 @@ func (q *Queries) ConsumeRefreshToken(ctx context.Context, tokenHash string) (Re
 		&i.TokenHash,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
@@ -66,19 +67,25 @@ func (q *Queries) CountUserIdentities(ctx context.Context, userID pgtype.UUID) (
 }
 
 const createRefreshToken = `-- name: CreateRefreshToken :one
-INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-VALUES ($1, $2, $3)
-RETURNING id, user_id, token_hash, expires_at, created_at
+INSERT INTO refresh_tokens (user_id, token_hash, expires_at, token_version)
+VALUES ($1, $2, $3, $4)
+RETURNING id, user_id, token_hash, expires_at, created_at, token_version
 `
 
 type CreateRefreshTokenParams struct {
-	UserID    pgtype.UUID        `json:"user_id"`
-	TokenHash string             `json:"token_hash"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	TokenHash    string             `json:"token_hash"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	TokenVersion int32              `json:"token_version"`
 }
 
 func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error) {
-	row := q.db.QueryRow(ctx, createRefreshToken, arg.UserID, arg.TokenHash, arg.ExpiresAt)
+	row := q.db.QueryRow(ctx, createRefreshToken,
+		arg.UserID,
+		arg.TokenHash,
+		arg.ExpiresAt,
+		arg.TokenVersion,
+	)
 	var i RefreshToken
 	err := row.Scan(
 		&i.ID,
@@ -86,6 +93,7 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 		&i.TokenHash,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
@@ -228,7 +236,7 @@ func (q *Queries) GetIdentityByIssuerSubject(ctx context.Context, arg GetIdentit
 }
 
 const getRefreshTokenByHash = `-- name: GetRefreshTokenByHash :one
-SELECT id, user_id, token_hash, expires_at, created_at FROM refresh_tokens WHERE token_hash = $1 AND expires_at > now()
+SELECT id, user_id, token_hash, expires_at, created_at, token_version FROM refresh_tokens WHERE token_hash = $1 AND expires_at > now()
 `
 
 func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error) {
@@ -240,6 +248,7 @@ func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (
 		&i.TokenHash,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }

@@ -245,11 +245,16 @@ func (h *Handler) UnlinkIdentity(w http.ResponseWriter, r *http.Request) {
 
 	txq := h.queries.WithTx(tx)
 	// Lock the user row to serialize unlinks for the same account.
-	u, err = txq.GetUserByIDForUpdate(r.Context(), u.ID)
+	locked, err := txq.GetUserByIDForUpdate(r.Context(), u.ID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
+	if locked.TokenVersion != u.TokenVersion {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session revoked"})
+		return
+	}
+	u = locked
 
 	deleted, err := txq.DeleteUserIdentity(r.Context(), generated.DeleteUserIdentityParams{
 		ID:     pgUUID(identityID),

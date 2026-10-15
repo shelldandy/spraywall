@@ -214,6 +214,15 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "user not found"})
 		return
 	}
+	if rt.TokenVersion != u.TokenVersion {
+		// Consumed anyway: commit so the stale token can't be retried.
+		if err := tx.Commit(r.Context()); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+			return
+		}
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
+		return
+	}
 
 	tokens, err := h.IssueTokens(r.Context(), txq, u)
 	if err != nil {
@@ -252,18 +261,10 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
-	userID := GetUserID(r.Context())
-	if userID == uuid.Nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	u, ok := h.currentUser(w, r)
+	if !ok {
 		return
 	}
-
-	u, err := h.queries.GetUserByID(r.Context(), pgUUID(userID))
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
-		return
-	}
-
 	h.writeMe(w, r.Context(), u)
 }
 
@@ -358,6 +359,9 @@ func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u gener
 		UserID:    u.ID,
 		TokenHash: hashToken(refreshTokenStr),
 		ExpiresAt: pgTimestamptz(time.Now().Add(refreshTokenDuration)),
+		// Stamped from u as read by the caller: if a revocation committed in
+		// between, the token never refreshes.
+		TokenVersion: u.TokenVersion,
 	})
 	if err != nil {
 		return nil, err

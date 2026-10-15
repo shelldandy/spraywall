@@ -537,3 +537,23 @@ func TestLoginPrefersExactEmailCase(t *testing.T) {
 		t.Fatalf("exact-case login failed: %d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestRefreshRejectsTokenFromBeforeRevocation(t *testing.T) {
+	env := newProfileEnv(t, Options{PasswordEnabled: true})
+	ctx := context.Background()
+	stale := env.createUser(t, "race@example.com", "password1")
+	// A login that read the user before a takeover committed...
+	if _, err := env.q.BumpTokenVersion(ctx, stale.ID); err != nil {
+		t.Fatal(err)
+	}
+	// ...still inserts its refresh token afterwards, stamped with the old version.
+	pair, err := env.h.IssueTokens(ctx, env.q, stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	env.h.Refresh(rec, httptest.NewRequest(http.MethodPost, "/auth/refresh", strings.NewReader(`{"refresh_token":"`+pair.RefreshToken+`"}`)))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("stale refresh token accepted: %d %s", rec.Code, rec.Body)
+	}
+}
