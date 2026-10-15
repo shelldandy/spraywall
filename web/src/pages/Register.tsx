@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { API_BASE } from "../lib/api/fetch";
+import { useAuthConfig } from "../lib/hooks/queries";
 import { useAuthStore } from "../lib/store/auth";
 import styles from "./Auth.module.css";
 
@@ -15,9 +16,23 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const configQuery = useAuthConfig();
 
   if (accessToken) {
     return <Navigate to={from ?? "/walls"} replace />;
+  }
+
+  if (configQuery.isPending) {
+    return (
+      <main className="center">
+        <div className="spinner" />
+      </main>
+    );
+  }
+
+  // Accounts come from the identity provider only; the login page offers SSO.
+  if (configQuery.data?.password_enabled === false) {
+    return <Navigate to="/login" replace state={location.state} />;
   }
 
   const handleRegister = async (e: FormEvent) => {
