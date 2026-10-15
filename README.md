@@ -79,7 +79,7 @@ Hold detection uses YOLOv8 for bounding boxes. When enabled, [Segment Anything M
 
 ### Setup
 
-Download a SAM checkpoint into the worker models directory:
+Worker Docker images built with `INSTALL_SAM=true` download the checkpoint at build time. For local (non-Docker) runs and the `make dev` bind mount, download a SAM checkpoint into the worker models directory:
 
 ```bash
 wget -P worker/models https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth

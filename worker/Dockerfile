@@ -26,6 +26,13 @@ from huggingface_hub import hf_hub_download; \
 hf_hub_download(repo_id='jwlarocque/yolov8n-freeclimbs-detect-2', \
 filename='yolov8n-freeclimbs-detect-2.pt', local_dir='/app/models')"
 
+# SAM builds also bake the checkpoint (models/ is excluded from the build context).
+RUN if [ "$INSTALL_SAM" = "true" ]; then \
+        python -c "import urllib.request; urllib.request.urlretrieve(\
+'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth', \
+'/app/models/sam_vit_b_01ec64.pth')"; \
+    fi
+
 COPY . .
 
 RUN chmod +x entrypoint.sh
