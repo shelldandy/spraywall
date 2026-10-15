@@ -1,7 +1,5 @@
-import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router";
-import { useAuthStore } from "./lib/store/auth";
-import AppChrome from "./components/AppChrome";
-import Toaster from "./components/Toaster";
+import { createBrowserRouter } from "react-router";
+import { RootLayout, RequireAuth, HomeRedirect } from "./components/Layouts";
 import LoginPage from "./pages/Login";
 import RegisterPage from "./pages/Register";
 import WallsPage from "./pages/Walls";
@@ -12,31 +10,6 @@ import RouteCreatePage from "./pages/RouteCreate";
 import LogbookPage from "./pages/Logbook";
 import SettingsPage from "./pages/Settings";
 import InvitePage from "./pages/Invite";
-
-function RootLayout() {
-  return (
-    <>
-      <AppChrome />
-      <Outlet />
-      <Toaster />
-    </>
-  );
-}
-
-/** Guards logged-in screens. Remembers where the user was headed (e.g. an invite link). */
-function RequireAuth() {
-  const accessToken = useAuthStore((s) => s.accessToken);
-  const location = useLocation();
-  if (!accessToken) {
-    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
-  }
-  return <Outlet />;
-}
-
-function HomeRedirect() {
-  const accessToken = useAuthStore((s) => s.accessToken);
-  return <Navigate to={accessToken ? "/walls" : "/login"} replace />;
-}
 
 export const router = createBrowserRouter([
   {
