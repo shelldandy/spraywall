@@ -1,0 +1,139 @@
+.side {
+  min-width: 72px;
+  justify-content: flex-start;
+}
+
+.title {
+  text-align: center;
+}
+
+.body {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.loader {
+  display: flex;
+  justify-content: center;
+  margin-top: 40px;
+}
+
+.centered {
+  margin-top: 40px;
+  text-align: center;
+}
+
+.legacyBanner {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #f5a623;
+  border-radius: var(--radius);
+  background: #fff3e0;
+  color: #e65100;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pill {
+  padding: 4px 12px;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.gradeBadge {
+  background: var(--accent);
+}
+
+.resetBadge {
+  background: #f5a623;
+}
+
+.sendCount {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.description {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 22px;
+  color: #444;
+  white-space: pre-wrap;
+}
+
+.imageContainer {
+  margin-bottom: 12px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: #f0f0f0;
+}
+
+.noImage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+  background: #f0f0f0;
+  color: var(--text-faint);
+}
+
+.holdCount {
+  margin: 0 0 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.editButton {
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid var(--accent);
+  background: #f8f8f8;
+  color: var(--accent);
+}
+
+.sendButton {
+  margin-bottom: 12px;
+  padding: 14px;
+}
+
+.sendButton:disabled {
+  opacity: 0.5;
+}
+
+.sentSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sentBadgeLarge {
+  padding: 8px 24px;
+  border-radius: 16px;
+  background: var(--success);
+  color: #fff;
+  font-weight: 700;
+}
+
+.unsendButton {
+  padding: 8px;
+  background: transparent;
+  color: var(--danger);
+  font-size: 14px;
+}

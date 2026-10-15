@@ -1,0 +1,163 @@
+.header {
+  justify-content: space-between;
+}
+
+.title {
+  text-align: center;
+  font-size: 18px !important;
+}
+
+.headerRight {
+  min-width: 72px;
+  text-align: right;
+  justify-content: flex-end;
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.loader {
+  display: flex;
+  justify-content: center;
+  padding-top: 40px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.badge {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.badgeNeutral {
+  background: var(--text-faint);
+}
+
+.badgePending {
+  background: #f5a623;
+}
+
+.badgeDone {
+  background: var(--success);
+}
+
+.badgeFailed {
+  background: var(--danger);
+}
+
+.imageContainer {
+  width: 100%;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #f0f0f0;
+  margin-bottom: 4px;
+}
+
+.noImage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  max-height: 70vh;
+  background: #f0f0f0;
+  border-radius: var(--radius);
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+.body :global(.btn-block) {
+  padding: 14px 20px;
+}
+
+.editHoldsButton {
+  background: #f0f0f0;
+  border: 1px solid var(--text-muted);
+  color: #333;
+}
+
+.editToolbar {
+  display: flex;
+  gap: 8px;
+}
+
+.editTool {
+  flex: 1;
+  padding: 12px;
+  background: #f0f0f0;
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+.editToolActive {
+  background: var(--accent);
+  color: #fff;
+}
+
+.hint {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+}
+
+.threshold {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.thresholdLabel {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.thresholdButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 16px;
+  background: #f0f0f0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.chipActive {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.holdCount {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+}
+
+.createRouteButton {
+  background: var(--success);
+  color: #fff;
+}
+
+.viewRoutesButton {
+  background: #f8f8f8;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
