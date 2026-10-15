@@ -155,7 +155,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// requireGymMember loads the gym by slug, verifies the caller is a member,
+// requireGymMember loads the gym by slug, verifies the caller is a member
+// (instance admins count as admins of every gym),
 // and returns the gym and membership.  If the check fails it writes an HTTP
 // error and returns a non-nil error.
 func (h *Handler) requireGymMember(w http.ResponseWriter, r *http.Request) (generated.Gym, generated.GymMember, error) {
@@ -170,11 +171,7 @@ func (h *Handler) requireGymMember(w http.ResponseWriter, r *http.Request) (gene
 		return generated.Gym{}, generated.GymMember{}, err
 	}
 
-	userID := user.GetUserID(r.Context())
-	member, err := h.queries.GetGymMember(r.Context(), generated.GetGymMemberParams{
-		GymID:  gym.ID,
-		UserID: shared.PgUUID(userID),
-	})
+	member, err := user.EffectiveGymMember(r.Context(), h.queries, gym.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusForbidden, "not a member of this gym")
@@ -238,8 +235,22 @@ func (h *Handler) CreateGym(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, gym)
 }
 
-// ListGyms handles GET /gyms
+// ListGyms handles GET /gyms. Instance admins see every gym.
 func (h *Handler) ListGyms(w http.ResponseWriter, r *http.Request) {
+	if user.GetUserRole(r.Context()) == string(generated.UserRoleAdmin) {
+		all, err := h.queries.ListAllGymsAsAdmin(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not list gyms")
+			return
+		}
+		gyms := make([]generated.ListGymsByUserRow, 0, len(all))
+		for _, g := range all {
+			gyms = append(gyms, generated.ListGymsByUserRow(g))
+		}
+		writeJSON(w, http.StatusOK, gyms)
+		return
+	}
+
 	userID := user.GetUserID(r.Context())
 	gyms, err := h.queries.ListGymsByUser(r.Context(), shared.PgUUID(userID))
 	if err != nil {

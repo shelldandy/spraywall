@@ -64,3 +64,6 @@ SELECT count(*) FROM user_identities WHERE user_id = $1;
 
 -- name: DeleteUserIdentity :execrows
 DELETE FROM user_identities WHERE id = $1 AND user_id = $2;
+
+-- name: GetUserByIDForUpdate :one
+SELECT * FROM users WHERE id = $1 FOR UPDATE;

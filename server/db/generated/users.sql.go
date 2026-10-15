@@ -234,6 +234,28 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	return i, err
 }
 
+const getUserByIDForUpdate = `-- name: GetUserByIDForUpdate :one
+SELECT id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url FROM users WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetUserByIDForUpdate(ctx context.Context, id pgtype.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByIDForUpdate, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarKey,
+		&i.AvatarSource,
+		&i.AvatarOriginUrl,
+	)
+	return i, err
+}
+
 const getUserByIdentity = `-- name: GetUserByIdentity :one
 SELECT u.id, u.email, u.password_hash, u.display_name, u.role, u.created_at, u.updated_at, u.avatar_key, u.avatar_source, u.avatar_origin_url FROM users u
 JOIN user_identities ui ON ui.user_id = u.id
