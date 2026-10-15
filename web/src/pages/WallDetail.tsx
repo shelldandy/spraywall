@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
 import { useHolds } from "../lib/hooks/queries";
 import { toast, toastError } from "../lib/toast";
+import { prepareImageForUpload } from "../lib/image";
 import type { Hold, HoldRoles, WallDetail } from "../lib/api/types";
 import HoldOverlay from "../components/HoldOverlay";
 import WallImage from "../components/WallImage";
@@ -151,11 +152,16 @@ export default function WallDetailPage() {
     e.target.value = "";
     if (!file) return;
 
-    const formData = new FormData();
-    formData.append("image", file, file.name || "photo.jpg");
-
     setUploading(true);
     try {
+      const image = await prepareImageForUpload(file);
+      const formData = new FormData();
+      formData.append(
+        "image",
+        image,
+        image === file ? file.name || "photo.jpg" : "photo.jpg",
+      );
+
       const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/images`, {
         method: "POST",
         body: formData,
