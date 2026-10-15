@@ -2,12 +2,13 @@ import { useCallback, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
-import { useHolds } from "../lib/hooks/queries";
+import { useHolds, useRoutes } from "../lib/hooks/queries";
 import { toast, toastError } from "../lib/toast";
 import { prepareImageForUpload } from "../lib/image";
 import type { Hold, HoldRoles, WallDetail } from "../lib/api/types";
 import HoldOverlay from "../components/HoldOverlay";
 import WallImage from "../components/WallImage";
+import RouteList from "./RouteList";
 import styles from "./WallDetail.module.css";
 
 type HoldRole = "normal" | "start" | "finish";
@@ -48,6 +49,7 @@ export default function WallDetailPage() {
   const queryClient = useQueryClient();
 
   const isEditingRoute = !!editRouteId;
+  const isCreateMode = isEditingRoute || searchParams.get("mode") === "create";
 
   const [isEditingHolds, setIsEditingHolds] = useState(false);
   const [editHoldMode, setEditHoldMode] = useState<"delete" | "add">("delete");
@@ -76,6 +78,7 @@ export default function WallDetailPage() {
   });
 
   const holdsQuery = useHolds(wallId, wallQuery.data?.detection_status === "done", gymSlug);
+  const routesQuery = useRoutes(wallId, gymSlug);
 
   const handleToggle = useCallback((holdId: string) => {
     setHoldSelections((prev) => {
@@ -226,9 +229,17 @@ export default function WallDetailPage() {
     navigate(`/routes/create?${params}`);
   };
 
-  const goToRoutes = () => {
-    const params = new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" });
-    navigate(`/routes?${params}`);
+  const openCreateMode = () => {
+    const params = new URLSearchParams({ gymSlug: gymSlug ?? "", mode: "create" });
+    navigate(`/walls/${wallId}?${params}`);
+  };
+
+  const closeCreateMode = () => {
+    if (isEditingRoute) {
+      navigate(`/routes/${editRouteId}?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`);
+      return;
+    }
+    navigate(`/walls/${wallId}?${new URLSearchParams({ gymSlug: gymSlug ?? "" })}`, { replace: true });
   };
 
   const statusBadge = () => {
@@ -259,10 +270,20 @@ export default function WallDetailPage() {
           <button type="button" className={`btn btn-ghost ${styles.headerRight}`} onClick={exitEditMode}>
             Done
           </button>
+        ) : isCreateMode ? (
+          <button type="button" className={`btn btn-ghost ${styles.headerRight}`} onClick={closeCreateMode}>
+            Done
+          </button>
         ) : (
-          <span className={styles.headerRight}>
-            {visibleSelectedIds.size > 0 ? `${visibleSelectedIds.size} selected` : ""}
-          </span>
+          <button
+            type="button"
+            className={`btn btn-ghost ${styles.createIcon}`}
+            onClick={openCreateMode}
+            aria-label="Create a climb"
+            title="Create a climb"
+          >
+            +
+          </button>
         )}
       </header>
 
@@ -270,7 +291,7 @@ export default function WallDetailPage() {
         <div className={styles.loader}>
           <div className="spinner" />
         </div>
-      ) : (
+      ) : isCreateMode ? (
         <main className={`content ${styles.body}`}>
           {wallQuery.isError && !wall && (
             <p className="error-text">{wallQuery.error.message}</p>
@@ -405,14 +426,35 @@ export default function WallDetailPage() {
             </button>
           )}
 
-          {!isEditingHolds && (
-            <button
-              type="button"
-              className={`btn btn-block ${styles.viewRoutesButton}`}
-              onClick={goToRoutes}
-            >
-              View Routes
-            </button>
+        </main>
+      ) : (
+        <main className={`content ${styles.browseBody}`}>
+          {wallQuery.isError && !wall && <p className="error-text">{wallQuery.error.message}</p>}
+          <div className={styles.browseHeading}>
+            <h2>Climbs</h2>
+            {routesQuery.data && routesQuery.data.length > 0 && (
+              <span className="muted">{routesQuery.data.length}</span>
+            )}
+          </div>
+          {routesQuery.isLoading ? (
+            <div className={styles.loader}>
+              <div className="spinner" />
+            </div>
+          ) : routesQuery.isError ? (
+            <p className="error-text">{routesQuery.error.message}</p>
+          ) : routesQuery.data?.length ? (
+            <RouteList
+              routes={routesQuery.data}
+              holds={holds}
+              imageUrl={wall?.image?.image_url ?? null}
+              wallId={wallId}
+              gymSlug={gymSlug ?? ""}
+            />
+          ) : (
+            <div className={styles.emptyClimbs}>
+              <p>No climbs on this wall yet.</p>
+              <span className="muted">Tap + to select holds and create the first climb.</span>
+            </div>
           )}
         </main>
       )}

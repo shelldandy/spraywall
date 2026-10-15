@@ -1,38 +1,8 @@
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { useHolds, useRoutes, useWallDetail } from "../lib/hooks/queries";
-import HoldOverlay from "../components/HoldOverlay";
-import type { Hold, Route } from "../lib/api/types";
+import RouteList from "./RouteList";
 import styles from "./Routes.module.css";
 import { useGoBack } from "../lib/nav";
-
-function RouteThumbnail({ route, holds, imageUrl }: { route: Route; holds: Hold[]; imageUrl: string | null }) {
-  const selectedIds = new Set(route.hold_ids);
-  const routeHolds = holds.filter((hold) => selectedIds.has(hold.id));
-
-  return (
-    <div className={styles.thumbnail}>
-      {imageUrl ? (
-        // The frame shrink-wraps the contained image so the overlay lines up with it.
-        <div className={styles.thumbnailFrame}>
-          <img className={styles.thumbnailImage} src={imageUrl} alt="" loading="lazy" draggable={false} />
-          {routeHolds.length > 0 && (
-            <div className={styles.thumbnailOverlay}>
-              <HoldOverlay
-                holds={routeHolds}
-                selectedIds={selectedIds}
-                onToggle={() => {}}
-                mode="view"
-                holdRoles={route.hold_roles}
-              />
-            </div>
-          )}
-        </div>
-      ) : (
-        <span className={styles.thumbnailPlaceholder}>▦</span>
-      )}
-    </div>
-  );
-}
 
 export default function RoutesPage() {
   const [params] = useSearchParams();
@@ -48,9 +18,6 @@ export default function RoutesPage() {
   const imageUrl = wallQuery.data?.image?.image_url ?? null;
 
   const goBack = useGoBack(`/walls/${wallId}?${new URLSearchParams({ gymSlug: gymSlug ?? "" })}`);
-
-  const detailHref = (routeId: string) =>
-    `/routes/${routeId}?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`;
 
   return (
     <div className="screen">
@@ -72,33 +39,13 @@ export default function RoutesPage() {
         ) : routes.length === 0 ? (
           <p className={styles.empty}>No routes yet. Select holds on the wall to create one.</p>
         ) : (
-          <ul className={styles.list}>
-            {routes.map((item) => (
-              <li key={item.id}>
-                <Link to={detailHref(item.id)} className={styles.routeRow}>
-                  <RouteThumbnail route={item} holds={holds} imageUrl={imageUrl} />
-                  <div className={styles.routeInfo}>
-                    <div className={styles.routeName}>{item.name}</div>
-                    <div className={styles.routeMeta}>
-                      {item.send_count} send{item.send_count !== 1 ? "s" : ""}
-                      <span className={styles.metaSeparator}> · </span>
-                      {item.hold_ids.length} hold{item.hold_ids.length !== 1 ? "s" : ""}
-                    </div>
-                    {(item.status === "draft" || item.is_legacy || item.has_sent) && (
-                      <div className={styles.badges}>
-                        {item.status === "draft" && (
-                          <span className={`${styles.badge} ${styles.draftBadge}`}>Draft</span>
-                        )}
-                        {item.is_legacy && <span className={`${styles.badge} ${styles.resetBadge}`}>Reset</span>}
-                        {item.has_sent && <span className={`${styles.badge} ${styles.sentBadge}`}>Sent</span>}
-                      </div>
-                    )}
-                  </div>
-                  <div className={styles.gradeColumn}>{item.grade ?? "—"}</div>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <RouteList
+            routes={routes}
+            holds={holds}
+            imageUrl={imageUrl}
+            wallId={wallId}
+            gymSlug={gymSlug ?? ""}
+          />
         )}
       </main>
     </div>

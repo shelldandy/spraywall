@@ -7,6 +7,29 @@
   text-align: center;
 }
 
+.layout {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding-top: 4px;
+}
+
+.climbSidebar {
+  display: none;
+}
+
+.sidebarTitle {
+  margin: 0 0 8px;
+  padding: 0 12px;
+  font-size: 18px;
+}
+
+.sidebarLoader {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
 .body {
   width: 100%;
   max-width: 640px;
@@ -136,4 +159,29 @@
   background: transparent;
   color: var(--danger);
   font-size: 14px;
+}
+
+@media (min-width: 900px) {
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr);
+    align-items: start;
+    gap: 24px;
+    max-width: 1440px;
+  }
+
+  .climbSidebar {
+    display: block;
+    position: sticky;
+    top: calc(72px + var(--safe-top));
+    max-height: calc(100vh - 88px - var(--safe-top));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-right: 1px solid var(--border);
+  }
+
+  .body {
+    max-width: none;
+    margin: 0;
+  }
 }

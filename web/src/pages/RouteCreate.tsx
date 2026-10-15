@@ -5,7 +5,7 @@ import type { HoldRoles } from "../lib/api/types";
 import GradePicker from "../components/GradePicker";
 import { formatGrade, gradeIdFromV } from "../lib/grades";
 import styles from "./RouteCreate.module.css";
-import { hasHistory, useGoBack } from "../lib/nav";
+import { useGoBack } from "../lib/nav";
 
 function parseJson<T>(value: string | null, fallback: T): T {
   if (!value) return fallback;
@@ -61,10 +61,8 @@ export default function RouteCreatePage() {
       onSuccess: () => {
         if (isEditing) {
           navigate(`/routes/${routeId}?${new URLSearchParams({ wallId, gymSlug })}`, { replace: true });
-        } else if (hasHistory()) {
-          navigate(-1);
         } else {
-          navigate(`/routes?${new URLSearchParams({ wallId, gymSlug })}`, { replace: true });
+          navigate(`/walls/${wallId}?${new URLSearchParams({ gymSlug })}`, { replace: true });
         }
       },
     });
