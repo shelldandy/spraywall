@@ -94,6 +94,47 @@ func (q *Queries) GetGymMember(ctx context.Context, arg GetGymMemberParams) (Gym
 	return i, err
 }
 
+const listAllGymsAsAdmin = `-- name: ListAllGymsAsAdmin :many
+SELECT g.id, g.name, g.slug, g.owner_id, g.created_at, 'admin'::user_role AS user_role FROM gyms g
+ORDER BY g.name
+`
+
+type ListAllGymsAsAdminRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	Slug      string             `json:"slug"`
+	OwnerID   pgtype.UUID        `json:"owner_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UserRole  UserRole           `json:"user_role"`
+}
+
+func (q *Queries) ListAllGymsAsAdmin(ctx context.Context) ([]ListAllGymsAsAdminRow, error) {
+	rows, err := q.db.Query(ctx, listAllGymsAsAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllGymsAsAdminRow
+	for rows.Next() {
+		var i ListAllGymsAsAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.OwnerID,
+			&i.CreatedAt,
+			&i.UserRole,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGymMembers = `-- name: ListGymMembers :many
 SELECT gm.gym_id, gm.user_id, gm.role, u.email, u.display_name FROM gym_members gm
 JOIN users u ON gm.user_id = u.id

@@ -29,6 +29,43 @@ The app is served on port 80 (`HTTP_PORT` to change). Migrations run and the sto
 - **NVIDIA GPU:** the default worker runs inference on CPU. Use the `-cuda` worker tag (e.g. `latest-cuda`) and uncomment the `deploy` block in the compose file.
 - **Upgrading:** `docker compose pull && docker compose up -d`.
 
+## Single sign-on (OIDC)
+
+Spraywall can log users in through any OpenID Connect provider (Pocket-ID, Authelia, Authentik, Keycloak, ...). It is off unless `OIDC_ISSUER_URL` is set; the provider is configured via discovery (`<issuer>/.well-known/openid-configuration`). When enabled, the login page shows a "Sign in with `OIDC_PROVIDER_NAME`" button next to (or instead of) the password form.
+
+| Variable                 | Default                       | Description                                                                                                    |
+| ------------------------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `OIDC_ISSUER_URL`        |                               | Issuer URL, e.g. `https://id.example.com`. Enables OIDC                                                        |
+| `OIDC_CLIENT_ID`         |                               | Client ID (required when enabled)                                                                              |
+| `OIDC_CLIENT_SECRET`     |                               | Client secret (required when enabled)                                                                          |
+| `OIDC_REDIRECT_URL`      |                               | Callback URL, `https://<your-host>/api/auth/oidc/callback` (required when enabled)                             |
+| `OIDC_PROVIDER_NAME`     | `SSO`                         | Label for the login button                                                                                     |
+| `OIDC_SCOPES`            | `openid email profile groups` | Requested scopes                                                                                               |
+| `OIDC_GROUPS_CLAIM`      | `groups`                      | Claim holding the user's group names                                                                           |
+| `OIDC_ADMIN_GROUP`       |                               | Members become instance admins (admin in every gym); non-members are demoted to climber on their next SSO login. If unset, roles are never touched |
+| `OIDC_ADMIN_MAX_AGE`     | `24h`                         | With `OIDC_ADMIN_GROUP` set, admin rights lapse this long after the user's last SSO login (sessions and password logins don't renew them), so removing someone from the group takes effect within this window. Signing in with SSO again restores them |
+| `PASSWORD_LOGIN_ENABLED` | `true`                        | `false` = SSO only (disables password login and registration). The server refuses to start unless OIDC is configured |
+
+### Pocket-ID example
+
+1. In the Pocket-ID admin UI, create an OIDC client. Set the callback URL to `https://<your-host>/api/auth/oidc/callback`.
+2. Copy the client ID and secret into `.env`:
+   ```bash
+   OIDC_ISSUER_URL=https://id.example.com
+   OIDC_CLIENT_ID=<client id>
+   OIDC_CLIENT_SECRET=<client secret>
+   OIDC_REDIRECT_URL=https://<your-host>/api/auth/oidc/callback
+   OIDC_PROVIDER_NAME=Pocket-ID
+   ```
+3. To manage admins from Pocket-ID, create a group such as `spraywall-admins`, add users to it and set `OIDC_ADMIN_GROUP=spraywall-admins`. Pocket-ID includes the `groups` claim when the `groups` scope is requested (the default).
+4. Optionally set `PASSWORD_LOGIN_ENABLED=false` to make SSO the only way in, then `docker compose up -d`.
+
+### Notes
+
+- Existing password accounts are linked automatically on first SSO login when the provider reports the email as verified. Because password sign-up never proves email ownership, linking this way removes the account's password, any previously linked identity, and all its sessions; the owner can set a new password from the Profile page. Accounts are only created or linked from verified emails (the provider must send `email_verified=true` in the ID token or UserInfo; Pocket-ID does), and emails match case-insensitively.
+- Profile pictures are taken from the provider's `picture` claim unless the user has uploaded their own. They are only downloaded from the provider's own host or from public addresses.
+- On the **Profile** page (Settings → Profile) users can change their display name and avatar, link or unlink the provider, and set or change a password. The last remaining login method cannot be removed.
+
 ## Development
 
 ```bash

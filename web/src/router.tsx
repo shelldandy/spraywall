@@ -10,6 +10,8 @@ import RouteCreatePage from "./pages/RouteCreate";
 import LogbookPage from "./pages/Logbook";
 import SettingsPage from "./pages/Settings";
 import InvitePage from "./pages/Invite";
+import OidcCallbackPage from "./pages/OidcCallback";
+import ProfilePage from "./pages/Profile";
 
 export const router = createBrowserRouter([
   {
@@ -18,6 +20,7 @@ export const router = createBrowserRouter([
       { path: "/", element: <HomeRedirect /> },
       { path: "/login", element: <LoginPage /> },
       { path: "/register", element: <RegisterPage /> },
+      { path: "/auth/callback", element: <OidcCallbackPage /> },
       {
         element: <RequireAuth />,
         children: [
@@ -28,6 +31,7 @@ export const router = createBrowserRouter([
           { path: "/routes/:routeId", element: <RouteDetailPage /> },
           { path: "/logbook", element: <LogbookPage /> },
           { path: "/settings", element: <SettingsPage /> },
+          { path: "/profile", element: <ProfilePage /> },
           { path: "/invite/:token", element: <InvitePage /> },
         ],
       },

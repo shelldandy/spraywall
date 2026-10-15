@@ -98,11 +98,12 @@ type Invite struct {
 }
 
 type RefreshToken struct {
-	ID        pgtype.UUID        `json:"id"`
-	UserID    pgtype.UUID        `json:"user_id"`
-	TokenHash string             `json:"token_hash"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID           pgtype.UUID        `json:"id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	TokenHash    string             `json:"token_hash"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	TokenVersion int32              `json:"token_version"`
 }
 
 type Route struct {
@@ -129,13 +130,27 @@ type Send struct {
 }
 
 type User struct {
-	ID           pgtype.UUID        `json:"id"`
-	Email        string             `json:"email"`
-	PasswordHash string             `json:"password_hash"`
-	DisplayName  string             `json:"display_name"`
-	Role         UserRole           `json:"role"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID              pgtype.UUID        `json:"id"`
+	Email           string             `json:"email"`
+	PasswordHash    string             `json:"password_hash"`
+	DisplayName     string             `json:"display_name"`
+	Role            UserRole           `json:"role"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	AvatarKey       pgtype.Text        `json:"avatar_key"`
+	AvatarSource    pgtype.Text        `json:"avatar_source"`
+	AvatarOriginUrl pgtype.Text        `json:"avatar_origin_url"`
+	RoleSyncedAt    pgtype.Timestamptz `json:"role_synced_at"`
+	TokenVersion    int32              `json:"token_version"`
+}
+
+type UserIdentity struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Issuer    string             `json:"issuer"`
+	Subject   string             `json:"subject"`
+	Email     string             `json:"email"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type Wall struct {

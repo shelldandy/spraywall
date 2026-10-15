@@ -36,6 +36,22 @@
   color: #333;
 }
 
+.navRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  font-size: 16px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.chevron {
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-faint);
+}
+
 .back {
   margin-top: auto;
   align-self: center;

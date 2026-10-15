@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import styles from "./Settings.module.css";
 import { useGoBack } from "../lib/nav";
 
@@ -11,6 +12,16 @@ export default function SettingsPage() {
     <div className={`screen ${styles.page}`}>
       <main className={styles.container}>
         <h1 className={styles.title}>Settings</h1>
+
+        <section className={styles.section}>
+          <h2 className={styles.label}>Account</h2>
+          <Link to="/profile" className={styles.navRow}>
+            <span>Profile</span>
+            <span className={styles.chevron} aria-hidden="true">
+              &rsaquo;
+            </span>
+          </Link>
+        </section>
 
         <section className={styles.section}>
           <h2 className={styles.label}>App Version</h2>

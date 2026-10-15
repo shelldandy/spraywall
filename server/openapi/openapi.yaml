@@ -2,7 +2,11 @@ openapi: "3.1.0"
 info:
   title: Spraywall API
   version: "0.1.0"
-  description: API for the Spraywall climbing app
+  description: |
+    API for the Spraywall climbing app.
+
+    Authorization: instance admins (`users.role = admin`, e.g. members of `OIDC_ADMIN_GROUP`)
+    are treated as gym admins in every gym, whether or not they have a membership row.
 servers:
   - url: http://localhost:8080
     description: Local development
@@ -46,6 +50,7 @@ paths:
     post:
       operationId: register
       summary: Register a new user
+      description: Returns 403 when password login is disabled (`PASSWORD_LOGIN_ENABLED=false`).
       tags: [Auth]
       requestBody:
         required: true
@@ -62,6 +67,8 @@ paths:
                 $ref: "#/components/schemas/AuthTokens"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/PasswordLoginDisabled"
         "409":
           description: Email already taken
 
@@ -69,6 +76,7 @@ paths:
     post:
       operationId: login
       summary: Log in
+      description: Returns 403 when password login is disabled (`PASSWORD_LOGIN_ENABLED=false`).
       tags: [Auth]
       requestBody:
         required: true
@@ -85,6 +93,8 @@ paths:
                 $ref: "#/components/schemas/AuthTokens"
         "401":
           description: Invalid credentials
+        "403":
+          $ref: "#/components/responses/PasswordLoginDisabled"
 
   /auth/refresh:
     post:
@@ -133,7 +143,113 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
 
-  /users/me:
+  /auth/config:
+    get:
+      operationId: getAuthConfig
+      summary: Get available login methods
+      tags: [Auth]
+      responses:
+        "200":
+          description: Enabled login methods
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthConfig"
+
+  /auth/oidc/login:
+    get:
+      operationId: oidcLogin
+      summary: Start OIDC login
+      description: |
+        Stores state, nonce, PKCE verifier and the redirect path in a short-lived signed cookie
+        and redirects the browser to the identity provider.
+      tags: [Auth]
+      parameters:
+        - name: redirect
+          in: query
+          required: false
+          description: Path to return to after login. Must start with `/` (not `//`); otherwise ignored.
+          schema:
+            type: string
+            example: /invite/abc123
+      responses:
+        "302":
+          description: Redirect to the identity provider's authorization endpoint
+        "404":
+          description: OIDC is not configured
+
+  /auth/oidc/callback:
+    get:
+      operationId: oidcCallback
+      summary: OIDC redirect target
+      description: |
+        Validates the state cookie, exchanges the code (with PKCE) and verifies the ID token.
+
+        Login mode:
+          - success: 302 to `/auth/callback#access_token=...&refresh_token=...&redirect=...`
+          - failure: 302 to `/login?error=<code>`
+
+        Link mode (started via `POST /auth/oidc/link`):
+          - success: 302 to `/profile?linked=1`
+          - failure: 302 to `/profile?error=<code>`
+
+        Error codes: `oidc_failed`, `state_invalid`, `email_missing`, `email_unverified`,
+        `identity_in_use`, `access_denied`.
+
+        An unknown identity is linked to an existing account with the same email only when the
+        provider reports the email as verified (otherwise `email_unverified`); if no account has
+        that email, a new one is created. When `OIDC_ADMIN_GROUP` is set, the user's role is set
+        to `admin` or `climber` from the groups claim on every login.
+      tags: [Auth]
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: error
+          in: query
+          required: false
+          description: Error returned by the identity provider (e.g. `access_denied`)
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect back into the web app (see description)
+
+  /auth/oidc/link:
+    post:
+      operationId: oidcLink
+      summary: Start linking the OIDC provider to the current account
+      description: |
+        Sets the link-mode state cookie and returns the authorization URL. The client navigates
+        to `url`; the callback then attaches the identity to the current user.
+      tags: [Auth]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Authorization URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                required: [url]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: OIDC is not configured
+
+  /auth/me:
     get:
       operationId: getMe
       summary: Get current user profile
@@ -146,9 +262,154 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/Me"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /users/me:
+    patch:
+      operationId: updateMe
+      summary: Update current user profile
+      tags: [User]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/me/password:
+    put:
+      operationId: changePassword
+      summary: Set or change password
+      description: |
+        `current_password` is required when the user already has a password; users without one
+        (SSO-only accounts) may set one directly. All other refresh tokens are revoked and a new
+        token pair is returned.
+      tags: [User]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Password updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokens"
+        "400":
+          description: New password too short, or current password missing/incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/PasswordLoginDisabled"
+
+  /users/me/avatar:
+    post:
+      operationId: uploadAvatar
+      summary: Upload a profile picture
+      description: Max 5 MB; JPEG, PNG, WebP or GIF. Takes precedence over the provider's `picture`.
+      tags: [User]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+              required: [avatar]
+            encoding:
+              avatar:
+                contentType: image/jpeg, image/png, image/webp, image/gif
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      operationId: deleteAvatar
+      summary: Remove the profile picture
+      tags: [User]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/me/identities/{identityId}:
+    delete:
+      operationId: unlinkIdentity
+      summary: Unlink an SSO identity
+      tags: [User]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: identityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Unlinking would leave the account without a login method
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /gyms:
     get:
@@ -461,6 +722,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    PasswordLoginDisabled:
+      description: Password login is disabled (`PASSWORD_LOGIN_ENABLED=false`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
   schemas:
     Error:
@@ -531,6 +798,80 @@ components:
           type: string
           format: date-time
       required: [id, email, display_name]
+
+    Me:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            role:
+              type: string
+              enum: [admin, setter, climber]
+              description: Instance role. `admin` is treated as admin in every gym.
+            avatar_url:
+              type: ["string", "null"]
+              example: /images/avatars/7f8e9a10-1b2c-4d3e-8f90-a1b2c3d4e5f6.jpg
+            has_password:
+              type: boolean
+            identities:
+              type: array
+              items:
+                $ref: "#/components/schemas/UserIdentity"
+          required: [avatar_url, has_password, identities]
+
+    UserIdentity:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        issuer:
+          type: string
+          example: https://id.example.com
+        provider_name:
+          type: string
+          example: Pocket-ID
+        email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+      required: [id, issuer, provider_name, email, created_at]
+
+    AuthConfig:
+      type: object
+      properties:
+        password_enabled:
+          type: boolean
+        oidc:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            name:
+              type: string
+              example: SSO
+          required: [enabled, name]
+      required: [password_enabled, oidc]
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+      required: [display_name]
+
+    ChangePasswordRequest:
+      type: object
+      properties:
+        current_password:
+          type: string
+          description: Required when the user already has a password
+        new_password:
+          type: string
+          minLength: 8
+      required: [new_password]
 
     Gym:
       type: object

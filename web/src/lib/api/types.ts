@@ -95,3 +95,34 @@ export interface LogbookEntry {
   route_grade: string | null;
   wall_name: string;
 }
+
+export interface AuthConfig {
+  password_enabled: boolean;
+  oidc: {
+    enabled: boolean;
+    /** Provider label for buttons, e.g. "Pocket ID". */
+    name: string;
+  };
+}
+
+export interface Identity {
+  id: string;
+  issuer: string;
+  provider_name: string;
+  email: string;
+  created_at: string;
+  // False for identities from a previously configured provider; they can't sign in.
+  active: boolean;
+}
+
+export interface Me {
+  id: string;
+  email: string;
+  display_name: string;
+  role: string;
+  created_at: string;
+  /** Same-origin path (e.g. "/images/avatars/x.jpg"), served outside /api. */
+  avatar_url: string | null;
+  has_password: boolean;
+  identities: Identity[];
+}

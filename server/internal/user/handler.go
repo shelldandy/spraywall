@@ -7,11 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
@@ -23,14 +24,35 @@ const (
 	bcryptCost           = 12
 )
 
+// TxBeginner starts database transactions (satisfied by *pgxpool.Pool).
+type TxBeginner interface {
+	Begin(context.Context) (pgx.Tx, error)
+}
+
+// Options configures optional Handler features.
+type Options struct {
+	// PasswordEnabled allows email/password registration, login, and
+	// password changes.
+	PasswordEnabled bool
+	// Storage holds avatar images. Required for avatar endpoints.
+	Storage AvatarStorage
+	// OIDCIssuer and OIDCProviderName label linked identities in /auth/me.
+	OIDCIssuer       string
+	OIDCProviderName string
+	// AdminRoleMaxAge, when non-zero, demotes admins whose role was last
+	// confirmed by an SSO login longer ago than this (see oidc.Config).
+	AdminRoleMaxAge time.Duration
+}
+
 type Handler struct {
 	queries   *generated.Queries
 	jwtSecret string
-	pool      interface{ Begin(context.Context) (pgx.Tx, error) }
+	pool      TxBeginner
+	opts      Options
 }
 
-func NewHandler(queries *generated.Queries, jwtSecret string, pool interface{ Begin(context.Context) (pgx.Tx, error) }) *Handler {
-	return &Handler{queries: queries, jwtSecret: jwtSecret, pool: pool}
+func NewHandler(queries *generated.Queries, jwtSecret string, pool TxBeginner, opts Options) *Handler {
+	return &Handler{queries: queries, jwtSecret: jwtSecret, pool: pool, opts: opts}
 }
 
 type registerRequest struct {
@@ -48,20 +70,42 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-type tokenResponse struct {
+// TokenPair is the JSON body returned by every endpoint that issues tokens.
+type TokenPair struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 }
 
-type userResponse struct {
-	ID          uuid.UUID `json:"id"`
-	Email       string    `json:"email"`
-	DisplayName string    `json:"display_name"`
-	Role        string    `json:"role"`
-	CreatedAt   time.Time `json:"created_at"`
+type identityResponse struct {
+	ID           uuid.UUID `json:"id"`
+	Issuer       string    `json:"issuer"`
+	ProviderName string    `json:"provider_name"`
+	Email        string    `json:"email"`
+	CreatedAt    time.Time `json:"created_at"`
+	// Active is false for identities from a previously configured provider,
+	// which can no longer be used to sign in.
+	Active bool `json:"active"`
 }
 
+type userResponse struct {
+	ID          uuid.UUID          `json:"id"`
+	Email       string             `json:"email"`
+	DisplayName string             `json:"display_name"`
+	Role        string             `json:"role"`
+	CreatedAt   time.Time          `json:"created_at"`
+	AvatarURL   *string            `json:"avatar_url"`
+	HasPassword bool               `json:"has_password"`
+	Identities  []identityResponse `json:"identities"`
+}
+
+var errPasswordDisabled = map[string]string{"error": "password login disabled"}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	if !h.opts.PasswordEnabled {
+		writeJSON(w, http.StatusForbidden, errPasswordDisabled)
+		return
+	}
+
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -70,6 +114,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	if req.Email == "" || req.Password == "" || req.DisplayName == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "email, password, and display_name are required"})
+		return
+	}
+
+	// The unique constraint is case-sensitive; emails are matched without case.
+	if _, err := h.queries.GetUserByEmail(r.Context(), req.Email); err == nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "email already registered"})
 		return
 	}
 
@@ -90,7 +140,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, err := h.generateTokens(r, u)
+	tokens, err := h.IssueTokens(r.Context(), h.queries, u)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
@@ -100,6 +150,11 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	if !h.opts.PasswordEnabled {
+		writeJSON(w, http.StatusForbidden, errPasswordDisabled)
+		return
+	}
+
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -112,12 +167,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// OIDC-only accounts have no password hash and can never log in here.
+	if u.PasswordHash == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
+		return
+	}
+
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
 
-	tokens, err := h.generateTokens(r, u)
+	tokens, err := h.IssueTokens(r.Context(), h.queries, u)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
@@ -133,15 +194,9 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenHash := hashToken(req.RefreshToken)
-
-	rt, err := h.queries.GetRefreshTokenByHash(r.Context(), tokenHash)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
-		return
-	}
-
-	// Revoke old token and generate new ones in a transaction.
+	// Revoke old token and generate new ones in a transaction. Consuming the
+	// token with a single DELETE ... RETURNING means concurrent refreshes (or
+	// a concurrent session revocation) can't both succeed.
 	tx, err := h.pool.Begin(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
@@ -150,19 +205,39 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context())
 
 	txq := h.queries.WithTx(tx)
+	tokenHash := hashToken(req.RefreshToken)
 
-	if err := txq.DeleteRefreshToken(r.Context(), rt.ID); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+	// Lock the account before the token row, the same order as password
+	// changes and SSO takeovers, so a refresh racing a revocation can't
+	// deadlock with it.
+	found, err := txq.GetRefreshTokenByHash(r.Context(), tokenHash)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
 		return
 	}
-
-	u, err := txq.GetUserByID(r.Context(), rt.UserID)
+	u, err := txq.GetUserByIDForUpdate(r.Context(), found.UserID)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "user not found"})
 		return
 	}
 
-	tokens, err := h.generateTokensWithTx(r, txq, u)
+	// Fails if a concurrent refresh or revocation got the token first.
+	rt, err := txq.ConsumeRefreshToken(r.Context(), tokenHash)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
+		return
+	}
+	if rt.TokenVersion != u.TokenVersion {
+		// Consumed anyway: commit so the stale token can't be retried.
+		if err := tx.Commit(r.Context()); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+			return
+		}
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
+		return
+	}
+
+	tokens, err := h.IssueTokens(r.Context(), txq, u)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
@@ -199,33 +274,92 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
-	userID := GetUserID(r.Context())
-	if userID == uuid.Nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	u, ok := h.currentUser(w, r)
+	if !ok {
 		return
 	}
+	h.writeMe(w, r.Context(), u)
+}
 
-	u, err := h.queries.GetUserByID(r.Context(), pgUUID(userID))
+// writeMe renders the full /auth/me representation of u.
+func (h *Handler) writeMe(w http.ResponseWriter, ctx context.Context, u generated.User) {
+	resp, err := h.buildMe(ctx, u)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
+	writeJSON(w, http.StatusOK, resp)
+}
 
-	writeJSON(w, http.StatusOK, userResponse{
+func (h *Handler) buildMe(ctx context.Context, u generated.User) (userResponse, error) {
+	identities, err := h.queries.ListUserIdentities(ctx, u.ID)
+	if err != nil {
+		return userResponse{}, err
+	}
+
+	resp := userResponse{
 		ID:          uuidFromPg(u.ID),
 		Email:       u.Email,
 		DisplayName: u.DisplayName,
 		Role:        string(u.Role),
 		CreatedAt:   u.CreatedAt.Time,
-	})
+		AvatarURL:   AvatarURL(u),
+		HasPassword: u.PasswordHash != "",
+		Identities:  make([]identityResponse, 0, len(identities)),
+	}
+	for _, ident := range identities {
+		resp.Identities = append(resp.Identities, identityResponse{
+			ID:           uuidFromPg(ident.ID),
+			Issuer:       ident.Issuer,
+			ProviderName: h.providerName(ident.Issuer),
+			Email:        ident.Email,
+			CreatedAt:    ident.CreatedAt.Time,
+			Active:       h.identityActive(ident.Issuer),
+		})
+	}
+	return resp, nil
 }
 
-func (h *Handler) generateTokens(r *http.Request, u generated.User) (*tokenResponse, error) {
+// providerName returns the configured display name for the OIDC issuer, or
+// the raw issuer for identities from a previously configured provider.
+func (h *Handler) providerName(issuer string) string {
+	if h.identityActive(issuer) {
+		return h.opts.OIDCProviderName
+	}
+	return issuer
+}
+
+// identityActive reports whether an identity from issuer can be used to sign
+// in, i.e. it belongs to the currently configured OIDC provider.
+func (h *Handler) identityActive(issuer string) bool {
+	return h.opts.OIDCIssuer != "" && SameIssuer(issuer, h.opts.OIDCIssuer)
+}
+
+// SameIssuer compares issuer URLs, ignoring a trailing slash.
+func SameIssuer(a, b string) bool {
+	return strings.TrimSuffix(a, "/") == strings.TrimSuffix(b, "/")
+}
+
+// IssueTokens creates a signed access token and a stored refresh token for u.
+// Pass a transaction-bound *generated.Queries to make issuance part of a
+// larger transaction.
+func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u generated.User) (*TokenPair, error) {
 	userID := uuidFromPg(u.ID)
+
+	if h.adminRoleExpired(u, time.Now()) {
+		demoted, err := q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: generated.UserRoleClimber})
+		if err != nil {
+			return nil, err
+		}
+		// Keep the caller's snapshot otherwise: adopting the fresh row's
+		// token_version would let a request racing a revocation outlive it.
+		u.Role = demoted.Role
+	}
 
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  userID.String(),
 		"role": string(u.Role),
+		"ver":  u.TokenVersion,
 		"exp":  time.Now().Add(accessTokenDuration).Unix(),
 		"iat":  time.Now().Unix(),
 	})
@@ -243,55 +377,31 @@ func (h *Handler) generateTokens(r *http.Request, u generated.User) (*tokenRespo
 	refreshTokenStr := hex.EncodeToString(rawToken)
 
 	// Store hashed refresh token
-	_, err = h.queries.CreateRefreshToken(r.Context(), generated.CreateRefreshTokenParams{
+	_, err = q.CreateRefreshToken(ctx, generated.CreateRefreshTokenParams{
 		UserID:    u.ID,
 		TokenHash: hashToken(refreshTokenStr),
 		ExpiresAt: pgTimestamptz(time.Now().Add(refreshTokenDuration)),
+		// Stamped from u as read by the caller: if a revocation committed in
+		// between, the token never refreshes.
+		TokenVersion: u.TokenVersion,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &tokenResponse{
+	return &TokenPair{
 		AccessToken:  accessTokenStr,
 		RefreshToken: refreshTokenStr,
 	}, nil
 }
 
-func (h *Handler) generateTokensWithTx(r *http.Request, q *generated.Queries, u generated.User) (*tokenResponse, error) {
-	userID := uuidFromPg(u.ID)
-
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  userID.String(),
-		"role": string(u.Role),
-		"exp":  time.Now().Add(accessTokenDuration).Unix(),
-		"iat":  time.Now().Unix(),
-	})
-
-	accessTokenStr, err := accessToken.SignedString([]byte(h.jwtSecret))
-	if err != nil {
-		return nil, err
+// adminRoleExpired reports whether u's admin role is no longer backed by a
+// recent SSO login. Only applies when the IdP manages admins.
+func (h *Handler) adminRoleExpired(u generated.User, now time.Time) bool {
+	if h.opts.AdminRoleMaxAge <= 0 || u.Role != generated.UserRoleAdmin {
+		return false
 	}
-
-	rawToken := make([]byte, 32)
-	if _, err := rand.Read(rawToken); err != nil {
-		return nil, err
-	}
-	refreshTokenStr := hex.EncodeToString(rawToken)
-
-	_, err = q.CreateRefreshToken(r.Context(), generated.CreateRefreshTokenParams{
-		UserID:    u.ID,
-		TokenHash: hashToken(refreshTokenStr),
-		ExpiresAt: pgTimestamptz(time.Now().Add(refreshTokenDuration)),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &tokenResponse{
-		AccessToken:  accessTokenStr,
-		RefreshToken: refreshTokenStr,
-	}, nil
+	return !u.RoleSyncedAt.Valid || now.Sub(u.RoleSyncedAt.Time) > h.opts.AdminRoleMaxAge
 }
 
 func hashToken(token string) string {

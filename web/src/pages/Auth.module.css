@@ -27,6 +27,20 @@
   padding: 12px 32px;
 }
 
+.sso {
+  padding: 12px 20px;
+}
+
+.divider {
+  margin: 16px 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.ssoError {
+  margin-top: 16px;
+}
+
 .link {
   margin-top: 24px;
   font-size: 14px;

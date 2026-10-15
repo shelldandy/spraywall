@@ -16,6 +16,7 @@ import (
 	"github.com/bowlinedandy/spraywall/server/db/generated"
 	"github.com/bowlinedandy/spraywall/server/internal/invite"
 	mw "github.com/bowlinedandy/spraywall/server/internal/middleware"
+	"github.com/bowlinedandy/spraywall/server/internal/oidc"
 	"github.com/bowlinedandy/spraywall/server/internal/route"
 	"github.com/bowlinedandy/spraywall/server/internal/storage"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
@@ -85,16 +86,58 @@ func main() {
 		})
 	})
 
-	// Auth routes (rate limited)
+	passwordEnabled, err := oidc.PasswordLoginEnabled()
+	if err != nil {
+		log.Fatal(err)
+	}
+	oidcConfig, err := oidc.LoadConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if !passwordEnabled && !oidcConfig.Enabled {
+		log.Fatal("PASSWORD_LOGIN_ENABLED=false requires OIDC to be configured (OIDC_ISSUER_URL)")
+	}
+
+	authOpts := user.Options{
+		PasswordEnabled:  passwordEnabled,
+		Storage:          storageClient,
+		OIDCIssuer:       oidcConfig.IssuerURL,
+		OIDCProviderName: oidcConfig.ProviderName,
+	}
+	if oidcConfig.Enabled && oidcConfig.AdminGroup != "" {
+		authOpts.AdminRoleMaxAge = oidcConfig.AdminMaxAge
+	}
+	authHandler := user.NewHandler(queries, jwtSecret, pool, authOpts)
+
+	var oidcHandler *oidc.Handler
+	if oidcConfig.Enabled {
+		oidcHandler, err = oidc.New(context.Background(), oidcConfig, queries, pool, authHandler, storageClient, jwtSecret)
+		if err != nil {
+			log.Fatalf("Unable to configure OIDC: %v", err)
+		}
+		log.Printf("OIDC login enabled via %s", oidcConfig.IssuerURL)
+	}
+
+	// Auth routes
 	authLimiter := mw.NewRateLimiter(10, time.Minute)
-	authHandler := user.NewHandler(queries, jwtSecret, pool)
 	r.Route("/auth", func(r chi.Router) {
-		r.Use(authLimiter.Handler)
-		r.Post("/register", authHandler.Register)
-		r.Post("/login", authHandler.Login)
-		r.Post("/refresh", authHandler.Refresh)
-		r.Post("/logout", authHandler.Logout)
-		r.With(user.AuthMiddleware(jwtSecret)).Get("/me", authHandler.Me)
+		// Polled by the login page; not rate limited.
+		r.Get("/config", oidc.ConfigHandler(passwordEnabled, oidcConfig))
+
+		r.Group(func(r chi.Router) {
+			r.Use(authLimiter.Handler)
+			r.Post("/register", authHandler.Register)
+			r.Post("/login", authHandler.Login)
+			r.Post("/refresh", authHandler.Refresh)
+			r.Post("/logout", authHandler.Logout)
+			r.With(authHandler.Authenticate).Get("/me", authHandler.Me)
+
+			if oidcHandler != nil {
+				r.Get("/oidc/login", oidcHandler.Login)
+				r.Get("/oidc/callback", oidcHandler.Callback)
+				r.With(authHandler.Authenticate).Post("/oidc/link", oidcHandler.Link)
+			}
+		})
 	})
 
 	// Handlers
@@ -105,18 +148,26 @@ func main() {
 	// Image proxy (no auth required, keys are unguessable UUIDs)
 	r.Get("/images/*", wallHandler.ServeImage)
 
-	// Logbook (authenticated, outside gyms)
-	r.With(user.AuthMiddleware(jwtSecret)).Get("/users/me/logbook", routeHandler.Logbook)
+	// Current user's profile and logbook (authenticated, outside gyms)
+	r.Route("/users/me", func(r chi.Router) {
+		r.Use(authHandler.Authenticate)
+		r.Patch("/", authHandler.UpdateMe)
+		r.Put("/password", authHandler.ChangePassword)
+		r.Post("/avatar", authHandler.UploadAvatar)
+		r.Delete("/avatar", authHandler.DeleteAvatar)
+		r.Delete("/identities/{id}", authHandler.UnlinkIdentity)
+		r.Get("/logbook", routeHandler.Logbook)
+	})
 
 	// Public invite routes
 	r.Route("/invites/{token}", func(r chi.Router) {
 		r.Get("/", inviteHandler.ValidateInvite)
-		r.With(user.AuthMiddleware(jwtSecret)).Post("/accept", inviteHandler.AcceptInvite)
+		r.With(authHandler.Authenticate).Post("/accept", inviteHandler.AcceptInvite)
 	})
 
 	// Gym & wall routes (authenticated)
 	r.Route("/gyms", func(r chi.Router) {
-		r.Use(user.AuthMiddleware(jwtSecret))
+		r.Use(authHandler.Authenticate)
 		r.Post("/", wallHandler.CreateGym)
 		r.Get("/", wallHandler.ListGyms)
 		r.Route("/{gymSlug}", func(r chi.Router) {

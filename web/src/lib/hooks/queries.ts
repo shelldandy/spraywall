@@ -1,6 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "../api/fetch";
-import type { Gym, Wall, WallDetail, Hold, Route, LogbookEntry } from "../api/types";
+import { API_BASE, apiFetch } from "../api/fetch";
+import type {
+  AuthConfig,
+  Gym,
+  Wall,
+  WallDetail,
+  Hold,
+  Route,
+  LogbookEntry,
+  Me,
+} from "../api/types";
 import { useAuthStore } from "../store/auth";
 
 export interface GymWithWalls extends Gym {
@@ -97,6 +106,34 @@ export function useLogbook() {
     queryFn: async () => {
       const res = await apiFetch("/users/me/logbook");
       if (!res.ok) throw new Error("Failed to fetch logbook");
+      return res.json();
+    },
+  });
+}
+
+/** Which login methods the server offers. Public, so it's a plain fetch without auth. */
+export function useAuthConfig() {
+  return useQuery<AuthConfig>({
+    queryKey: ["auth-config"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/auth/config`);
+      if (!res.ok) throw new Error("Failed to fetch auth config");
+      return res.json();
+    },
+    // Server config only changes on redeploy.
+    staleTime: 1000 * 60 * 10,
+    retry: 1,
+  });
+}
+
+/** The logged-in user's profile. Keyed by user id (like the logbook) so accounts never share a cache entry. */
+export function useMe() {
+  const userId = useAuthStore((s) => s.userId);
+  return useQuery<Me>({
+    queryKey: ["me", userId],
+    queryFn: async () => {
+      const res = await apiFetch("/auth/me");
+      if (!res.ok) throw new Error("Failed to fetch profile");
       return res.json();
     },
   });
