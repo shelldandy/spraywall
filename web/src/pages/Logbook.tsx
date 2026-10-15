@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import { useNavigate } from "react-router";
 import type { LogbookEntry } from "../lib/api/types";
 import { useLogbook } from "../lib/hooks/queries";
 import styles from "./Logbook.module.css";
+import { useGoBack } from "../lib/nav";
 
 interface LogbookSection {
   title: string;
@@ -18,7 +18,6 @@ function formatDate(dateStr: string) {
 }
 
 export default function LogbookPage() {
-  const navigate = useNavigate();
   const logbookQuery = useLogbook();
 
   const sections: LogbookSection[] = useMemo(() => {
@@ -31,12 +30,7 @@ export default function LogbookPage() {
     return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
   }, [logbookQuery.data]);
 
-  const goBack = () => {
-    // react-router stores the history index in history.state; idx 0 means we were opened directly.
-    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    if (idx > 0) navigate(-1);
-    else navigate("/walls", { replace: true });
-  };
+  const goBack = useGoBack("/walls");
 
   return (
     <div className={`screen ${styles.page}`}>

@@ -1,8 +1,9 @@
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useHolds, useRoutes, useWallDetail } from "../lib/hooks/queries";
 import HoldOverlay from "../components/HoldOverlay";
 import type { Hold, Route } from "../lib/api/types";
 import styles from "./Routes.module.css";
+import { useGoBack } from "../lib/nav";
 
 function RouteThumbnail({ route, holds, imageUrl }: { route: Route; holds: Hold[]; imageUrl: string | null }) {
   const selectedIds = new Set(route.hold_ids);
@@ -37,7 +38,6 @@ export default function RoutesPage() {
   const [params] = useSearchParams();
   const wallId = params.get("wallId") ?? "";
   const gymSlug = params.get("gymSlug") ?? undefined;
-  const navigate = useNavigate();
 
   const routesQuery = useRoutes(wallId, gymSlug);
   const wallQuery = useWallDetail(wallId, gymSlug);
@@ -47,11 +47,7 @@ export default function RoutesPage() {
   const holds = holdsQuery.data ?? [];
   const imageUrl = wallQuery.data?.image?.image_url ?? null;
 
-  const goBack = () => {
-    // react-router stores the history index; idx 0 means this page was opened directly.
-    if ((window.history.state?.idx ?? 0) > 0) navigate(-1);
-    else navigate(`/walls/${wallId}?${new URLSearchParams({ gymSlug: gymSlug ?? "" })}`, { replace: true });
-  };
+  const goBack = useGoBack(`/walls/${wallId}?${new URLSearchParams({ gymSlug: gymSlug ?? "" })}`);
 
   const detailHref = (routeId: string) =>
     `/routes/${routeId}?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`;

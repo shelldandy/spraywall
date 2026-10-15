@@ -5,6 +5,7 @@ import type { HoldRoles } from "../lib/api/types";
 import GradePicker from "../components/GradePicker";
 import { formatGrade, gradeIdFromV } from "../lib/grades";
 import styles from "./RouteCreate.module.css";
+import { hasHistory, useGoBack } from "../lib/nav";
 
 function parseJson<T>(value: string | null, fallback: T): T {
   if (!value) return fallback;
@@ -44,12 +45,7 @@ export default function RouteCreatePage() {
   const isPending = createRouteMutation.isPending || updateRouteMutation.isPending;
   const canSave = !!name.trim() && !isPending;
 
-  const hasHistory = () => (window.history.state?.idx ?? 0) > 0;
-
-  const goBack = () => {
-    if (hasHistory()) navigate(-1);
-    else navigate(`/walls/${wallId}?${new URLSearchParams({ gymSlug })}`, { replace: true });
-  };
+  const goBack = useGoBack(`/walls/${wallId}?${new URLSearchParams({ gymSlug })}`);
 
   const save = (status: "draft" | "published") => {
     const routeParams = {

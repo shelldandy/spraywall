@@ -5,6 +5,7 @@ import { useLogSend, useUnsend } from "../lib/hooks/mutations";
 import HoldOverlay from "../components/HoldOverlay";
 import WallImage from "../components/WallImage";
 import styles from "./RouteDetail.module.css";
+import { useGoBack } from "../lib/nav";
 
 export default function RouteDetailPage() {
   const { routeId = "" } = useParams();
@@ -32,11 +33,7 @@ export default function RouteDetailPage() {
 
   const isLoading = routeQuery.isLoading || wallQuery.isLoading || holdsQuery.isLoading;
 
-  const goBack = () => {
-    // react-router stores the history index; idx 0 means this page was opened directly.
-    if ((window.history.state?.idx ?? 0) > 0) navigate(-1);
-    else navigate(`/routes?${new URLSearchParams({ wallId, gymSlug })}`, { replace: true });
-  };
+  const goBack = useGoBack(`/routes?${new URLSearchParams({ wallId, gymSlug })}`);
 
   const editRoute = () => {
     const search = new URLSearchParams({

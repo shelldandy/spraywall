@@ -1,18 +1,11 @@
-import { useNavigate } from "react-router";
 import styles from "./Settings.module.css";
+import { useGoBack } from "../lib/nav";
 
-// The Expo app read this from app.json; the web build has no injected version yet.
-const APP_VERSION = "1.0.0";
+const APP_VERSION = __APP_VERSION__;
 
 export default function SettingsPage() {
-  const navigate = useNavigate();
 
-  const goBack = () => {
-    // react-router stores the history index in history.state; idx 0 means we were opened directly.
-    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    if (idx > 0) navigate(-1);
-    else navigate("/walls", { replace: true });
-  };
+  const goBack = useGoBack("/walls");
 
   return (
     <div className={`screen ${styles.page}`}>
