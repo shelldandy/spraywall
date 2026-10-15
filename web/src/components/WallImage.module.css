@@ -1,0 +1,23 @@
+.wrapper {
+  width: 100% !important;
+  background: #000;
+  touch-action: none;
+}
+
+.content {
+  width: 100% !important;
+}
+
+/* Sized by the image's intrinsic aspect ratio so the overlay lines up exactly. */
+.frame {
+  position: relative;
+  width: 100%;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
