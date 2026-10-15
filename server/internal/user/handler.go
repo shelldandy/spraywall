@@ -82,6 +82,9 @@ type identityResponse struct {
 	ProviderName string    `json:"provider_name"`
 	Email        string    `json:"email"`
 	CreatedAt    time.Time `json:"created_at"`
+	// Active is false for identities from a previously configured provider,
+	// which can no longer be used to sign in.
+	Active bool `json:"active"`
 }
 
 type userResponse struct {
@@ -301,6 +304,7 @@ func (h *Handler) buildMe(ctx context.Context, u generated.User) (userResponse, 
 			ProviderName: h.providerName(ident.Issuer),
 			Email:        ident.Email,
 			CreatedAt:    ident.CreatedAt.Time,
+			Active:       h.identityActive(ident.Issuer),
 		})
 	}
 	return resp, nil
@@ -309,10 +313,16 @@ func (h *Handler) buildMe(ctx context.Context, u generated.User) (userResponse, 
 // providerName returns the configured display name for the OIDC issuer, or
 // the raw issuer for identities from a previously configured provider.
 func (h *Handler) providerName(issuer string) string {
-	if h.opts.OIDCIssuer != "" && SameIssuer(issuer, h.opts.OIDCIssuer) {
+	if h.identityActive(issuer) {
 		return h.opts.OIDCProviderName
 	}
 	return issuer
+}
+
+// identityActive reports whether an identity from issuer can be used to sign
+// in, i.e. it belongs to the currently configured OIDC provider.
+func (h *Handler) identityActive(issuer string) bool {
+	return h.opts.OIDCIssuer != "" && SameIssuer(issuer, h.opts.OIDCIssuer)
 }
 
 // SameIssuer compares issuer URLs, ignoring a trailing slash.

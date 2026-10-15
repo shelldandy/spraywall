@@ -111,6 +111,8 @@ export interface Identity {
   provider_name: string;
   email: string;
   created_at: string;
+  // False for identities from a previously configured provider; they can't sign in.
+  active: boolean;
 }
 
 export interface Me {

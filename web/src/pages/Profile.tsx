@@ -311,8 +311,10 @@ function LinkedAccountsSection({ me, config }: { me: Me; config: AuthConfig }) {
   const unlink = useUnlinkIdentity();
   const link = useStartOidcLink();
   // The server refuses to remove the last way in; mirror that so the button explains itself.
+  // Identities from a retired provider can't sign in, so only active ones count.
   const isOnlyLogin =
-    me.identities.length === 1 && (!me.has_password || !config.password_enabled);
+    me.identities.filter((i) => i.active).length === 1 &&
+    (!me.has_password || !config.password_enabled);
   const alreadyLinked = me.identities.some((i) => i.provider_name === config.oidc.name);
 
   return (
@@ -325,14 +327,14 @@ function LinkedAccountsSection({ me, config }: { me: Me; config: AuthConfig }) {
             <div className={styles.identityInfo}>
               <span className={styles.identityProvider}>{identity.provider_name}</span>
               {identity.email && <span className={styles.identityEmail}>{identity.email}</span>}
-              {isOnlyLogin && (
+              {isOnlyLogin && identity.active && (
                 <span className={styles.hint}>Your only way to log in, so it can&apos;t be unlinked.</span>
               )}
             </div>
             <button
               type="button"
               className={`btn btn-ghost ${styles.danger}`}
-              disabled={isOnlyLogin || unlink.isPending}
+              disabled={(isOnlyLogin && identity.active) || unlink.isPending}
               onClick={() =>
                 unlink.mutate(identity.id, {
                   onSuccess: () => toast(`${identity.provider_name} unlinked.`),

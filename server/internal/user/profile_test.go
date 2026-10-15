@@ -246,6 +246,9 @@ func TestMeResponse(t *testing.T) {
 	if first["provider_name"] != "Pocket-ID" || second["provider_name"] != "https://old-idp.example.com" {
 		t.Fatalf("provider names: %v / %v", first, second)
 	}
+	if first["active"] != true || second["active"] != false {
+		t.Fatalf("active: %v / %v", first, second)
+	}
 	for _, k := range []string{"id", "issuer", "email", "created_at"} {
 		if _, ok := first[k]; !ok {
 			t.Errorf("identity missing %s", k)
@@ -332,7 +335,7 @@ func TestOIDCOnlyUserCanSetPassword(t *testing.T) {
 }
 
 func TestUnlinkIdentity(t *testing.T) {
-	env := newProfileEnv(t, Options{PasswordEnabled: true})
+	env := newProfileEnv(t, Options{PasswordEnabled: true, OIDCIssuer: "https://id.example.com"})
 	ssoOnly := env.createUser(t, "sso@example.com", "")
 	last := env.addIdentity(t, ssoOnly, "sub-sso")
 	idParam := func(id pgtype.UUID) map[string]string { return map[string]string{"id": uuidFromPg(id).String()} }
@@ -366,10 +369,52 @@ func TestUnlinkIdentity(t *testing.T) {
 	decodeMe(t, do(env.h.UnlinkIdentity, pwUser, http.MethodDelete, "", nil, idParam(pwIdent.ID)))
 
 	// ...unless password login is disabled.
-	disabled := NewHandler(env.q, "secret", env.h.pool, Options{PasswordEnabled: false})
+	disabled := NewHandler(env.q, "secret", env.h.pool, Options{PasswordEnabled: false, OIDCIssuer: "https://id.example.com"})
 	pwIdent = env.addIdentity(t, pwUser, "sub-pw")
 	if rec := do(disabled.UnlinkIdentity, pwUser, http.MethodDelete, "", nil, idParam(pwIdent.ID)); rec.Code != http.StatusConflict {
 		t.Fatalf("password disabled: %d", rec.Code)
+	}
+}
+
+// An identity from a previously configured provider cannot sign in, so it
+// must not count toward the last-login-method guard.
+func TestUnlinkIdentityIgnoresRetiredIssuer(t *testing.T) {
+	env := newProfileEnv(t, Options{PasswordEnabled: false, OIDCIssuer: "https://id.example.com/", OIDCProviderName: "Pocket-ID"})
+	ctx := context.Background()
+	u := env.createUser(t, "sso@example.com", "")
+	retired, err := env.q.CreateUserIdentity(ctx, generated.CreateUserIdentityParams{
+		UserID: u.ID, Issuer: "https://old-idp.example.com", Subject: "old-sub", Email: u.Email,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := env.addIdentity(t, u, "sub-current")
+	idParam := func(id pgtype.UUID) map[string]string { return map[string]string{"id": uuidFromPg(id).String()} }
+
+	me := decodeMe(t, do(env.h.Me, u, http.MethodGet, "", nil, nil))
+	active := map[string]any{}
+	for _, i := range me["identities"].([]any) {
+		ident := i.(map[string]any)
+		active[ident["issuer"].(string)] = ident["active"]
+	}
+	if active["https://id.example.com"] != true || active["https://old-idp.example.com"] != false {
+		t.Fatalf("active flags: %v", active)
+	}
+
+	rec := do(env.h.UnlinkIdentity, u, http.MethodDelete, "", nil, idParam(current.ID))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("unlink current issuer: %d %s", rec.Code, rec.Body)
+	}
+	if _, err := env.q.GetIdentityByIssuerSubject(ctx, generated.GetIdentityByIssuerSubjectParams{
+		Issuer: current.Issuer, Subject: current.Subject,
+	}); err != nil {
+		t.Fatalf("current identity deleted despite 409: %v", err)
+	}
+
+	me = decodeMe(t, do(env.h.UnlinkIdentity, u, http.MethodDelete, "", nil, idParam(retired.ID)))
+	idents := me["identities"].([]any)
+	if len(idents) != 1 || idents[0].(map[string]any)["id"] != uuidFromPg(current.ID).String() {
+		t.Fatalf("identities after unlinking retired: %v", idents)
 	}
 }
 

@@ -212,6 +212,18 @@ func hasLoginMethod(hasPassword, passwordEnabled bool, remainingIdentities int64
 	return (hasPassword && passwordEnabled) || remainingIdentities > 0
 }
 
+// usableIdentities counts the identities that can still sign in, i.e. those
+// from the currently configured OIDC issuer.
+func (h *Handler) usableIdentities(idents []generated.UserIdentity) int64 {
+	var n int64
+	for _, ident := range idents {
+		if h.identityActive(ident.Issuer) {
+			n++
+		}
+	}
+	return n
+}
+
 // UnlinkIdentity handles DELETE /users/me/identities/{id}
 func (h *Handler) UnlinkIdentity(w http.ResponseWriter, r *http.Request) {
 	u, ok := h.currentUser(w, r)
@@ -260,12 +272,12 @@ func (h *Handler) UnlinkIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remaining, err := txq.CountUserIdentities(r.Context(), u.ID)
+	remaining, err := txq.ListUserIdentities(r.Context(), u.ID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
-	if !hasLoginMethod(u.PasswordHash != "", h.opts.PasswordEnabled, remaining) {
+	if !hasLoginMethod(u.PasswordHash != "", h.opts.PasswordEnabled, h.usableIdentities(remaining)) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "cannot unlink your only way to sign in; set a password first"})
 		return
 	}
