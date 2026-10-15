@@ -1,0 +1,79 @@
+.page {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* Fixed-width slots either side keep the title centred. */
+.side {
+  min-width: 72px;
+  justify-content: flex-start;
+}
+
+:global(.header) .title {
+  text-align: center;
+  font-size: 18px;
+}
+
+.loader {
+  display: flex;
+  justify-content: center;
+  margin-top: 40px;
+}
+
+.empty {
+  text-align: center;
+  color: var(--text-faint);
+  margin-top: 40px;
+}
+
+.sectionHeader {
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+  margin: 12px 0 8px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.entryCard {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: #f8f8f8;
+}
+
+.entryInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.entryName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+}
+
+.entryGrade {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.entryDate {
+  font-size: 13px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}

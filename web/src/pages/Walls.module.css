@@ -1,0 +1,142 @@
+.page {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.headerActions :global(.btn) {
+  padding: 6px 8px;
+}
+
+.logout {
+  color: var(--danger);
+}
+
+.loader {
+  display: flex;
+  justify-content: center;
+  margin-top: 40px;
+}
+
+.empty {
+  text-align: center;
+  color: var(--text-faint);
+  margin-top: 40px;
+}
+
+.gymSection {
+  margin-bottom: 24px;
+}
+
+.gymHeader {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+}
+
+.gymName {
+  flex: 1;
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wallRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wallItem {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: #f8f8f8;
+  color: #333;
+}
+
+.wallItem:active {
+  background: #eee;
+}
+
+.wallName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  color: var(--text-faint);
+  margin-left: 8px;
+}
+
+.deleteBtn {
+  color: var(--danger);
+}
+
+.addWall {
+  padding: 10px 0;
+  font-size: 15px;
+}
+
+.inlineForm {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.formButtons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cancel {
+  color: var(--text-faint);
+  padding: 10px 16px;
+}
+
+.createGym {
+  margin-top: 8px;
+  padding: 14px;
+}
+
+.gymForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: #f8f8f8;
+}
+
+.formTitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
