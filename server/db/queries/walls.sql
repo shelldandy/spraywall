@@ -7,7 +7,22 @@ RETURNING *;
 SELECT * FROM walls WHERE id = $1;
 
 -- name: ListWallsByGym :many
-SELECT * FROM walls WHERE gym_id = $1 ORDER BY name;
+SELECT
+    w.id,
+    w.gym_id,
+    w.name,
+    w.created_at,
+    COALESCE(active_image.storage_key, '') AS preview_storage_key
+FROM walls w
+LEFT JOIN LATERAL (
+    SELECT storage_key
+    FROM wall_images
+    WHERE wall_id = w.id AND is_active = true
+    ORDER BY created_at DESC
+    LIMIT 1
+) active_image ON true
+WHERE w.gym_id = $1
+ORDER BY w.name;
 
 -- name: CreateWallImage :one
 INSERT INTO wall_images (wall_id, storage_key)

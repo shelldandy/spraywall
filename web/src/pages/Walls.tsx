@@ -228,28 +228,15 @@ export default function WallsPage() {
                     )}
                   </div>
 
-                  <ul className={styles.wallList}>
+                  <ul className={styles.wallGrid}>
                     {gym.walls.map((wall) => (
-                      <li key={wall.id} className={styles.wallRow}>
-                        <Link
-                          to={`/walls/${wall.id}?gymSlug=${encodeURIComponent(gym.slug)}`}
-                          className={styles.wallItem}
-                        >
-                          <span className={styles.wallName}>{wall.name}</span>
-                          <span className={styles.chevron}>{">"}</span>
-                        </Link>
-                        {canEditWalls && (
-                          <button
-                            type="button"
-                            className={`btn btn-ghost ${styles.deleteBtn}`}
-                            onClick={() => handleDeleteWall(gym, wall.id, wall.name)}
-                            aria-label={`Delete wall ${wall.name}`}
-                            title="Delete wall"
-                          >
-                            <TrashIcon />
-                          </button>
-                        )}
-                      </li>
+                      <WallCard
+                        key={wall.id}
+                        wall={wall}
+                        gymSlug={gym.slug}
+                        canDelete={canEditWalls}
+                        onDelete={() => handleDeleteWall(gym, wall.id, wall.name)}
+                      />
                     ))}
                   </ul>
 
@@ -355,6 +342,70 @@ export default function WallsPage() {
         )}
       </main>
     </div>
+  );
+}
+
+function WallCard({
+  wall,
+  gymSlug,
+  canDelete,
+  onDelete,
+}: {
+  wall: Wall;
+  gymSlug: string;
+  canDelete: boolean;
+  onDelete: () => void;
+}) {
+  const imageUrl = wall.preview_image_url;
+
+  return (
+    <li className={styles.wallTile}>
+      <Link
+        to={`/walls/${wall.id}?gymSlug=${encodeURIComponent(gymSlug)}`}
+        className={styles.wallCard}
+      >
+        <span className={styles.wallPreview}>
+          {imageUrl ? (
+            <img src={imageUrl} alt={wall.name} loading="lazy" />
+          ) : (
+            <span className={styles.imagePlaceholder} aria-hidden="true">
+              <WallIcon />
+              <span>No photo yet</span>
+            </span>
+          )}
+        </span>
+        <span className={styles.wallName}>{wall.name}</span>
+      </Link>
+      {canDelete && (
+        <button
+          type="button"
+          className={`btn btn-ghost ${styles.deleteBtn} ${styles.wallDelete}`}
+          onClick={onDelete}
+          aria-label={`Delete wall ${wall.name}`}
+          title="Delete wall"
+        >
+          <TrashIcon />
+        </button>
+      )}
+    </li>
+  );
+}
+
+function WallIcon() {
+  return (
+    <svg
+      width="44"
+      height="44"
+      viewBox="0 0 44 44"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M8 36V10l28-3v29H8Z" />
+      <path d="m15 17 2-1m8 0 2-1m-13 9 2-1m8 0 2-1m-13 9 2-1m8 0 2-1" />
+    </svg>
   );
 }
 

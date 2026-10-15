@@ -368,10 +368,28 @@ func (h *Handler) ListWalls(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list walls")
 		return
 	}
-	if walls == nil {
-		walls = []generated.Wall{}
+
+	type wallListItem struct {
+		generated.Wall
+		PreviewImageURL *string `json:"preview_image_url"`
 	}
-	writeJSON(w, http.StatusOK, walls)
+	items := make([]wallListItem, 0, len(walls))
+	for _, wall := range walls {
+		item := wallListItem{
+			Wall: generated.Wall{
+				ID:        wall.ID,
+				GymID:     wall.GymID,
+				Name:      wall.Name,
+				CreatedAt: wall.CreatedAt,
+			},
+		}
+		if wall.PreviewStorageKey != "" {
+			url := "/images/" + wall.PreviewStorageKey
+			item.PreviewImageURL = &url
+		}
+		items = append(items, item)
+	}
+	writeJSON(w, http.StatusOK, items)
 }
 
 // GetWall handles GET /gyms/{gymSlug}/walls/{wallId}
