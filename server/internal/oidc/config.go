@@ -61,15 +61,15 @@ func LoadConfig() (Config, error) {
 		cfg.GroupsClaim = defaultGroupsClaim
 	}
 	cfg.AdminMaxAge = defaultAdminMaxAge
+	if !cfg.Enabled {
+		return cfg, nil
+	}
 	if raw := strings.TrimSpace(os.Getenv("OIDC_ADMIN_MAX_AGE")); raw != "" {
 		d, err := time.ParseDuration(raw)
 		if err != nil || d <= 0 {
 			return cfg, fmt.Errorf("invalid OIDC_ADMIN_MAX_AGE %q: want a positive duration like 24h", raw)
 		}
 		cfg.AdminMaxAge = d
-	}
-	if !cfg.Enabled {
-		return cfg, nil
 	}
 
 	var missing []string

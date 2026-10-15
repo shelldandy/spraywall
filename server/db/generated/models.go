@@ -140,6 +140,7 @@ type User struct {
 	AvatarSource    pgtype.Text        `json:"avatar_source"`
 	AvatarOriginUrl pgtype.Text        `json:"avatar_origin_url"`
 	RoleSyncedAt    pgtype.Timestamptz `json:"role_synced_at"`
+	TokenVersion    int32              `json:"token_version"`
 }
 
 type UserIdentity struct {

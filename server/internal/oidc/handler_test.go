@@ -353,6 +353,11 @@ func TestPictureClientBlocksPrivateHosts(t *testing.T) {
 	if _, err := fetchPicture(context.Background(), newPictureClient(srv.URL), srv.URL+"/a.gif"); err != nil {
 		t.Errorf("issuer host should be allowed: %v", err)
 	}
+	// Same host, different port: not the issuer.
+	u, _ := url.Parse(srv.URL)
+	if _, err := fetchPicture(context.Background(), newPictureClient("http://"+u.Hostname()+":1"), srv.URL+"/a.gif"); err == nil {
+		t.Error("issuer host on another port should be blocked")
+	}
 }
 
 func TestIsPublicAddr(t *testing.T) {
@@ -361,6 +366,8 @@ func TestIsPublicAddr(t *testing.T) {
 		"127.0.0.1": false, "10.1.2.3": false, "172.18.0.5": false, "192.168.1.10": false,
 		"169.254.169.254": false, "100.64.0.1": false, "0.0.0.0": false, "::1": false,
 		"fd00::1": false, "fe80::1": false, "::ffff:127.0.0.1": false,
+		"255.255.255.255": false, "198.18.0.1": false, "240.0.0.1": false, "0.1.2.3": false,
+		"64:ff9b::a00:1": false, "2002:a00:1::": false,
 	} {
 		if got := isPublicAddr(netip.MustParseAddr(addr)); got != want {
 			t.Errorf("isPublicAddr(%s) = %v, want %v", addr, got, want)
@@ -675,3 +682,51 @@ func TestPictureSyncReplacesOldOIDCAvatar(t *testing.T) {
 }
 
 func pgUUID(id uuid.UUID) pgtype.UUID { return pgtype.UUID{Bytes: id, Valid: true} }
+
+func TestTakeoverVoidsOutstandingSessions(t *testing.T) {
+	env := newTestEnv(t, true, nil)
+	ctx := context.Background()
+
+	squatter, err := env.q.CreateUser(ctx, generated.CreateUserParams{
+		Email: "owner@example.com", PasswordHash: "$2a$12$hash", DisplayName: "Squatter", Role: generated.UserRoleClimber,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The squatter starts linking their own IdP account before the takeover...
+	authURL, cookies := env.startLink(t, squatter.ID)
+
+	parseSuccess(t, env.login(t, "/walls", &grant{claims: idClaims("sub-owner", "owner@example.com", nil)}))
+	u, err := env.q.GetUserByID(ctx, squatter.ID)
+	if err != nil || u.TokenVersion != squatter.TokenVersion+1 {
+		t.Fatalf("token version not bumped: %+v, %v", u, err)
+	}
+
+	// ...and cannot finish it afterwards.
+	loc := env.completeFlow(t, authURL, cookies, &grant{claims: idClaims("sub-squatter", "squatter@idp.example", nil)})
+	if loc != "/profile?error=state_invalid" {
+		t.Fatalf("stale link: got %q", loc)
+	}
+	// Nor start a new one with the old access token (version 0 in context).
+	req := httptest.NewRequest(http.MethodPost, "/auth/oidc/link", nil)
+	req = req.WithContext(context.WithValue(req.Context(), user.UserIDKey, uuid.UUID(squatter.ID.Bytes)))
+	rec := httptest.NewRecorder()
+	env.h.Link(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("link with revoked session: %d", rec.Code)
+	}
+}
+
+func TestEmailVerifiedFetchedFromUserInfo(t *testing.T) {
+	env := newTestEnv(t, true, nil)
+	// The ID token has everything except email_verified.
+	res := parseSuccess(t, env.login(t, "/walls", &grant{
+		claims: map[string]any{
+			"sub": "sub-ev", "email": "ev@example.com", "groups": []string{}, "picture": env.idp.pictureURL(),
+		},
+		userinfo: map[string]any{"email": "ev@example.com", "email_verified": true},
+	}))
+	if res.userID == uuid.Nil {
+		t.Fatal("expected login to succeed")
+	}
+}

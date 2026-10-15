@@ -31,7 +31,10 @@ type flowState struct {
 	Redirect string `json:"r,omitempty"`
 	Mode     string `json:"m"`
 	UserID   string `json:"u,omitempty"`
-	Expires  int64  `json:"e"`
+	// TokenVersion is the linking user's token_version when the flow began;
+	// a revocation in between (e.g. account takeover) voids the link.
+	TokenVersion int32 `json:"tv,omitempty"`
+	Expires      int64 `json:"e"`
 }
 
 // deriveStateKey derives the cookie signing key from the JWT secret so the

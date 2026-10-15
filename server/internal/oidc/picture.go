@@ -17,9 +17,13 @@ import (
 // IdPs) may resolve to a non-public address. The check runs at dial time and
 // therefore also covers redirects.
 func newPictureClient(issuerURL string) *http.Client {
-	trustedHost := ""
-	if u, err := url.Parse(issuerURL); err == nil {
-		trustedHost = u.Hostname()
+	trustedAddr := ""
+	if u, err := url.Parse(issuerURL); err == nil && u.Hostname() != "" {
+		port := u.Port()
+		if port == "" {
+			port = map[string]string{"http": "80", "https": "443"}[u.Scheme]
+		}
+		trustedAddr = net.JoinHostPort(strings.ToLower(u.Hostname()), port)
 	}
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 
@@ -30,37 +34,61 @@ func newPictureClient(issuerURL string) *http.Client {
 		if err != nil {
 			return nil, err
 		}
-		if trustedHost != "" && strings.EqualFold(host, trustedHost) {
+		// Only the issuer's exact host and port may be private.
+		if trustedAddr != "" && net.JoinHostPort(strings.ToLower(host), port) == trustedAddr {
 			return dialer.DialContext(ctx, network, addr)
 		}
 		ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		if err != nil {
 			return nil, err
 		}
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("picture host %s has no addresses", host)
+		}
 		for _, ip := range ips {
 			if !isPublicAddr(ip) {
 				return nil, fmt.Errorf("picture host %s resolves to non-public address %s", host, ip)
 			}
 		}
-		if len(ips) == 0 {
-			return nil, fmt.Errorf("picture host %s has no addresses", host)
+		// Dial the checked addresses so a second lookup can't swap them.
+		var lastErr error
+		for _, ip := range ips {
+			conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
 		}
-		// Dial the checked address so a second lookup can't swap it.
-		return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].String(), port))
+		return nil, lastErr
 	}
 
 	return &http.Client{Timeout: pictureTimeout, Transport: transport}
 }
 
-// isPublicAddr rejects loopback, private, link-local (incl. cloud metadata),
-// CGNAT, multicast, and unspecified addresses.
+// isPublicAddr accepts only global unicast addresses outside private and
+// special-purpose ranges (loopback, RFC 1918, link-local incl. cloud metadata,
+// CGNAT, benchmarking, reserved, and IPv6 prefixes that embed IPv4).
 func isPublicAddr(ip netip.Addr) bool {
 	ip = ip.Unmap()
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() {
 		return false
 	}
-	return !cgnat.Contains(ip)
+	for _, p := range nonPublicPrefixes {
+		if p.Contains(ip) {
+			return false
+		}
+	}
+	return true
 }
 
-var cgnat = netip.MustParsePrefix("100.64.0.0/10")
+var nonPublicPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("64:ff9b::/96"),
+	netip.MustParsePrefix("64:ff9b:1::/48"),
+	netip.MustParsePrefix("2002::/16"),
+	netip.MustParsePrefix("2001::/32"),
+}

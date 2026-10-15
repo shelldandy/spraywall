@@ -7,6 +7,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+
+	"github.com/bowlinedandy/spraywall/server/db/generated"
 )
 
 type contextKey string
@@ -14,6 +16,8 @@ type contextKey string
 const (
 	UserIDKey   contextKey = "userID"
 	UserRoleKey contextKey = "userRole"
+	// TokenVersionKey holds the access token's "ver" claim (0 if absent).
+	TokenVersionKey contextKey = "tokenVersion"
 )
 
 func AuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
@@ -76,6 +80,8 @@ func AuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), UserIDKey, userID)
 			ctx = context.WithValue(ctx, UserRoleKey, role)
+			ver, _ := claims["ver"].(float64)
+			ctx = context.WithValue(ctx, TokenVersionKey, int32(ver))
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -89,4 +95,12 @@ func GetUserID(ctx context.Context) uuid.UUID {
 func GetUserRole(ctx context.Context) string {
 	role, _ := ctx.Value(UserRoleKey).(string)
 	return role
+}
+
+// SessionCurrent reports whether the request's access token was issued after
+// u's last session revocation. Sensitive actions must check it: access
+// tokens are stateless and outlive revoked refresh tokens.
+func SessionCurrent(ctx context.Context, u generated.User) bool {
+	ver, _ := ctx.Value(TokenVersionKey).(int32)
+	return ver == u.TokenVersion
 }

@@ -3,7 +3,7 @@ SELECT * FROM users WHERE id = $1;
 
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE lower(email) = lower(@email::text)
-ORDER BY created_at
+ORDER BY (email = @email::text) DESC, created_at
 LIMIT 1;
 
 -- name: CreateUser :one
@@ -76,3 +76,11 @@ RETURNING *;
 
 -- name: DeleteUserIdentitiesByUserID :exec
 DELETE FROM user_identities WHERE user_id = $1;
+
+-- name: BumpTokenVersion :one
+UPDATE users SET token_version = token_version + 1, updated_at = now() WHERE id = $1
+RETURNING *;
+
+-- name: ConsumeRefreshToken :one
+DELETE FROM refresh_tokens WHERE token_hash = $1 AND expires_at > now()
+RETURNING *;

@@ -493,3 +493,47 @@ func TestIssueTokensExpiresStaleAdmin(t *testing.T) {
 		t.Fatalf("manual admin demoted without admin group: %s", u.Role)
 	}
 }
+
+func TestRevokedAccessTokenCannotSetPassword(t *testing.T) {
+	env := newProfileEnv(t, Options{PasswordEnabled: true})
+	ctx := context.Background()
+	u := env.createUser(t, "taken@example.com", "")
+	// Simulate a takeover after the caller's token (version 0) was issued.
+	if _, err := env.q.BumpTokenVersion(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if rec := doJSON(env.h.ChangePassword, u, http.MethodPut, `{"new_password":"attackerpw"}`); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("stale token set a password: %d %s", rec.Code, rec.Body)
+	}
+	if got, _ := env.q.GetUserByID(ctx, u.ID); got.PasswordHash != "" {
+		t.Fatal("password was set")
+	}
+}
+
+func TestRefreshTokenSingleUse(t *testing.T) {
+	env := newProfileEnv(t, Options{PasswordEnabled: true})
+	u := env.createUser(t, "refresh@example.com", "password1")
+	pair, err := env.h.IssueTokens(context.Background(), env.q, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"refresh_token":"` + pair.RefreshToken + `"}`
+	for i, want := range []int{http.StatusOK, http.StatusUnauthorized} {
+		rec := httptest.NewRecorder()
+		env.h.Refresh(rec, httptest.NewRequest(http.MethodPost, "/auth/refresh", strings.NewReader(body)))
+		if rec.Code != want {
+			t.Fatalf("refresh %d: status %d, want %d", i, rec.Code, want)
+		}
+	}
+}
+
+func TestLoginPrefersExactEmailCase(t *testing.T) {
+	env := newProfileEnv(t, Options{PasswordEnabled: true})
+	env.createUser(t, "Dup@example.com", "first-password")
+	env.createUser(t, "dup@example.com", "second-password")
+	rec := httptest.NewRecorder()
+	env.h.Login(rec, httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(`{"email":"dup@example.com","password":"second-password"}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("exact-case login failed: %d %s", rec.Code, rec.Body)
+	}
+}

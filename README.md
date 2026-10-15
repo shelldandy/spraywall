@@ -62,7 +62,7 @@ Spraywall can log users in through any OpenID Connect provider (Pocket-ID, Authe
 
 ### Notes
 
-- Existing password accounts are linked automatically on first SSO login when the provider reports the email as verified. Because password sign-up never proves email ownership, linking this way removes the account's password, any previously linked identity, and all its sessions; the owner can set a new password from the Profile page. Accounts are only created or linked from verified emails, and emails match case-insensitively.
+- Existing password accounts are linked automatically on first SSO login when the provider reports the email as verified. Because password sign-up never proves email ownership, linking this way removes the account's password, any previously linked identity, and all its sessions; the owner can set a new password from the Profile page. Accounts are only created or linked from verified emails (the provider must send `email_verified=true` in the ID token or UserInfo; Pocket-ID does), and emails match case-insensitively.
 - Profile pictures are taken from the provider's `picture` claim unless the user has uploaded their own. They are only downloaded from the provider's own host or from public addresses.
 - On the **Profile** page (Settings → Profile) users can change their display name and avatar, link or unlink the provider, and set or change a password. The last remaining login method cannot be removed.
 

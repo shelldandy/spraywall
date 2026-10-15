@@ -11,6 +11,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const bumpTokenVersion = `-- name: BumpTokenVersion :one
+UPDATE users SET token_version = token_version + 1, updated_at = now() WHERE id = $1
+RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at, token_version
+`
+
+func (q *Queries) BumpTokenVersion(ctx context.Context, id pgtype.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, bumpTokenVersion, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarKey,
+		&i.AvatarSource,
+		&i.AvatarOriginUrl,
+		&i.RoleSyncedAt,
+		&i.TokenVersion,
+	)
+	return i, err
+}
+
+const consumeRefreshToken = `-- name: ConsumeRefreshToken :one
+DELETE FROM refresh_tokens WHERE token_hash = $1 AND expires_at > now()
+RETURNING id, user_id, token_hash, expires_at, created_at
+`
+
+func (q *Queries) ConsumeRefreshToken(ctx context.Context, tokenHash string) (RefreshToken, error) {
+	row := q.db.QueryRow(ctx, consumeRefreshToken, tokenHash)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const countUserIdentities = `-- name: CountUserIdentities :one
 SELECT count(*) FROM user_identities WHERE user_id = $1
 `
@@ -50,7 +93,7 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name, role)
 VALUES ($1, $2, $3, $4)
-RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at
+RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at, token_version
 `
 
 type CreateUserParams struct {
@@ -80,6 +123,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.AvatarSource,
 		&i.AvatarOriginUrl,
 		&i.RoleSyncedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
@@ -201,8 +245,8 @@ func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at FROM users WHERE lower(email) = lower($1::text)
-ORDER BY created_at
+SELECT id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at, token_version FROM users WHERE lower(email) = lower($1::text)
+ORDER BY (email = $1::text) DESC, created_at
 LIMIT 1
 `
 
@@ -221,12 +265,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.AvatarSource,
 		&i.AvatarOriginUrl,
 		&i.RoleSyncedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at FROM users WHERE id = $1
+SELECT id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at, token_version FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -244,12 +289,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.AvatarSource,
 		&i.AvatarOriginUrl,
 		&i.RoleSyncedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const getUserByIDForUpdate = `-- name: GetUserByIDForUpdate :one
-SELECT id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at FROM users WHERE id = $1 FOR UPDATE
+SELECT id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at, token_version FROM users WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetUserByIDForUpdate(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -267,12 +313,13 @@ func (q *Queries) GetUserByIDForUpdate(ctx context.Context, id pgtype.UUID) (Use
 		&i.AvatarSource,
 		&i.AvatarOriginUrl,
 		&i.RoleSyncedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const getUserByIdentity = `-- name: GetUserByIdentity :one
-SELECT u.id, u.email, u.password_hash, u.display_name, u.role, u.created_at, u.updated_at, u.avatar_key, u.avatar_source, u.avatar_origin_url, u.role_synced_at FROM users u
+SELECT u.id, u.email, u.password_hash, u.display_name, u.role, u.created_at, u.updated_at, u.avatar_key, u.avatar_source, u.avatar_origin_url, u.role_synced_at, u.token_version FROM users u
 JOIN user_identities ui ON ui.user_id = u.id
 WHERE ui.issuer = $1 AND ui.subject = $2
 `
@@ -297,6 +344,7 @@ func (q *Queries) GetUserByIdentity(ctx context.Context, arg GetUserByIdentityPa
 		&i.AvatarSource,
 		&i.AvatarOriginUrl,
 		&i.RoleSyncedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
@@ -334,7 +382,7 @@ func (q *Queries) ListUserIdentities(ctx context.Context, userID pgtype.UUID) ([
 
 const syncUserRole = `-- name: SyncUserRole :one
 UPDATE users SET role = $2, role_synced_at = now(), updated_at = now() WHERE id = $1
-RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at
+RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at, token_version
 `
 
 type SyncUserRoleParams struct {
@@ -357,6 +405,7 @@ func (q *Queries) SyncUserRole(ctx context.Context, arg SyncUserRoleParams) (Use
 		&i.AvatarSource,
 		&i.AvatarOriginUrl,
 		&i.RoleSyncedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
@@ -365,7 +414,7 @@ const updateUserAvatar = `-- name: UpdateUserAvatar :one
 UPDATE users
 SET avatar_key = $2, avatar_source = $3, avatar_origin_url = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at
+RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at, token_version
 `
 
 type UpdateUserAvatarParams struct {
@@ -395,13 +444,14 @@ func (q *Queries) UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarPara
 		&i.AvatarSource,
 		&i.AvatarOriginUrl,
 		&i.RoleSyncedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
 UPDATE users SET display_name = $2, updated_at = now() WHERE id = $1
-RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at
+RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at, token_version
 `
 
 type UpdateUserDisplayNameParams struct {
@@ -424,6 +474,7 @@ func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDispl
 		&i.AvatarSource,
 		&i.AvatarOriginUrl,
 		&i.RoleSyncedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
@@ -458,7 +509,7 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 
 const updateUserRole = `-- name: UpdateUserRole :one
 UPDATE users SET role = $2, updated_at = now() WHERE id = $1
-RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at
+RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at, token_version
 `
 
 type UpdateUserRoleParams struct {
@@ -481,6 +532,7 @@ func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) 
 		&i.AvatarSource,
 		&i.AvatarOriginUrl,
 		&i.RoleSyncedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }

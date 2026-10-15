@@ -191,15 +191,9 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenHash := hashToken(req.RefreshToken)
-
-	rt, err := h.queries.GetRefreshTokenByHash(r.Context(), tokenHash)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
-		return
-	}
-
-	// Revoke old token and generate new ones in a transaction.
+	// Revoke old token and generate new ones in a transaction. Consuming the
+	// token with a single DELETE ... RETURNING means concurrent refreshes (or
+	// a concurrent session revocation) can't both succeed.
 	tx, err := h.pool.Begin(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
@@ -209,8 +203,9 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	txq := h.queries.WithTx(tx)
 
-	if err := txq.DeleteRefreshToken(r.Context(), rt.ID); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+	rt, err := txq.ConsumeRefreshToken(r.Context(), hashToken(req.RefreshToken))
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
 		return
 	}
 
@@ -341,6 +336,7 @@ func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u gener
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  userID.String(),
 		"role": string(u.Role),
+		"ver":  u.TokenVersion,
 		"exp":  time.Now().Add(accessTokenDuration).Unix(),
 		"iat":  time.Now().Unix(),
 	})

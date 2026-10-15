@@ -29,6 +29,10 @@ func (h *Handler) currentUser(w http.ResponseWriter, r *http.Request) (generated
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
 		return generated.User{}, false
 	}
+	if !SessionCurrent(r.Context(), u) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session revoked"})
+		return generated.User{}, false
+	}
 	return u, true
 }
 
@@ -112,6 +116,17 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context()) //nolint:errcheck
 
 	txq := h.queries.WithTx(tx)
+	// Re-check under a row lock: a concurrent takeover or password change
+	// must win over a request authorized against the old state.
+	locked, err := txq.GetUserByIDForUpdate(r.Context(), u.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if locked.TokenVersion != u.TokenVersion || locked.PasswordHash != u.PasswordHash {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session revoked"})
+		return
+	}
 	if err := txq.UpdateUserPassword(r.Context(), generated.UpdateUserPasswordParams{
 		ID:           u.ID,
 		PasswordHash: string(hash),
@@ -120,6 +135,12 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := txq.DeleteRefreshTokensByUserID(r.Context(), u.ID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	// Outstanding access tokens can no longer perform sensitive actions.
+	u, err = txq.BumpTokenVersion(r.Context(), u.ID)
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}

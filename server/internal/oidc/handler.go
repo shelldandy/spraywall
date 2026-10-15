@@ -134,7 +134,7 @@ func errorCode(err error) string {
 
 // startFlow creates fresh state, stores it in the signed cookie, and returns
 // the IdP authorization URL.
-func (h *Handler) startFlow(w http.ResponseWriter, mode, redirect, userID string) (string, error) {
+func (h *Handler) startFlow(w http.ResponseWriter, mode, redirect, userID string, tokenVersion int32) (string, error) {
 	state, err := randomToken()
 	if err != nil {
 		return "", err
@@ -152,6 +152,8 @@ func (h *Handler) startFlow(w http.ResponseWriter, mode, redirect, userID string
 		Mode:     mode,
 		UserID:   userID,
 		Expires:  expires.Unix(),
+
+		TokenVersion: tokenVersion,
 	}
 	value, err := encodeState(h.stateKey, st)
 	if err != nil {
@@ -192,7 +194,7 @@ func (h *Handler) clearStateCookie(w http.ResponseWriter) {
 // Login handles GET /auth/oidc/login?redirect=/path
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	redirect := sanitizeRedirect(r.URL.Query().Get("redirect"))
-	authURL, err := h.startFlow(w, modeLogin, redirect, "")
+	authURL, err := h.startFlow(w, modeLogin, redirect, "", 0)
 	if err != nil {
 		log.Printf("oidc: start login: %v", err)
 		http.Redirect(w, r, failureURL(modeLogin, errOIDCFailed), http.StatusFound)
@@ -210,7 +212,12 @@ func (h *Handler) Link(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	authURL, err := h.startFlow(w, modeLink, "/profile", userID.String())
+	u, err := h.queries.GetUserByID(r.Context(), pgtype.UUID{Bytes: userID, Valid: true})
+	if err != nil || !user.SessionCurrent(r.Context(), u) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session revoked"})
+		return
+	}
+	authURL, err := h.startFlow(w, modeLink, "/profile", userID.String(), u.TokenVersion)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
@@ -253,7 +260,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if st.Mode == modeLink {
-		u, err := h.linkIdentity(ctx, st.UserID, id)
+		u, err := h.linkIdentity(ctx, st.UserID, st.TokenVersion, id)
 		if err != nil {
 			log.Printf("oidc: link identity: %v", err)
 			http.Redirect(w, r, failureURL(modeLink, errorCode(err)), http.StatusFound)
@@ -320,7 +327,7 @@ func (h *Handler) authenticate(ctx context.Context, code string, st flowState) (
 	claims := parseClaims(raw, h.cfg.GroupsClaim)
 
 	needGroups := h.cfg.AdminGroup != "" && !claims.hasGroups
-	if !claims.hasEmail || needGroups || claims.Picture == "" {
+	if !claims.hasEmail || !claims.EmailVerified || needGroups || claims.Picture == "" {
 		h.mergeUserInfo(ctx, token, idToken.Subject, &claims)
 	}
 
@@ -435,6 +442,11 @@ func resolveUser(ctx context.Context, q *generated.Queries, id verifiedIdentity)
 		if err := q.DeleteRefreshTokensByUserID(ctx, u.ID); err != nil {
 			return generated.User{}, fmt.Errorf("revoke sessions: %w", err)
 		}
+		if u, err = q.BumpTokenVersion(ctx, u.ID); err != nil {
+			return generated.User{}, fmt.Errorf("revoke access tokens: %w", err)
+		}
+		log.Printf("oidc: %s (%s) claimed existing account %s by verified email; previous password, identities, and sessions revoked",
+			id.subject, id.issuer, uuid.UUID(u.ID.Bytes))
 	case errors.Is(err, pgx.ErrNoRows):
 		u, err = q.CreateUser(ctx, generated.CreateUserParams{
 			Email:        email,
@@ -461,7 +473,7 @@ func resolveUser(ctx context.Context, q *generated.Queries, id verifiedIdentity)
 }
 
 // linkIdentity attaches the identity to the user who started the link flow.
-func (h *Handler) linkIdentity(ctx context.Context, userIDStr string, id verifiedIdentity) (generated.User, error) {
+func (h *Handler) linkIdentity(ctx context.Context, userIDStr string, tokenVersion int32, id verifiedIdentity) (generated.User, error) {
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		return generated.User{}, fmt.Errorf("invalid user id in state: %w", err)
@@ -474,9 +486,12 @@ func (h *Handler) linkIdentity(ctx context.Context, userIDStr string, id verifie
 	defer tx.Rollback(ctx) //nolint:errcheck
 	q := h.queries.WithTx(tx)
 
-	u, err := q.GetUserByID(ctx, pgtype.UUID{Bytes: userID, Valid: true})
+	u, err := q.GetUserByIDForUpdate(ctx, pgtype.UUID{Bytes: userID, Valid: true})
 	if err != nil {
 		return generated.User{}, fmt.Errorf("load linking user: %w", err)
+	}
+	if u.TokenVersion != tokenVersion {
+		return generated.User{}, failWith(errStateInvalid, nil)
 	}
 
 	ident, err := q.GetIdentityByIssuerSubject(ctx, generated.GetIdentityByIssuerSubjectParams{
