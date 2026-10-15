@@ -206,6 +206,7 @@ export default function WallDetailPage() {
       }
       queryClient.invalidateQueries({ queryKey: ["wall-detail", wallId] });
       queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
       setHoldSelections(new Map());
     } catch (err) {
       toast(`Upload Error: ${err instanceof Error ? err.message : String(err)}`, "error");
@@ -234,8 +235,11 @@ export default function WallDetailPage() {
   const wall = wallQuery.data;
   const holds = holdsQuery.data ?? [];
   const filteredHolds = holds.filter((h) => h.confidence >= confidenceThreshold);
-  const filteredIds = new Set(filteredHolds.map((h) => h.id));
   const selectedIds = new Set(holdSelections.keys());
+  const visibleHolds = isEditingRoute
+    ? holds.filter((hold) => hold.confidence >= confidenceThreshold || selectedIds.has(hold.id))
+    : filteredHolds;
+  const filteredIds = new Set(filteredHolds.map((h) => h.id));
   const visibleSelectedIds = new Set([...selectedIds].filter((id) => filteredIds.has(id)));
   const detectionStatus = wall?.detection_status;
   const canEdit = wall?.user_role === "setter" || wall?.user_role === "admin";
@@ -481,16 +485,16 @@ export default function WallDetailPage() {
           {wall?.image ? (
             <div className={styles.imageContainer}>
               <WallImage src={wall.image.image_url} alt={wall.wall.name}>
-                {(isEditingHolds || (!isManagingWall && filteredHolds.length > 0)) && (
+                {(isEditingHolds || (!isManagingWall && visibleHolds.length > 0)) && (
                   <HoldOverlay
-                    holds={isEditingHolds ? holds : filteredHolds}
+                    holds={isEditingHolds ? holds : visibleHolds}
                     selectedIds={isEditingHolds ? new Set() : selectedIds}
                     onToggle={isEditingHolds ? handleEditToggle : handleToggle}
                     mode={isEditingHolds ? "edit" : undefined}
                     editHoldMode={editHoldMode}
                     holdToDelete={holdToDelete}
                     onBackgroundPress={editHoldMode === "add" ? addHold : undefined}
-                    holdRoles={holdSelections.size > 0 ? visibleRoles() : null}
+                    holdRoles={holdSelections.size > 0 ? (isEditingRoute ? allSelectionRoles() : visibleRoles()) : null}
                   />
                 )}
               </WallImage>
@@ -595,15 +599,22 @@ export default function WallDetailPage() {
             </>
           )}
 
-          {!isManagingWall && !isEditingHolds && visibleSelectedIds.size >= 2 && (
-            <button
-              type="button"
-              className={`btn btn-block ${styles.createRouteButton}`}
-              onClick={() => goToCreateRoute()}
-            >
-              {isEditingRoute ? "Update" : "Create"} Route ({visibleSelectedIds.size} holds)
-            </button>
-          )}
+          {!isManagingWall &&
+            !isEditingHolds &&
+            (isEditingRoute ? selectedIds.size : visibleSelectedIds.size) >= 2 && (
+              <button
+                type="button"
+                className={`btn btn-block ${styles.createRouteButton}`}
+                onClick={() =>
+                  isEditingRoute
+                    ? goToCreateRoute(selectedIds, allSelectionRoles())
+                    : goToCreateRoute()
+                }
+              >
+                {isEditingRoute ? "Update" : "Create"} Route (
+                {isEditingRoute ? selectedIds.size : visibleSelectedIds.size} holds)
+              </button>
+            )}
 
         </main>
       ) : (
@@ -628,7 +639,7 @@ export default function WallDetailPage() {
             <div className={styles.loader}>
               <div className="spinner" />
             </div>
-          ) : routesQuery.isError ? (
+          ) : routesQuery.isError && !routesQuery.data ? (
             <p className="error-text">{routesQuery.error.message}</p>
           ) : routesQuery.data?.length ? (
             <RouteList

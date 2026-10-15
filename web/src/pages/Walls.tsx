@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
 import type { Gym, Wall } from "../lib/api/types";
-import { useGymsWithWalls, useWallDetail, type GymWithWalls } from "../lib/hooks/queries";
+import { useGymsWithWalls, type GymWithWalls } from "../lib/hooks/queries";
 import { logout } from "../lib/queryClient";
 import { toast } from "../lib/toast";
 import styles from "./Walls.module.css";
@@ -356,8 +356,7 @@ function WallCard({
   canDelete: boolean;
   onDelete: () => void;
 }) {
-  const wallQuery = useWallDetail(wall.id, gymSlug);
-  const imageUrl = wallQuery.data?.image?.image_url;
+  const imageUrl = wall.preview_image_url;
 
   return (
     <li className={styles.wallTile}>

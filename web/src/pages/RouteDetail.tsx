@@ -72,7 +72,7 @@ export default function RouteDetailPage() {
             <div className={styles.sidebarLoader}>
               <div className="spinner" />
             </div>
-          ) : routesQuery.isError ? (
+          ) : routesQuery.isError && !routesQuery.data ? (
             <p className="error-text">{routesQuery.error.message}</p>
           ) : (
             <RouteList

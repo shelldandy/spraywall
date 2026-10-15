@@ -226,23 +226,47 @@ func (q *Queries) GetWallByID(ctx context.Context, id pgtype.UUID) (Wall, error)
 }
 
 const listWallsByGym = `-- name: ListWallsByGym :many
-SELECT id, gym_id, name, created_at FROM walls WHERE gym_id = $1 ORDER BY name
+SELECT
+    w.id,
+    w.gym_id,
+    w.name,
+    w.created_at,
+    COALESCE(active_image.storage_key, '') AS preview_storage_key
+FROM walls w
+LEFT JOIN LATERAL (
+    SELECT storage_key
+    FROM wall_images
+    WHERE wall_id = w.id AND is_active = true
+    ORDER BY created_at DESC
+    LIMIT 1
+) active_image ON true
+WHERE w.gym_id = $1
+ORDER BY w.name
 `
 
-func (q *Queries) ListWallsByGym(ctx context.Context, gymID pgtype.UUID) ([]Wall, error) {
+type ListWallsByGymRow struct {
+	ID                pgtype.UUID        `json:"id"`
+	GymID             pgtype.UUID        `json:"gym_id"`
+	Name              string             `json:"name"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	PreviewStorageKey string             `json:"preview_storage_key"`
+}
+
+func (q *Queries) ListWallsByGym(ctx context.Context, gymID pgtype.UUID) ([]ListWallsByGymRow, error) {
 	rows, err := q.db.Query(ctx, listWallsByGym, gymID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Wall
+	var items []ListWallsByGymRow
 	for rows.Next() {
-		var i Wall
+		var i ListWallsByGymRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.GymID,
 			&i.Name,
 			&i.CreatedAt,
+			&i.PreviewStorageKey,
 		); err != nil {
 			return nil, err
 		}

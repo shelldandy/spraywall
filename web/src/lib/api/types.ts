@@ -12,6 +12,7 @@ export interface Wall {
   gym_id: string;
   name: string;
   created_at: string;
+  preview_image_url?: string | null;
 }
 
 export interface WallImage {
