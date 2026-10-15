@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
@@ -144,6 +146,7 @@ func (s *fakeStorage) Delete(_ context.Context, key string) error {
 type profileEnv struct {
 	h       *Handler
 	q       *generated.Queries
+	pool    *pgxpool.Pool
 	storage *fakeStorage
 }
 
@@ -153,7 +156,7 @@ func newProfileEnv(t *testing.T, opts Options) *profileEnv {
 	q := generated.New(pool)
 	store := &fakeStorage{objects: map[string][]byte{}}
 	opts.Storage = store
-	return &profileEnv{h: NewHandler(q, "secret", pool, opts), q: q, storage: store}
+	return &profileEnv{h: NewHandler(q, "secret", pool, opts), q: q, pool: pool, storage: store}
 }
 
 func (e *profileEnv) createUser(t *testing.T, email, password string) generated.User {
@@ -604,6 +607,158 @@ func TestRefreshRejectsTokenFromBeforeRevocation(t *testing.T) {
 	env.h.Refresh(rec, httptest.NewRequest(http.MethodPost, "/auth/refresh", strings.NewReader(`{"refresh_token":"`+pair.RefreshToken+`"}`)))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("stale refresh token accepted: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// pausePool pauses the first transaction query matching query, after it
+// returns, and reports that transaction's backend PID.
+type pausePool struct {
+	TxBeginner
+	query  string
+	paused chan int32
+	resume chan struct{}
+	once   sync.Once
+}
+
+type pauseTx struct {
+	pgx.Tx
+	pool *pausePool
+}
+
+type pauseRow struct {
+	pgx.Row
+	tx   pgx.Tx
+	sql  string
+	pool *pausePool
+}
+
+func (p *pausePool) Begin(ctx context.Context) (pgx.Tx, error) {
+	tx, err := p.TxBeginner.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &pauseTx{Tx: tx, pool: p}, nil
+}
+
+func (tx *pauseTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return &pauseRow{Row: tx.Tx.QueryRow(ctx, sql, args...), tx: tx.Tx, sql: sql, pool: tx.pool}
+}
+
+func (r *pauseRow) Scan(dest ...any) error {
+	err := r.Row.Scan(dest...)
+	if err == nil && strings.Contains(r.sql, r.pool.query) {
+		r.pool.once.Do(func() {
+			var pid int32
+			_ = r.tx.QueryRow(context.Background(), "SELECT pg_backend_pid()").Scan(&pid)
+			r.pool.paused <- pid
+			<-r.pool.resume
+		})
+	}
+	return err
+}
+
+func waitFor[T any](t *testing.T, ctx context.Context, ch <-chan T) T {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-ctx.Done():
+		t.Fatal("timed out")
+		var zero T
+		return zero
+	}
+}
+
+// A refresh racing a password change must never deadlock: the revocation
+// always succeeds, and the refresh either finishes first (and its new token
+// is then revoked) or is rejected.
+func TestRefreshRacingPasswordChange(t *testing.T) {
+	cases := []struct {
+		name         string
+		pauseAfter   string
+		refreshFirst bool
+		wantRefresh  int
+	}{
+		{"revocation first", "-- name: GetRefreshTokenByHash", false, http.StatusUnauthorized},
+		{"refresh first", "-- name: GetUserByIDForUpdate", true, http.StatusOK},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			env := newProfileEnv(t, Options{PasswordEnabled: true})
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			u := env.createUser(t, "race@example.com", "oldpassword")
+			pair, err := env.h.IssueTokens(ctx, env.q, u)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			pp := &pausePool{TxBeginner: env.pool, query: c.pauseAfter, paused: make(chan int32, 1), resume: make(chan struct{})}
+			resume := sync.OnceFunc(func() { close(pp.resume) })
+			defer resume()
+			refresher := NewHandler(env.q, "secret", pp, Options{PasswordEnabled: true})
+
+			refresh := func(token string) *httptest.ResponseRecorder {
+				rec := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodPost, "/auth/refresh", strings.NewReader(`{"refresh_token":"`+token+`"}`))
+				refresher.Refresh(rec, req.WithContext(ctx))
+				return rec
+			}
+			refreshDone := make(chan *httptest.ResponseRecorder, 1)
+			go func() { refreshDone <- refresh(pair.RefreshToken) }()
+			pid := waitFor(t, ctx, pp.paused)
+
+			passwordDone := make(chan *httptest.ResponseRecorder, 1)
+			go func() {
+				passwordDone <- doJSON(env.h.ChangePassword, u, http.MethodPut, `{"current_password":"oldpassword","new_password":"newpassword"}`)
+			}()
+
+			var changed *httptest.ResponseRecorder
+			if c.refreshFirst {
+				// Wait until the password change queues behind the refresh's
+				// account lock.
+				for {
+					var blocked int
+					if err := env.pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))", pid).Scan(&blocked); err != nil {
+						t.Fatal(err)
+					}
+					if blocked > 0 {
+						break
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			} else {
+				changed = waitFor(t, ctx, passwordDone)
+			}
+			resume()
+			refreshed := waitFor(t, ctx, refreshDone)
+			if changed == nil {
+				changed = waitFor(t, ctx, passwordDone)
+			}
+
+			if changed.Code != http.StatusOK {
+				t.Fatalf("password change: %d %s", changed.Code, changed.Body)
+			}
+			if refreshed.Code != c.wantRefresh {
+				t.Fatalf("refresh: %d %s, want %d", refreshed.Code, refreshed.Body, c.wantRefresh)
+			}
+			updated, err := env.q.GetUserByID(ctx, u.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if updated.TokenVersion != u.TokenVersion+1 {
+				t.Fatalf("token version %d, want %d", updated.TokenVersion, u.TokenVersion+1)
+			}
+			if refreshed.Code == http.StatusOK {
+				var tokens TokenPair
+				if err := json.Unmarshal(refreshed.Body.Bytes(), &tokens); err != nil {
+					t.Fatal(err)
+				}
+				if rec := refresh(tokens.RefreshToken); rec.Code != http.StatusUnauthorized {
+					t.Fatalf("token issued before revocation still refreshes: %d", rec.Code)
+				}
+			}
+		})
 	}
 }
 

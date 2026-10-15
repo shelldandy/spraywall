@@ -205,16 +205,26 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context())
 
 	txq := h.queries.WithTx(tx)
+	tokenHash := hashToken(req.RefreshToken)
 
-	rt, err := txq.ConsumeRefreshToken(r.Context(), hashToken(req.RefreshToken))
+	// Lock the account before the token row, the same order as password
+	// changes and SSO takeovers, so a refresh racing a revocation can't
+	// deadlock with it.
+	found, err := txq.GetRefreshTokenByHash(r.Context(), tokenHash)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
 		return
 	}
-
-	u, err := txq.GetUserByID(r.Context(), rt.UserID)
+	u, err := txq.GetUserByIDForUpdate(r.Context(), found.UserID)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "user not found"})
+		return
+	}
+
+	// Fails if a concurrent refresh or revocation got the token first.
+	rt, err := txq.ConsumeRefreshToken(r.Context(), tokenHash)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
 		return
 	}
 	if rt.TokenVersion != u.TokenVersion {
