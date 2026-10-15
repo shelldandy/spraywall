@@ -54,6 +54,7 @@ export interface WallDetail {
 export interface HoldRoles {
   start: string[];
   finish: string[];
+  foot?: string[];
 }
 
 export interface Route {
