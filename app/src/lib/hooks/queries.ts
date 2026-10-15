@@ -52,31 +52,65 @@ export function useGymsWithWalls() {
 }
 
 export function useWallDetail(wallId: string, gymSlug?: string) {
-  return useQuery<WallDetail | null>({
+  const query = useQuery<WallDetail | null>({
     queryKey: ["wall-detail", wallId],
     queryFn: async () => {
-      if (isDbAvailable()) return getDbQueries().getWallDetail(wallId);
-      if (!gymSlug) return null;
+      if (!gymSlug) {
+        // No gymSlug: can only read from local DB
+        if (isDbAvailable()) return getDbQueries().getWallDetail(wallId);
+        return null;
+      }
       const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}`);
       if (!res.ok) throw new Error("Failed to fetch wall");
-      return res.json();
+      const detail: WallDetail = await res.json();
+      // Sync server response to local DB
+      if (isDbAvailable()) {
+        const dbQ = getDbQueries();
+        if (detail.image) {
+          dbQ.upsertWallImage({
+            id: detail.image.id,
+            wall_id: wallId,
+            image_url: detail.image.image_url,
+            is_active: detail.image.is_active,
+            created_at: detail.image.created_at,
+          });
+        }
+        if (detail.detection_status) {
+          dbQ.setSyncMeta(`detection_status:${wallId}`, detail.detection_status);
+        }
+        if (detail.user_role) {
+          dbQ.setSyncMeta(`wall_user_role:${wallId}`, detail.user_role);
+        }
+      }
+      return detail;
     },
-    staleTime: isDbAvailable() ? Infinity : 0,
+    // Poll every 3s while detection is in progress
+    refetchInterval: (query) => {
+      const status = query.state.data?.detection_status;
+      if (status === "pending" || status === "processing") return 3000;
+      return false;
+    },
   });
+  return query;
 }
 
 export function useHolds(wallId: string, enabled = true, gymSlug?: string) {
   return useQuery<Hold[]>({
     queryKey: ["holds", wallId],
     queryFn: async () => {
-      if (isDbAvailable()) return getDbQueries().getHoldsByWallId(wallId);
-      if (!gymSlug) return [];
+      if (!gymSlug) {
+        if (isDbAvailable()) return getDbQueries().getHoldsByWallId(wallId);
+        return [];
+      }
       const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds`);
       if (!res.ok) throw new Error("Failed to fetch holds");
-      return res.json();
+      const holds: Hold[] = await res.json();
+      if (isDbAvailable() && holds.length > 0) {
+        getDbQueries().upsertHolds(holds);
+      }
+      return holds;
     },
     enabled,
-    staleTime: isDbAvailable() ? Infinity : 0,
   });
 }
 
