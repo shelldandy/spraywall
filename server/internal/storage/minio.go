@@ -36,6 +36,21 @@ func New() (*Client, error) {
 	return &Client{mc: mc, bucket: bucket}, nil
 }
 
+// EnsureBucket creates the configured bucket if it does not exist yet.
+func (c *Client) EnsureBucket(ctx context.Context) error {
+	exists, err := c.mc.BucketExists(ctx, c.bucket)
+	if err != nil {
+		return fmt.Errorf("check bucket: %w", err)
+	}
+	if exists {
+		return nil
+	}
+	if err := c.mc.MakeBucket(ctx, c.bucket, minio.MakeBucketOptions{}); err != nil {
+		return fmt.Errorf("create bucket: %w", err)
+	}
+	return nil
+}
+
 func (c *Client) Upload(ctx context.Context, key string, reader io.Reader, size int64, contentType string) error {
 	_, err := c.mc.PutObject(ctx, c.bucket, key, reader, size, minio.PutObjectOptions{
 		ContentType: contentType,

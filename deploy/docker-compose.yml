@@ -1,0 +1,102 @@
+# Spraywall — self-hosted deployment using prebuilt images.
+#
+#   curl -LO https://raw.githubusercontent.com/shelldandy/spraywall/main/deploy/docker-compose.yml
+#   curl -L -o .env https://raw.githubusercontent.com/shelldandy/spraywall/main/deploy/.env.example
+#   # edit .env and set the secrets
+#   docker compose up -d
+#
+# The app is then served at http://<host>:${HTTP_PORT:-80}.
+
+x-db-url: &db-url postgres://${POSTGRES_USER:-spraywall}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-spraywall}?sslmode=disable
+
+x-storage-env: &storage-env
+  MINIO_ENDPOINT: minio:9000
+  MINIO_BUCKET: ${MINIO_BUCKET:-spraywall}
+  MINIO_ROOT_USER: ${MINIO_ROOT_USER:-spraywall}
+  MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spraywall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-spraywall}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spraywall}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  minio:
+    # Community fork: upstream stopped publishing minio/minio images.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-spraywall}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  server:
+    image: ghcr.io/shelldandy/spraywall-server:${SPRAYWALL_VERSION:-latest}
+    environment:
+      <<: *storage-env
+      PORT: 8080
+      DATABASE_URL: *db-url
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+    healthcheck:
+      # Healthy once migrations have run and the API is listening.
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    # Use the ${SPRAYWALL_VERSION}-cuda tag (e.g. latest-cuda) for NVIDIA GPUs and uncomment `deploy` below.
+    image: ghcr.io/shelldandy/spraywall-worker:${SPRAYWALL_VERSION:-latest}
+    environment:
+      <<: *storage-env
+      DATABASE_URL: *db-url
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-5}
+      INFERENCE_BACKEND: local
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/shelldandy/spraywall-web:${SPRAYWALL_VERSION:-latest}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  minio_data:
