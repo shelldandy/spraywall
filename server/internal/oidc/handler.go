@@ -86,7 +86,7 @@ func New(ctx context.Context, cfg Config, queries *generated.Queries, pool user.
 		storage:       storage,
 		stateKey:      deriveStateKey(jwtSecret),
 		secureCookie:  strings.HasPrefix(strings.ToLower(cfg.RedirectURL), "https://"),
-		pictureClient: &http.Client{Timeout: pictureTimeout},
+		pictureClient: newPictureClient(cfg.IssuerURL),
 		now:           time.Now,
 	}, nil
 }
@@ -368,12 +368,13 @@ func (h *Handler) loginIdentity(ctx context.Context, id verifiedIdentity) (gener
 	}
 
 	if h.cfg.AdminGroup != "" {
-		role := roleForGroups(id.claims.Groups, h.cfg.AdminGroup)
-		if u.Role != role {
-			u, err = q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: role})
-			if err != nil {
-				return generated.User{}, nil, fmt.Errorf("update role: %w", err)
-			}
+		// Always write, so role_synced_at records this confirmation.
+		u, err = q.SyncUserRole(ctx, generated.SyncUserRoleParams{
+			ID:   u.ID,
+			Role: roleForGroups(id.claims.Groups, h.cfg.AdminGroup),
+		})
+		if err != nil {
+			return generated.User{}, nil, fmt.Errorf("sync role: %w", err)
 		}
 	}
 
@@ -408,14 +409,31 @@ func resolveUser(ctx context.Context, q *generated.Queries, id verifiedIdentity)
 	if email == "" {
 		return generated.User{}, failWith(errEmailMissing, nil)
 	}
+	// Accounts are keyed by email, so only an IdP-verified email may claim or
+	// create one.
+	if !id.claims.EmailVerified {
+		return generated.User{}, failWith(errEmailUnverified, nil)
+	}
 
 	u, err := q.GetUserByEmail(ctx, email)
 	switch {
 	case err == nil:
-		// Only trust the IdP's claim to an existing account's email if the
-		// IdP has verified it.
-		if !id.claims.EmailVerified {
-			return generated.User{}, failWith(errEmailUnverified, nil)
+		// Password registration never proves email ownership, so whoever
+		// registered this address first may not be its owner. The verified
+		// identity takes the account over: drop the password, any other
+		// linked identities, and every session. The owner can set a new
+		// password from their profile.
+		if err := q.DeleteUserIdentitiesByUserID(ctx, u.ID); err != nil {
+			return generated.User{}, fmt.Errorf("drop identities: %w", err)
+		}
+		if u.PasswordHash != "" {
+			if err := q.UpdateUserPassword(ctx, generated.UpdateUserPasswordParams{ID: u.ID, PasswordHash: ""}); err != nil {
+				return generated.User{}, fmt.Errorf("clear password: %w", err)
+			}
+			u.PasswordHash = ""
+		}
+		if err := q.DeleteRefreshTokensByUserID(ctx, u.ID); err != nil {
+			return generated.User{}, fmt.Errorf("revoke sessions: %w", err)
 		}
 	case errors.Is(err, pgx.ErrNoRows):
 		u, err = q.CreateUser(ctx, generated.CreateUserParams{

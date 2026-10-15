@@ -43,6 +43,7 @@ Spraywall can log users in through any OpenID Connect provider (Pocket-ID, Authe
 | `OIDC_SCOPES`            | `openid email profile groups` | Requested scopes                                                                                               |
 | `OIDC_GROUPS_CLAIM`      | `groups`                      | Claim holding the user's group names                                                                           |
 | `OIDC_ADMIN_GROUP`       |                               | Members become instance admins (admin in every gym); non-members are demoted to climber on their next SSO login. If unset, roles are never touched |
+| `OIDC_ADMIN_MAX_AGE`     | `24h`                         | With `OIDC_ADMIN_GROUP` set, admin rights lapse this long after the user's last SSO login (sessions and password logins don't renew them), so removing someone from the group takes effect within this window. Signing in with SSO again restores them |
 | `PASSWORD_LOGIN_ENABLED` | `true`                        | `false` = SSO only (disables password login and registration). The server refuses to start unless OIDC is configured |
 
 ### Pocket-ID example
@@ -61,8 +62,8 @@ Spraywall can log users in through any OpenID Connect provider (Pocket-ID, Authe
 
 ### Notes
 
-- Existing password accounts are linked automatically on first SSO login when the provider reports the email as verified. Unverified emails that match an existing account are refused.
-- Profile pictures are taken from the provider's `picture` claim unless the user has uploaded their own.
+- Existing password accounts are linked automatically on first SSO login when the provider reports the email as verified. Because password sign-up never proves email ownership, linking this way removes the account's password, any previously linked identity, and all its sessions; the owner can set a new password from the Profile page. Accounts are only created or linked from verified emails, and emails match case-insensitively.
+- Profile pictures are taken from the provider's `picture` claim unless the user has uploaded their own. They are only downloaded from the provider's own host or from public addresses.
 - On the **Profile** page (Settings → Profile) users can change their display name and avatar, link or unlink the provider, and set or change a password. The last remaining login method cannot be removed.
 
 ## Development

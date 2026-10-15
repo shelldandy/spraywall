@@ -90,7 +90,8 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if u.PasswordHash != "" {
 		if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.CurrentPassword)); err != nil {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "current password is incorrect"})
+			// Not 401: the client treats 401 as an expired access token.
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "current password is incorrect"})
 			return
 		}
 	}

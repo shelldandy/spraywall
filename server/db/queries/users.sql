@@ -2,7 +2,9 @@
 SELECT * FROM users WHERE id = $1;
 
 -- name: GetUserByEmail :one
-SELECT * FROM users WHERE email = $1;
+SELECT * FROM users WHERE lower(email) = lower(@email::text)
+ORDER BY created_at
+LIMIT 1;
 
 -- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name, role)
@@ -67,3 +69,10 @@ DELETE FROM user_identities WHERE id = $1 AND user_id = $2;
 
 -- name: GetUserByIDForUpdate :one
 SELECT * FROM users WHERE id = $1 FOR UPDATE;
+
+-- name: SyncUserRole :one
+UPDATE users SET role = $2, role_synced_at = now(), updated_at = now() WHERE id = $1
+RETURNING *;
+
+-- name: DeleteUserIdentitiesByUserID :exec
+DELETE FROM user_identities WHERE user_id = $1;

@@ -98,12 +98,16 @@ func main() {
 		log.Fatal("PASSWORD_LOGIN_ENABLED=false requires OIDC to be configured (OIDC_ISSUER_URL)")
 	}
 
-	authHandler := user.NewHandler(queries, jwtSecret, pool, user.Options{
+	authOpts := user.Options{
 		PasswordEnabled:  passwordEnabled,
 		Storage:          storageClient,
 		OIDCIssuer:       oidcConfig.IssuerURL,
 		OIDCProviderName: oidcConfig.ProviderName,
-	})
+	}
+	if oidcConfig.Enabled && oidcConfig.AdminGroup != "" {
+		authOpts.AdminRoleMaxAge = oidcConfig.AdminMaxAge
+	}
+	authHandler := user.NewHandler(queries, jwtSecret, pool, authOpts)
 
 	var oidcHandler *oidc.Handler
 	if oidcConfig.Enabled {

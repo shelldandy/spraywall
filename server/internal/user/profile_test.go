@@ -11,8 +11,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -283,10 +285,10 @@ func TestChangePassword(t *testing.T) {
 		t.Fatalf("short password: %d", rec.Code)
 	}
 	rec := doJSON(env.h.ChangePassword, u, http.MethodPut, `{"current_password":"wrong","new_password":"newpassword"}`)
-	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "current password is incorrect") {
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "current password is incorrect") {
 		t.Fatalf("wrong current: %d %s", rec.Code, rec.Body)
 	}
-	if rec := doJSON(env.h.ChangePassword, u, http.MethodPut, `{"new_password":"newpassword"}`); rec.Code != http.StatusUnauthorized {
+	if rec := doJSON(env.h.ChangePassword, u, http.MethodPut, `{"new_password":"newpassword"}`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("missing current: %d", rec.Code)
 	}
 
@@ -439,5 +441,55 @@ func TestAvatarUploadAndDelete(t *testing.T) {
 	u, _ = env.q.GetUserByID(ctx, u.ID)
 	if u.AvatarKey.Valid || u.AvatarSource.Valid || u.AvatarOriginUrl.Valid {
 		t.Fatalf("avatar columns not cleared: %+v", u)
+	}
+}
+
+func TestIssueTokensExpiresStaleAdmin(t *testing.T) {
+	env := newProfileEnv(t, Options{PasswordEnabled: true, AdminRoleMaxAge: time.Hour})
+	ctx := context.Background()
+
+	fresh := env.createUser(t, "fresh@example.com", "")
+	fresh, err := env.q.SyncUserRole(ctx, generated.SyncUserRoleParams{ID: fresh.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.h.IssueTokens(ctx, env.q, fresh); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := env.q.GetUserByID(ctx, fresh.ID); u.Role != generated.UserRoleAdmin {
+		t.Fatalf("recently confirmed admin was demoted: %s", u.Role)
+	}
+
+	// Admin never (or too long ago) confirmed by SSO, e.g. removed from the
+	// group but still refreshing tokens.
+	stale := env.createUser(t, "stale@example.com", "")
+	stale, err = env.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: stale.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := env.h.IssueTokens(ctx, env.q, stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := env.q.GetUserByID(ctx, stale.ID); u.Role != generated.UserRoleClimber {
+		t.Fatalf("stale admin kept role %s", u.Role)
+	}
+	claims := jwt.MapClaims{}
+	if _, err := jwt.ParseWithClaims(tokens.AccessToken, claims, func(*jwt.Token) (any, error) { return []byte("secret"), nil }); err != nil {
+		t.Fatal(err)
+	}
+	if claims["role"] != "climber" {
+		t.Fatalf("access token role = %v", claims["role"])
+	}
+
+	// Without an IdP-managed admin group, admin roles never expire.
+	plain := newProfileEnv(t, Options{PasswordEnabled: true})
+	manual := plain.createUser(t, "manual@example.com", "")
+	manual, _ = plain.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: manual.ID, Role: generated.UserRoleAdmin})
+	if _, err := plain.h.IssueTokens(ctx, plain.q, manual); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := plain.q.GetUserByID(ctx, manual.ID); u.Role != generated.UserRoleAdmin {
+		t.Fatalf("manual admin demoted without admin group: %s", u.Role)
 	}
 }

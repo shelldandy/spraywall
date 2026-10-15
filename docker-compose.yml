@@ -51,6 +51,7 @@ services:
       OIDC_SCOPES: ${OIDC_SCOPES:-openid email profile groups}
       OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-groups}
       OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:-}
+      OIDC_ADMIN_MAX_AGE: ${OIDC_ADMIN_MAX_AGE:-24h}
       PASSWORD_LOGIN_ENABLED: ${PASSWORD_LOGIN_ENABLED:-true}
     depends_on:
       postgres:

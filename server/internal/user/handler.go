@@ -39,6 +39,9 @@ type Options struct {
 	// OIDCIssuer and OIDCProviderName label linked identities in /auth/me.
 	OIDCIssuer       string
 	OIDCProviderName string
+	// AdminRoleMaxAge, when non-zero, demotes admins whose role was last
+	// confirmed by an SSO login longer ago than this (see oidc.Config).
+	AdminRoleMaxAge time.Duration
 }
 
 type Handler struct {
@@ -108,6 +111,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	if req.Email == "" || req.Password == "" || req.DisplayName == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "email, password, and display_name are required"})
+		return
+	}
+
+	// The unique constraint is case-sensitive; emails are matched without case.
+	if _, err := h.queries.GetUserByEmail(r.Context(), req.Email); err == nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "email already registered"})
 		return
 	}
 
@@ -321,6 +330,14 @@ func SameIssuer(a, b string) bool {
 func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u generated.User) (*TokenPair, error) {
 	userID := uuidFromPg(u.ID)
 
+	if h.adminRoleExpired(u, time.Now()) {
+		demoted, err := q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: generated.UserRoleClimber})
+		if err != nil {
+			return nil, err
+		}
+		u = demoted
+	}
+
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  userID.String(),
 		"role": string(u.Role),
@@ -354,6 +371,15 @@ func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u gener
 		AccessToken:  accessTokenStr,
 		RefreshToken: refreshTokenStr,
 	}, nil
+}
+
+// adminRoleExpired reports whether u's admin role is no longer backed by a
+// recent SSO login. Only applies when the IdP manages admins.
+func (h *Handler) adminRoleExpired(u generated.User, now time.Time) bool {
+	if h.opts.AdminRoleMaxAge <= 0 || u.Role != generated.UserRoleAdmin {
+		return false
+	}
+	return !u.RoleSyncedAt.Valid || now.Sub(u.RoleSyncedAt.Time) > h.opts.AdminRoleMaxAge
 }
 
 func hashToken(token string) string {

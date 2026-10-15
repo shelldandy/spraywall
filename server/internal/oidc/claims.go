@@ -41,6 +41,10 @@ func (c *identityClaims) merge(m map[string]any, groupsClaim string) {
 			c.EmailVerified = parseBoolClaim(m["email_verified"])
 			c.hasEmail = true
 		}
+	} else if !c.EmailVerified && strings.EqualFold(stringClaim(m, "email"), c.Email) {
+		// The ID token may carry email without email_verified while UserInfo
+		// has both.
+		c.EmailVerified = parseBoolClaim(m["email_verified"])
 	}
 	if c.Name == "" {
 		c.Name = stringClaim(m, "name")

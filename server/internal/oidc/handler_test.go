@@ -3,14 +3,18 @@ package oidc
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -336,6 +340,47 @@ func TestFetchPictureRejectsNonImages(t *testing.T) {
 	}
 }
 
+func TestPictureClientBlocksPrivateHosts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("GIF89a......")) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	// The test server is on loopback, which only the issuer host may use.
+	if _, err := fetchPicture(context.Background(), newPictureClient("https://id.example.com"), srv.URL+"/a.gif"); err == nil {
+		t.Error("expected loopback picture host to be blocked")
+	}
+	if _, err := fetchPicture(context.Background(), newPictureClient(srv.URL), srv.URL+"/a.gif"); err != nil {
+		t.Errorf("issuer host should be allowed: %v", err)
+	}
+}
+
+func TestIsPublicAddr(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"8.8.8.8": true, "2606:4700::1111": true,
+		"127.0.0.1": false, "10.1.2.3": false, "172.18.0.5": false, "192.168.1.10": false,
+		"169.254.169.254": false, "100.64.0.1": false, "0.0.0.0": false, "::1": false,
+		"fd00::1": false, "fe80::1": false, "::ffff:127.0.0.1": false,
+	} {
+		if got := isPublicAddr(netip.MustParseAddr(addr)); got != want {
+			t.Errorf("isPublicAddr(%s) = %v, want %v", addr, got, want)
+		}
+	}
+}
+
+func TestEmailVerifiedFromUserInfo(t *testing.T) {
+	c := parseClaims(map[string]any{"email": "a@example.com"}, "groups")
+	c.merge(map[string]any{"email": "A@example.com", "email_verified": true}, "groups")
+	if !c.EmailVerified {
+		t.Error("UserInfo should verify the matching ID token email")
+	}
+	c = parseClaims(map[string]any{"email": "a@example.com"}, "groups")
+	c.merge(map[string]any{"email": "other@example.com", "email_verified": true}, "groups")
+	if c.EmailVerified {
+		t.Error("verification of a different email must not carry over")
+	}
+}
+
 func mustQuery(t *testing.T, raw string) url.Values {
 	t.Helper()
 	u, err := url.Parse(raw)
@@ -406,17 +451,58 @@ func TestLoginEmailLinking(t *testing.T) {
 		t.Fatalf("missing email: got %q", loc)
 	}
 
-	// Verified (as a string) links to the existing account.
+	// Whoever pre-registered the address may have a session and their own
+	// linked identity; the verified owner must evict both.
+	if _, err := env.q.CreateRefreshToken(ctx, generated.CreateRefreshTokenParams{
+		UserID: existing.ID, TokenHash: "squatter", ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.q.CreateUserIdentity(ctx, generated.CreateUserIdentityParams{
+		UserID: existing.ID, Issuer: env.idp.issuer(), Subject: "sub-squatter", Email: "squatter@example.com",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verified (as a string) links to the existing account, ignoring case.
 	res := parseSuccess(t, env.login(t, "/walls", &grant{claims: map[string]any{
-		"sub": "sub-verified", "email": "climber@example.com", "email_verified": "true",
+		"sub": "sub-verified", "email": "Climber@Example.com", "email_verified": "true",
 	}}))
 	if res.userID != uuid.UUID(existing.ID.Bytes) {
 		t.Fatal("verified email did not link to the existing account")
 	}
-	n, err := env.q.CountUserIdentities(ctx, existing.ID)
-	if err != nil || n != 1 {
-		t.Fatalf("identity count = %d, %v", n, err)
+	idents, err := env.q.ListUserIdentities(ctx, existing.ID)
+	if err != nil || len(idents) != 1 || idents[0].Subject != "sub-verified" {
+		t.Fatalf("identities = %+v, %v", idents, err)
 	}
+	u, err := env.q.GetUserByID(ctx, existing.ID)
+	if err != nil || u.PasswordHash != "" {
+		t.Fatalf("password should be cleared on takeover: %+v, %v", u, err)
+	}
+	if _, err := env.q.GetRefreshTokenByHash(ctx, "squatter"); err == nil {
+		t.Fatal("pre-existing session should be revoked")
+	}
+	if _, err := env.q.GetRefreshTokenByHash(ctx, hashRefresh(res.refresh)); err != nil {
+		t.Fatalf("new session missing: %v", err)
+	}
+}
+
+func TestLoginRefusesUnverifiedNewAccount(t *testing.T) {
+	env := newTestEnv(t, true, nil)
+	loc := env.login(t, "/walls", &grant{claims: map[string]any{
+		"sub": "sub-new", "email": "nobody@example.com", "email_verified": false,
+	}})
+	if loc != "/login?error=email_unverified" {
+		t.Fatalf("got %q", loc)
+	}
+	if _, err := env.q.GetUserByEmail(context.Background(), "nobody@example.com"); err == nil {
+		t.Fatal("account should not be created from an unverified email")
+	}
+}
+
+func hashRefresh(tok string) string {
+	sum := sha256.Sum256([]byte(tok))
+	return hex.EncodeToString(sum[:])
 }
 
 func TestLoginEmailFromUserInfo(t *testing.T) {

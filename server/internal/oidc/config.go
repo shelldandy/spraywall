@@ -10,12 +10,14 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
 	defaultProviderName = "SSO"
 	defaultScopes       = "openid email profile groups"
 	defaultGroupsClaim  = "groups"
+	defaultAdminMaxAge  = 24 * time.Hour
 )
 
 // Config holds OIDC settings loaded from the environment. OIDC is disabled
@@ -32,6 +34,10 @@ type Config struct {
 	// AdminGroup, when set, makes members of the group instance admins and
 	// demotes everyone else to climber on each OIDC login.
 	AdminGroup string
+	// AdminMaxAge is how long an SSO login keeps confirming admin rights;
+	// after that the account drops to climber until the next SSO login, so
+	// removal from AdminGroup takes effect even for long-lived sessions.
+	AdminMaxAge time.Duration
 }
 
 // LoadConfig reads OIDC_* environment variables. It returns an error when
@@ -53,6 +59,14 @@ func LoadConfig() (Config, error) {
 	}
 	if cfg.GroupsClaim == "" {
 		cfg.GroupsClaim = defaultGroupsClaim
+	}
+	cfg.AdminMaxAge = defaultAdminMaxAge
+	if raw := strings.TrimSpace(os.Getenv("OIDC_ADMIN_MAX_AGE")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil || d <= 0 {
+			return cfg, fmt.Errorf("invalid OIDC_ADMIN_MAX_AGE %q: want a positive duration like 24h", raw)
+		}
+		cfg.AdminMaxAge = d
 	}
 	if !cfg.Enabled {
 		return cfg, nil
