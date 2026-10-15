@@ -67,7 +67,7 @@ export default function RoutesPage() {
           <div className={styles.loader}>
             <div className="spinner" />
           </div>
-        ) : routesQuery.isError ? (
+        ) : routesQuery.isError && !routesQuery.data ? (
           <p className={`error-text ${styles.empty}`}>{routesQuery.error.message}</p>
         ) : routes.length === 0 ? (
           <p className={styles.empty}>No routes yet. Select holds on the wall to create one.</p>

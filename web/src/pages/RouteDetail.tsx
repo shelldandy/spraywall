@@ -65,7 +65,7 @@ export default function RouteDetailPage() {
           <div className={styles.loader}>
             <div className="spinner" />
           </div>
-        ) : routeQuery.isError ? (
+        ) : routeQuery.isError && !routeQuery.data ? (
           <p className={`error-text ${styles.centered}`}>{routeQuery.error.message}</p>
         ) : (
           <>
