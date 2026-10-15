@@ -18,6 +18,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 
@@ -733,5 +734,140 @@ func TestEmailVerifiedFetchedFromUserInfo(t *testing.T) {
 	}))
 	if res.userID == uuid.Nil {
 		t.Fatal("expected login to succeed")
+	}
+}
+
+// pausePool pauses the first successful identity lookup made through any
+// transaction it begins, until resume is closed.
+type pausePool struct {
+	user.TxBeginner
+	lookedUp chan struct{}
+	resume   chan struct{}
+	once     sync.Once
+}
+
+type pauseTx struct {
+	pgx.Tx
+	pool *pausePool
+}
+
+type pauseRow struct {
+	pgx.Row
+	pool *pausePool
+}
+
+func (p *pausePool) Begin(ctx context.Context) (pgx.Tx, error) {
+	tx, err := p.TxBeginner.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &pauseTx{Tx: tx, pool: p}, nil
+}
+
+func (tx *pauseTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	row := tx.Tx.QueryRow(ctx, sql, args...)
+	if strings.Contains(sql, "-- name: GetIdentityByIssuerSubject") {
+		return &pauseRow{Row: row, pool: tx.pool}
+	}
+	return row
+}
+
+func (r *pauseRow) Scan(dest ...any) error {
+	err := r.Row.Scan(dest...)
+	if err == nil {
+		r.pool.once.Do(func() {
+			close(r.pool.lookedUp)
+			<-r.pool.resume
+		})
+	}
+	return err
+}
+
+func TestRemovedIdentityCannotMintCurrentSession(t *testing.T) {
+	env := newTestEnv(t, true, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	original, err := env.q.CreateUser(ctx, generated.CreateUserParams{
+		Email: "owner@example.com", PasswordHash: "old-password", DisplayName: "Owner", Role: generated.UserRoleClimber,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A squatter registered the owner's email and linked their own identity.
+	if _, err := env.q.CreateUserIdentity(ctx, generated.CreateUserIdentityParams{
+		UserID: original.ID, Issuer: env.idp.issuer(), Subject: "squatter", Email: "squatter@example.com",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	paused := &pausePool{TxBeginner: env.h.pool, lookedUp: make(chan struct{}), resume: make(chan struct{})}
+	resume := sync.OnceFunc(func() { close(paused.resume) })
+	defer resume()
+	squatterHandler := *env.h
+	squatterHandler.pool = paused
+	type result struct {
+		u      generated.User
+		tokens *user.TokenPair
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		u, tokens, err := squatterHandler.loginIdentity(ctx, verifiedIdentity{
+			issuer: env.idp.issuer(), subject: "squatter",
+			claims: identityClaims{Email: "squatter@example.com", EmailVerified: true},
+		})
+		done <- result{u, tokens, err}
+	}()
+	select {
+	case <-paused.lookedUp:
+	case <-ctx.Done():
+		t.Fatal("squatter login never looked up its identity")
+	}
+
+	// The verified owner takes the account over after the squatter's login
+	// found its identity but before it locked the account. The paused login
+	// holds no lock, so the takeover does not wait for it.
+	owner, _, err := env.h.loginIdentity(ctx, verifiedIdentity{
+		issuer: env.idp.issuer(), subject: "real-owner",
+		claims: identityClaims{Email: "owner@example.com", EmailVerified: true},
+	})
+	resume()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owner.ID != original.ID {
+		t.Fatal("takeover resolved a different account")
+	}
+
+	var squatter result
+	select {
+	case squatter = <-done:
+	case <-ctx.Done():
+		t.Fatal("squatter login did not finish")
+	}
+	idents, err := env.q.ListUserIdentities(ctx, original.ID)
+	if err != nil || len(idents) != 1 || idents[0].Subject != "real-owner" {
+		t.Fatalf("takeover did not remove the squatter's identity: %+v, %v", idents, err)
+	}
+	if squatter.err != nil {
+		t.Logf("squatter login failed: %v", squatter.err)
+		return
+	}
+	if squatter.u.ID != original.ID {
+		t.Log("squatter login resolved to a new account")
+		return
+	}
+
+	// Tokens for the owner's account must not survive the takeover.
+	if squatter.u.TokenVersion == owner.TokenVersion {
+		t.Fatalf("removed identity minted the owner's current version %d", owner.TokenVersion)
+	}
+	auth := user.NewHandler(env.q, testJWTSecret, env.h.pool, user.Options{PasswordEnabled: true})
+	rec := httptest.NewRecorder()
+	auth.Refresh(rec, httptest.NewRequest(http.MethodPost, "/auth/refresh",
+		strings.NewReader(`{"refresh_token":"`+squatter.tokens.RefreshToken+`"}`)))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("refresh with the removed identity's token: %d %s", rec.Code, rec.Body)
 	}
 }

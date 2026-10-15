@@ -397,18 +397,34 @@ func (h *Handler) loginIdentity(ctx context.Context, id verifiedIdentity) (gener
 
 // resolveUser finds the user for an identity: an existing link first, then
 // an account with the same (IdP-verified) email, otherwise a new account.
+//
+// Both paths lock the account row, as linking and unlinking do. An existing
+// link is read again under the lock, because a takeover that committed in
+// the meantime may have removed it; a removed link falls through to the
+// email match instead of adopting the account's new token version.
 func resolveUser(ctx context.Context, q *generated.Queries, id verifiedIdentity) (generated.User, error) {
-	ident, err := q.GetIdentityByIssuerSubject(ctx, generated.GetIdentityByIssuerSubjectParams{
-		Issuer:  id.issuer,
-		Subject: id.subject,
-	})
+	lookup := generated.GetIdentityByIssuerSubjectParams{Issuer: id.issuer, Subject: id.subject}
+	ident, err := q.GetIdentityByIssuerSubject(ctx, lookup)
 	if err == nil {
-		if err := refreshIdentityEmail(ctx, q, ident, id.claims.Email); err != nil {
-			return generated.User{}, err
+		u, err := q.GetUserByIDForUpdate(ctx, ident.UserID)
+		if err != nil {
+			return generated.User{}, fmt.Errorf("lock user: %w", err)
 		}
-		return q.GetUserByID(ctx, ident.UserID)
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+		// Under READ COMMITTED this sees everything committed before the lock.
+		ident, err = q.GetIdentityByIssuerSubject(ctx, lookup)
+		switch {
+		case err == nil && ident.UserID == u.ID:
+			if err := refreshIdentityEmail(ctx, q, ident, id.claims.Email); err != nil {
+				return generated.User{}, err
+			}
+			return u, nil
+		case err == nil:
+			return generated.User{}, errors.New("identity moved to another account during login")
+		case !errors.Is(err, pgx.ErrNoRows):
+			return generated.User{}, fmt.Errorf("recheck identity: %w", err)
+		}
+		// Removed while waiting for the lock: resolve by email below.
+	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return generated.User{}, fmt.Errorf("look up identity: %w", err)
 	}
 
@@ -423,6 +439,13 @@ func resolveUser(ctx context.Context, q *generated.Queries, id verifiedIdentity)
 	}
 
 	u, err := q.GetUserByEmail(ctx, email)
+	if err == nil {
+		// Wait for concurrent logins, links, and unlinks before revoking.
+		u, err = q.GetUserByIDForUpdate(ctx, u.ID)
+		if err != nil {
+			return generated.User{}, fmt.Errorf("lock user: %w", err)
+		}
+	}
 	switch {
 	case err == nil:
 		// Password registration never proves email ownership, so whoever
