@@ -70,3 +70,7 @@ func (c *Client) Download(ctx context.Context, key string) (io.ReadCloser, strin
 	}
 	return obj, info.ContentType, nil
 }
+
+func (c *Client) Delete(ctx context.Context, key string) error {
+	return c.mc.RemoveObject(ctx, c.bucket, key, minio.RemoveObjectOptions{})
+}

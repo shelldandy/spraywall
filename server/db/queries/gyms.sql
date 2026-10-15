@@ -26,3 +26,7 @@ WHERE gm.gym_id = $1;
 
 -- name: DeleteGym :exec
 DELETE FROM gyms WHERE id = $1;
+
+-- name: ListAllGymsAsAdmin :many
+SELECT g.*, 'admin'::user_role AS user_role FROM gyms g
+ORDER BY g.name;

@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countUserIdentities = `-- name: CountUserIdentities :one
+SELECT count(*) FROM user_identities WHERE user_id = $1
+`
+
+func (q *Queries) CountUserIdentities(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countUserIdentities, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createRefreshToken = `-- name: CreateRefreshToken :one
 INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
 VALUES ($1, $2, $3)
@@ -39,7 +50,7 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, display_name, role)
 VALUES ($1, $2, $3, $4)
-RETURNING id, email, password_hash, display_name, role, created_at, updated_at
+RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url
 `
 
 type CreateUserParams struct {
@@ -65,6 +76,41 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AvatarKey,
+		&i.AvatarSource,
+		&i.AvatarOriginUrl,
+	)
+	return i, err
+}
+
+const createUserIdentity = `-- name: CreateUserIdentity :one
+INSERT INTO user_identities (user_id, issuer, subject, email)
+VALUES ($1, $2, $3, $4)
+RETURNING id, user_id, issuer, subject, email, created_at
+`
+
+type CreateUserIdentityParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	Issuer  string      `json:"issuer"`
+	Subject string      `json:"subject"`
+	Email   string      `json:"email"`
+}
+
+func (q *Queries) CreateUserIdentity(ctx context.Context, arg CreateUserIdentityParams) (UserIdentity, error) {
+	row := q.db.QueryRow(ctx, createUserIdentity,
+		arg.UserID,
+		arg.Issuer,
+		arg.Subject,
+		arg.Email,
+	)
+	var i UserIdentity
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Issuer,
+		&i.Subject,
+		&i.Email,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -87,6 +133,46 @@ func (q *Queries) DeleteRefreshTokensByUserID(ctx context.Context, userID pgtype
 	return err
 }
 
+const deleteUserIdentity = `-- name: DeleteUserIdentity :execrows
+DELETE FROM user_identities WHERE id = $1 AND user_id = $2
+`
+
+type DeleteUserIdentityParams struct {
+	ID     pgtype.UUID `json:"id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) DeleteUserIdentity(ctx context.Context, arg DeleteUserIdentityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserIdentity, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getIdentityByIssuerSubject = `-- name: GetIdentityByIssuerSubject :one
+SELECT id, user_id, issuer, subject, email, created_at FROM user_identities WHERE issuer = $1 AND subject = $2
+`
+
+type GetIdentityByIssuerSubjectParams struct {
+	Issuer  string `json:"issuer"`
+	Subject string `json:"subject"`
+}
+
+func (q *Queries) GetIdentityByIssuerSubject(ctx context.Context, arg GetIdentityByIssuerSubjectParams) (UserIdentity, error) {
+	row := q.db.QueryRow(ctx, getIdentityByIssuerSubject, arg.Issuer, arg.Subject)
+	var i UserIdentity
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Issuer,
+		&i.Subject,
+		&i.Email,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getRefreshTokenByHash = `-- name: GetRefreshTokenByHash :one
 SELECT id, user_id, token_hash, expires_at, created_at FROM refresh_tokens WHERE token_hash = $1 AND expires_at > now()
 `
@@ -105,7 +191,7 @@ func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, display_name, role, created_at, updated_at FROM users WHERE email = $1
+SELECT id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -119,12 +205,15 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AvatarKey,
+		&i.AvatarSource,
+		&i.AvatarOriginUrl,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, display_name, role, created_at, updated_at FROM users WHERE id = $1
+SELECT id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -138,6 +227,190 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AvatarKey,
+		&i.AvatarSource,
+		&i.AvatarOriginUrl,
+	)
+	return i, err
+}
+
+const getUserByIdentity = `-- name: GetUserByIdentity :one
+SELECT u.id, u.email, u.password_hash, u.display_name, u.role, u.created_at, u.updated_at, u.avatar_key, u.avatar_source, u.avatar_origin_url FROM users u
+JOIN user_identities ui ON ui.user_id = u.id
+WHERE ui.issuer = $1 AND ui.subject = $2
+`
+
+type GetUserByIdentityParams struct {
+	Issuer  string `json:"issuer"`
+	Subject string `json:"subject"`
+}
+
+func (q *Queries) GetUserByIdentity(ctx context.Context, arg GetUserByIdentityParams) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByIdentity, arg.Issuer, arg.Subject)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarKey,
+		&i.AvatarSource,
+		&i.AvatarOriginUrl,
+	)
+	return i, err
+}
+
+const listUserIdentities = `-- name: ListUserIdentities :many
+SELECT id, user_id, issuer, subject, email, created_at FROM user_identities WHERE user_id = $1 ORDER BY created_at
+`
+
+func (q *Queries) ListUserIdentities(ctx context.Context, userID pgtype.UUID) ([]UserIdentity, error) {
+	rows, err := q.db.Query(ctx, listUserIdentities, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UserIdentity
+	for rows.Next() {
+		var i UserIdentity
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Issuer,
+			&i.Subject,
+			&i.Email,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateUserAvatar = `-- name: UpdateUserAvatar :one
+UPDATE users
+SET avatar_key = $2, avatar_source = $3, avatar_origin_url = $4, updated_at = now()
+WHERE id = $1
+RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url
+`
+
+type UpdateUserAvatarParams struct {
+	ID              pgtype.UUID `json:"id"`
+	AvatarKey       pgtype.Text `json:"avatar_key"`
+	AvatarSource    pgtype.Text `json:"avatar_source"`
+	AvatarOriginUrl pgtype.Text `json:"avatar_origin_url"`
+}
+
+func (q *Queries) UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserAvatar,
+		arg.ID,
+		arg.AvatarKey,
+		arg.AvatarSource,
+		arg.AvatarOriginUrl,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarKey,
+		&i.AvatarSource,
+		&i.AvatarOriginUrl,
+	)
+	return i, err
+}
+
+const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
+UPDATE users SET display_name = $2, updated_at = now() WHERE id = $1
+RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url
+`
+
+type UpdateUserDisplayNameParams struct {
+	ID          pgtype.UUID `json:"id"`
+	DisplayName string      `json:"display_name"`
+}
+
+func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDisplayNameParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserDisplayName, arg.ID, arg.DisplayName)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarKey,
+		&i.AvatarSource,
+		&i.AvatarOriginUrl,
+	)
+	return i, err
+}
+
+const updateUserIdentityEmail = `-- name: UpdateUserIdentityEmail :exec
+UPDATE user_identities SET email = $2 WHERE id = $1
+`
+
+type UpdateUserIdentityEmailParams struct {
+	ID    pgtype.UUID `json:"id"`
+	Email string      `json:"email"`
+}
+
+func (q *Queries) UpdateUserIdentityEmail(ctx context.Context, arg UpdateUserIdentityEmailParams) error {
+	_, err := q.db.Exec(ctx, updateUserIdentityEmail, arg.ID, arg.Email)
+	return err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1
+`
+
+type UpdateUserPasswordParams struct {
+	ID           pgtype.UUID `json:"id"`
+	PasswordHash string      `json:"password_hash"`
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.PasswordHash)
+	return err
+}
+
+const updateUserRole = `-- name: UpdateUserRole :one
+UPDATE users SET role = $2, updated_at = now() WHERE id = $1
+RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url
+`
+
+type UpdateUserRoleParams struct {
+	ID   pgtype.UUID `json:"id"`
+	Role UserRole    `json:"role"`
+}
+
+func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserRole, arg.ID, arg.Role)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarKey,
+		&i.AvatarSource,
+		&i.AvatarOriginUrl,
 	)
 	return i, err
 }

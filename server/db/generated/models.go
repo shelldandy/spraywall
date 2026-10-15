@@ -129,13 +129,25 @@ type Send struct {
 }
 
 type User struct {
-	ID           pgtype.UUID        `json:"id"`
-	Email        string             `json:"email"`
-	PasswordHash string             `json:"password_hash"`
-	DisplayName  string             `json:"display_name"`
-	Role         UserRole           `json:"role"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID              pgtype.UUID        `json:"id"`
+	Email           string             `json:"email"`
+	PasswordHash    string             `json:"password_hash"`
+	DisplayName     string             `json:"display_name"`
+	Role            UserRole           `json:"role"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	AvatarKey       pgtype.Text        `json:"avatar_key"`
+	AvatarSource    pgtype.Text        `json:"avatar_source"`
+	AvatarOriginUrl pgtype.Text        `json:"avatar_origin_url"`
+}
+
+type UserIdentity struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Issuer    string             `json:"issuer"`
+	Subject   string             `json:"subject"`
+	Email     string             `json:"email"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type Wall struct {
