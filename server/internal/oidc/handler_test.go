@@ -489,8 +489,13 @@ func TestLoginEmailLinking(t *testing.T) {
 	if _, err := env.q.GetRefreshTokenByHash(ctx, "squatter"); err == nil {
 		t.Fatal("pre-existing session should be revoked")
 	}
-	if _, err := env.q.GetRefreshTokenByHash(ctx, hashRefresh(res.refresh)); err != nil {
+	rt, err := env.q.GetRefreshTokenByHash(ctx, hashRefresh(res.refresh))
+	if err != nil {
 		t.Fatalf("new session missing: %v", err)
+	}
+	// The owner's session must survive the version bump it caused.
+	if rt.TokenVersion != u.TokenVersion {
+		t.Fatalf("owner refresh token version %d, user %d", rt.TokenVersion, u.TokenVersion)
 	}
 }
 

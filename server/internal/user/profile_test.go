@@ -557,3 +557,25 @@ func TestRefreshRejectsTokenFromBeforeRevocation(t *testing.T) {
 		t.Fatalf("stale refresh token accepted: %d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestAdminDemotionKeepsStaleTokenVersion(t *testing.T) {
+	env := newProfileEnv(t, Options{PasswordEnabled: true, AdminRoleMaxAge: time.Hour})
+	ctx := context.Background()
+	u := env.createUser(t, "expired-admin@example.com", "password1")
+	stale, err := env.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.q.BumpTokenVersion(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	pair, err := env.h.IssueTokens(ctx, env.q, stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	env.h.Refresh(rec, httptest.NewRequest(http.MethodPost, "/auth/refresh", strings.NewReader(`{"refresh_token":"`+pair.RefreshToken+`"}`)))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("demotion revived a stale session: %d", rec.Code)
+	}
+}

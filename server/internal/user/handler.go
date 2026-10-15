@@ -331,7 +331,9 @@ func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u gener
 		if err != nil {
 			return nil, err
 		}
-		u = demoted
+		// Keep the caller's snapshot otherwise: adopting the fresh row's
+		// token_version would let a request racing a revocation outlive it.
+		u.Role = demoted.Role
 	}
 
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
