@@ -8,7 +8,28 @@ AI-assisted spray wall route setting and climbing app.
 - Node.js ^20.19.0 or ≥ 22.12.0 (for the web app)
 - Go ≥ 1.22 (optional, for local dev outside Docker)
 
-## Quick Start
+## Self-Hosting
+
+Prebuilt images are published to GHCR (`ghcr.io/shelldandy/spraywall-{server,worker,web}`), so all you need is a compose file:
+
+```bash
+mkdir spraywall && cd spraywall
+curl -LO https://raw.githubusercontent.com/shelldandy/spraywall/main/deploy/docker-compose.yml
+curl -L -o .env https://raw.githubusercontent.com/shelldandy/spraywall/main/deploy/.env.example
+
+# Set POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD and JWT_SECRET (e.g. `openssl rand -hex 32` each)
+$EDITOR .env
+
+docker compose up -d
+```
+
+The app is served on port 80 (`HTTP_PORT` to change). Migrations run and the storage bucket is created automatically on start.
+
+- **Versions:** `latest` tracks the newest release, `edge` tracks `main`; pin a release with `SPRAYWALL_VERSION=1.2.3`.
+- **NVIDIA GPU:** the default worker runs inference on CPU. Use the `-cuda` worker tag (e.g. `latest-cuda`) and uncomment the `deploy` block in the compose file.
+- **Upgrading:** `docker compose pull && docker compose up -d`.
+
+## Development
 
 ```bash
 # Clone and configure
@@ -58,7 +79,7 @@ Hold detection uses YOLOv8 for bounding boxes. When enabled, [Segment Anything M
 
 ### Setup
 
-Download a SAM checkpoint into the worker models directory:
+Worker Docker images built with `INSTALL_SAM=true` download the checkpoint at build time. For local (non-Docker) runs and the `make dev` bind mount, download a SAM checkpoint into the worker models directory:
 
 ```bash
 wget -P worker/models https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth

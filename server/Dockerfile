@@ -29,7 +29,7 @@ RUN go mod download
 CMD ["air", "-c", ".air.toml"]
 
 # ---- Prod target ----
-FROM alpine:3.20 AS prod
+FROM alpine:3.23 AS prod
 
 # Server-side image normalization for HEIC uploads.
 RUN apk add --no-cache imagemagick imagemagick-jpeg imagemagick-heic
@@ -39,5 +39,6 @@ WORKDIR /app
 COPY --from=builder /go/bin/goose /usr/local/bin/goose
 COPY --from=builder /server /usr/local/bin/server
 COPY db/migrations ./db/migrations
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
-CMD ["server"]
+CMD ["entrypoint.sh"]

@@ -5,6 +5,6 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# nginx.conf is mounted from infra/nginx by docker-compose.
 FROM nginx:alpine
+COPY nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /src/dist /usr/share/nginx/html

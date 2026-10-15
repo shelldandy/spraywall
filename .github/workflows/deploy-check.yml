@@ -1,0 +1,45 @@
+name: Check deploy compose
+
+on:
+  pull_request:
+    paths: ["deploy/**", ".github/workflows/deploy-check.yml"]
+  push:
+    branches: [main]
+    paths: ["deploy/**", ".github/workflows/deploy-check.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: check/secret%@pw
+      MINIO_ROOT_PASSWORD: check-minio
+      JWT_SECRET: check-jwt
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Default selects CPU images
+        run: |
+          images=$(docker compose -f deploy/docker-compose.yml config --images)
+          echo "$images"
+          for app in server web worker; do
+            grep -qx "ghcr.io/shelldandy/spraywall-$app:latest" <<<"$images"
+          done
+
+      - name: CUDA override only retags the worker
+        env:
+          SPRAYWALL_WORKER_VERSION: latest-cuda
+        run: |
+          images=$(docker compose -f deploy/docker-compose.yml config --images)
+          echo "$images"
+          grep -qx "ghcr.io/shelldandy/spraywall-server:latest" <<<"$images"
+          grep -qx "ghcr.io/shelldandy/spraywall-web:latest" <<<"$images"
+          grep -qx "ghcr.io/shelldandy/spraywall-worker:latest-cuda" <<<"$images"
+
+      - name: Database password stays out of the URI
+        run: |
+          urls=$(docker compose -f deploy/docker-compose.yml config | grep 'DATABASE_URL:')
+          echo "$urls"
+          ! grep -qF "$POSTGRES_PASSWORD" <<<"$urls"

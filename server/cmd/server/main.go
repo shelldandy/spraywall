@@ -50,6 +50,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to create storage client: %v", err)
 	}
+	if err := storageClient.EnsureBucket(context.Background()); err != nil {
+		log.Fatalf("Unable to prepare storage bucket: %v", err)
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
