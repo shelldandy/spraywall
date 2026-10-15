@@ -1,6 +1,6 @@
 .page {
   width: 100%;
-  max-width: 640px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
@@ -51,46 +51,84 @@
   white-space: nowrap;
 }
 
-.wallList {
+.wallGrid {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 14px;
 }
 
-.wallRow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.wallItem {
-  flex: 1;
+.wallTile {
+  position: relative;
   min-width: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px;
-  border-radius: var(--radius);
-  background: #f8f8f8;
-  color: #333;
 }
 
-.wallItem:active {
-  background: #eee;
+.wallCard {
+  display: block;
+  color: var(--text);
+}
+
+.wallPreview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-muted);
+}
+
+.wallPreview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.imagePlaceholder {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 13px;
 }
 
 .wallName {
+  display: -webkit-box;
+  min-height: 2.7em;
+  margin-top: 8px;
   overflow: hidden;
+  font-weight: 600;
+  line-height: 1.35;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
-.chevron {
-  color: var(--text-faint);
-  margin-left: 8px;
+.wallTile .wallDelete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 38px;
+  height: 38px;
+  padding: 8px;
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 5px rgb(0 0 0 / 22%);
+  color: var(--danger);
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.wallTile .wallDelete:hover {
+  background: var(--bg-muted);
+  color: #b42318;
 }
 
 .deleteBtn {
@@ -139,4 +177,11 @@
   font-size: 16px;
   font-weight: 700;
   margin-bottom: 4px;
+}
+
+@media (min-width: 600px) {
+  .wallGrid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 24px 18px;
+  }
 }
