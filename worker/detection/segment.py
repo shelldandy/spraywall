@@ -7,7 +7,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-SAM_ENABLED = os.environ.get("SAM_ENABLED", "false").lower() == "true"
+SAM_ENABLED = os.environ.get("SAM_ENABLED", "true").lower() == "true"
 SAM_MODEL_TYPE = os.environ.get("SAM_MODEL_TYPE", "vit_b")
 SAM_CHECKPOINT = os.environ.get(
     "SAM_CHECKPOINT",
@@ -15,6 +15,25 @@ SAM_CHECKPOINT = os.environ.get(
 )
 
 _sam_predictor = None
+_sam_available = None
+
+
+def sam_available() -> bool:
+    """Check once whether SAM can run; warn and fall back to boxes if not."""
+    global _sam_available
+    if _sam_available is None:
+        try:
+            import segment_anything  # noqa: F401
+        except ImportError:
+            logger.warning("SAM disabled: segment-anything is not installed (build with INSTALL_SAM=true)")
+            _sam_available = False
+        else:
+            if not os.path.isfile(SAM_CHECKPOINT):
+                logger.warning("SAM disabled: checkpoint not found at %s", SAM_CHECKPOINT)
+                _sam_available = False
+            else:
+                _sam_available = True
+    return _sam_available
 
 
 def get_predictor():
@@ -42,7 +61,7 @@ def segment_holds(
     Updates each hold's 'polygon' field with simplified contour points.
     Returns the updated holds list.
     """
-    if not SAM_ENABLED or not holds:
+    if not SAM_ENABLED or not holds or not sam_available():
         logger.info("SAM skipped: enabled=%s, holds=%d", SAM_ENABLED, len(holds))
         return holds
 
