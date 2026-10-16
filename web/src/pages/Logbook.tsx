@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { LogbookEntry } from "../lib/api/types";
+import { getGradeColorStyle } from "../lib/grades";
 import { useLogbook } from "../lib/hooks/queries";
 import styles from "./Logbook.module.css";
 import { useGoBack } from "../lib/nav";
@@ -61,7 +62,9 @@ export default function LogbookPage() {
                     <div className={styles.entryInfo}>
                       <span className={styles.entryName}>{item.route_name}</span>
                       {item.route_grade && (
-                        <span className={styles.entryGrade}>{item.route_grade}</span>
+                        <span className={styles.entryGrade} style={getGradeColorStyle(item.route_grade)}>
+                          {item.route_grade}
+                        </span>
                       )}
                     </div>
                     <span className={styles.entryDate}>{formatDate(item.sent_at)}</span>

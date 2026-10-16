@@ -67,9 +67,15 @@
 }
 
 .entryGrade {
-  font-size: 13px;
+  align-self: flex-start;
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--bg-muted);
   color: var(--text-muted);
-  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .entryDate {
