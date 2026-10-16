@@ -16,6 +16,10 @@
   color: var(--text-faint);
 }
 
+.overlay:not([open]) {
+  display: none;
+}
+
 .overlay {
   position: fixed;
   inset: 0;
