@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import HoldOverlay from "../components/HoldOverlay";
 import type { Hold, Route } from "../lib/api/types";
+import { getGradeColorStyle } from "../lib/grades";
 import styles from "./RouteList.module.css";
 
 interface RouteListProps {
@@ -73,7 +74,15 @@ export default function RouteList({
                 </div>
               )}
             </div>
-            <div className={styles.gradeColumn}>{route.grade ?? "—"}</div>
+            <div className={styles.gradeColumn}>
+              {route.grade ? (
+                <span className={styles.gradeChip} style={getGradeColorStyle(route.grade)}>
+                  {route.grade}
+                </span>
+              ) : (
+                "—"
+              )}
+            </div>
           </Link>
         </li>
       ))}
