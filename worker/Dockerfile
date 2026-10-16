@@ -14,7 +14,7 @@ RUN if [ "$TORCH_VARIANT" = "cpu" ]; then \
     fi
 
 COPY pyproject.toml .
-ARG INSTALL_SAM=false
+ARG INSTALL_SAM=true
 ARG INSTALL_MODAL=false
 RUN pip install --no-cache-dir . && \
     if [ "$INSTALL_SAM" = "true" ]; then pip install --no-cache-dir ".[sam]"; fi && \

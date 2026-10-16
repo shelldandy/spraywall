@@ -120,21 +120,21 @@ In production (`make prod`), nginx serves the built web app at `/` and proxies t
 
 ## SAM Segmentation
 
-Hold detection uses YOLOv8 for bounding boxes. When enabled, [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) refines each box into a polygon outline.
+Hold detection uses YOLOv8 for bounding boxes. By default, [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) refines each box into a polygon outline.
 
 ### Setup
 
-Worker Docker images built with `INSTALL_SAM=true` download the checkpoint at build time. For local (non-Docker) runs and the `make dev` bind mount, download a SAM checkpoint into the worker models directory:
+Worker Docker images (including the published ones) install SAM and download the checkpoint at build time. For local (non-Docker) runs and the `make dev` bind mount, download a SAM checkpoint into the worker models directory:
 
 ```bash
 wget -P worker/models https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
 ```
 
-The `make dev` Compose profile installs and enables SAM automatically. For other deployments, install the optional `sam` extra (`pip install '.[sam]'` or build the Docker image with `INSTALL_SAM=true`) and set `SAM_ENABLED=true`. Without both, detection returns YOLO bounding boxes without polygon segmentation.
+For local (non-Docker) runs, also install the optional `sam` extra (`pip install '.[sam]'`). To opt out, set `SAM_ENABLED=false` or build the image with `INSTALL_SAM=false`; detection then returns YOLO bounding boxes without polygon segmentation. If SAM is enabled but the package or checkpoint is missing, the worker logs a warning and falls back to boxes.
 
 ### How it works
 
-- When SAM is enabled, it refines YOLOv8 bounding boxes into polygon masks
+- SAM refines YOLOv8 bounding boxes into polygon masks
 - OpenCV post-processing (erode/dilate/contour/simplify) cleans the masks
 - Polygons are stored in the `holds.polygon` column and rendered as SVG polygons in the app
 - Holds without polygon data fall back to rectangle rendering
@@ -143,7 +143,7 @@ The `make dev` Compose profile installs and enables SAM automatically. For other
 
 | Variable         | Default                              | Description              |
 | ---------------- | ------------------------------------ | ------------------------ |
-| `SAM_ENABLED`    | `false`                              | Enable SAM segmentation  |
+| `SAM_ENABLED`    | `true`                               | Enable SAM segmentation  |
 | `SAM_MODEL_TYPE` | `vit_b`                              | SAM model variant        |
 | `SAM_CHECKPOINT` | `./models/sam_vit_b_01ec64.pth`      | Path to checkpoint file  |
 
@@ -151,7 +151,7 @@ The `make dev` Compose profile installs and enables SAM automatically. For other
 
 The worker polls for detection jobs and runs inference with one of two backends, chosen by `INFERENCE_BACKEND`:
 
-- `local` (default): runs YOLOv8 in the worker process (CUDA if available, otherwise CPU). SAM is optional; `make dev` enables it, while other deployments must install the `sam` extra and set `SAM_ENABLED=true`.
+- `local` (default): runs YOLOv8 in the worker process (CUDA if available, otherwise CPU). SAM is enabled by default; set `SAM_ENABLED=false` to skip it.
 - `modal`: sends the image to a [Modal](https://modal.com) serverless GPU (T4, per-second billing, scales down after 30 seconds idle).
   At the reviewed $0.59/hour rate, the idle tail is about $0.005 per isolated request; active compute is billed separately.
 

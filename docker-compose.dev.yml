@@ -17,10 +17,5 @@ services:
       - ./server:/app
 
   worker:
-    build:
-      args:
-        INSTALL_SAM: "true"
-    environment:
-      SAM_ENABLED: "true"
     volumes:
       - ./worker:/app
