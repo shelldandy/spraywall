@@ -83,26 +83,26 @@
 }
 
 .badgeNeutral {
-  background: var(--text-faint);
+  background: var(--bg-hover);
 }
 
 .badgePending {
-  background: #f5a623;
+  background: var(--warning-bg);
 }
 
 .badgeDone {
-  background: var(--success);
+  background: var(--success-bg);
 }
 
 .badgeFailed {
-  background: var(--danger);
+  background: var(--danger-bg);
 }
 
 .imageContainer {
   width: 100%;
   border-radius: var(--radius);
   overflow: hidden;
-  background: #f0f0f0;
+  background: var(--bg-muted);
   margin-bottom: 4px;
 }
 
@@ -113,7 +113,7 @@
   width: 100%;
   aspect-ratio: 3 / 4;
   max-height: 70vh;
-  background: #f0f0f0;
+  background: var(--bg-muted);
   border-radius: var(--radius);
   color: var(--text-faint);
   margin-bottom: 4px;
@@ -124,9 +124,9 @@
 }
 
 .editHoldsButton {
-  background: #f0f0f0;
-  border: 1px solid var(--text-muted);
-  color: #333;
+  background: var(--bg-muted);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
 }
 
 .editToolbar {
@@ -137,14 +137,14 @@
 .editTool {
   flex: 1;
   padding: 12px;
-  background: #f0f0f0;
+  background: var(--bg-muted);
   color: var(--text-muted);
   font-size: 15px;
 }
 
 .editToolActive {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
 }
 
 .hint {
@@ -174,7 +174,7 @@
   padding: 6px 12px;
   border: none;
   border-radius: 16px;
-  background: #f0f0f0;
+  background: var(--bg-muted);
   color: var(--text-muted);
   font: inherit;
   font-size: 13px;
@@ -184,7 +184,7 @@
 
 .chipActive {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
   font-weight: 600;
 }
 
@@ -195,7 +195,7 @@
 }
 
 .createRouteButton {
-  background: var(--success);
+  background: var(--success-bg);
   color: #fff;
 }
 
@@ -204,8 +204,8 @@
   min-height: 0;
   overflow: hidden;
   padding-bottom: 0;
-  background: #21182f;
-  color: #f7f3ff;
+  background: var(--bg);
+  color: var(--text);
 }
 
 .createHeader {
@@ -215,8 +215,8 @@
   align-items: center;
   min-height: 100px;
   padding: calc(10px + var(--safe-top)) 14px 10px;
-  border-bottom: 1px solid #493d5a;
-  background: #21182f;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 
 .createExit {
@@ -226,7 +226,7 @@
   justify-content: flex-start;
   border: 0;
   background: transparent;
-  color: #f7f3ff;
+  color: var(--text);
   font: inherit;
   font-size: 44px;
   font-weight: 200;
@@ -248,7 +248,7 @@
 
 .createCounts {
   margin: 8px 0 0;
-  color: #c1b9ce;
+  color: var(--text-muted);
   font-size: 14px;
   white-space: nowrap;
 }
@@ -271,8 +271,8 @@
   padding: 0 0 7px;
   border: 0;
   border-radius: 50%;
-  background: #3a3049;
-  color: #fff;
+  background: var(--bg-muted);
+  color: var(--text);
   font-size: 24px;
   font-weight: 700;
   letter-spacing: 1px;
@@ -286,10 +286,10 @@
   z-index: 5;
   min-width: 150px;
   padding: 5px;
-  border: 1px solid #554967;
+  border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: #342a43;
-  box-shadow: 0 8px 20px #100b18aa;
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 20px rgb(16 11 24 / 67%);
 }
 
 .createMenu button {
@@ -298,28 +298,28 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #fff;
+  color: var(--text);
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
 .createMenu button:hover {
-  background: #493d5a;
+  background: var(--bg-hover);
 }
 
 .createSave {
   padding: 8px 0 8px 4px;
   border: 0;
   background: transparent;
-  color: #f7f3ff;
+  color: var(--text);
   font: inherit;
   font-size: 16px;
   cursor: pointer;
 }
 
 .createSave:disabled {
-  color: #736b7c;
+  color: var(--text-faint);
   cursor: default;
 }
 
@@ -331,7 +331,7 @@
   justify-content: center;
   min-height: 0;
   overflow: hidden;
-  background: #21182f;
+  background: var(--bg);
 }
 
 .createImageContainer {
@@ -348,7 +348,7 @@
   height: 100%;
   align-items: center;
   justify-content: center;
-  color: #c1b9ce;
+  color: var(--text-muted);
   text-align: center;
 }
 
@@ -357,8 +357,8 @@
   flex: none;
   gap: 8px;
   padding: 12px 12px calc(12px + var(--safe-bottom));
-  border-top: 1px solid #493d5a;
-  background: #21182f;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
 }
 
 .toolButton {
@@ -373,8 +373,8 @@
   padding: 8px 3px;
   border: 3px solid transparent;
   border-radius: 14px;
-  background: #3a3049;
-  color: #f7f3ff;
+  background: var(--bg-muted);
+  color: var(--text);
   font: inherit;
   font-size: 14px;
   font-weight: 650;
@@ -383,8 +383,8 @@
 }
 
 .toolActive {
-  border-color: #00e5ff;
-  background: #3b3150;
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .toolDot {
@@ -398,7 +398,7 @@
   width: 22px;
   height: 22px;
   margin: 5px;
-  border: 3px solid #f7f3ff;
+  border: 3px solid var(--text);
   border-radius: 4px;
   transform: rotate(45deg) scaleX(0.72);
 }

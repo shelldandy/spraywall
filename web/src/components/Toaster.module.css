@@ -17,7 +17,7 @@
   padding: 12px 16px;
   border: none;
   border-radius: var(--radius);
-  background: #222;
+  background: var(--bg-elevated);
   color: #fff;
   font: inherit;
   text-align: left;
@@ -26,5 +26,6 @@
 }
 
 .error {
-  background: var(--danger);
+  background: var(--danger-bg);
+  color: #fff;
 }

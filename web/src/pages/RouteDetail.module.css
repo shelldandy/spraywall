@@ -50,10 +50,10 @@
 .legacyBanner {
   margin-bottom: 12px;
   padding: 12px;
-  border: 1px solid #f5a623;
+  border: 1px solid var(--warning-bg);
   border-radius: var(--radius);
-  background: #fff3e0;
-  color: #e65100;
+  background: var(--bg-elevated);
+  color: var(--warning);
   font-size: 14px;
   font-weight: 600;
   text-align: center;
@@ -76,10 +76,11 @@
 
 .gradeBadge {
   background: var(--accent);
+  color: var(--accent-contrast);
 }
 
 .resetBadge {
-  background: #f5a623;
+  background: var(--warning-bg);
 }
 
 .sendCount {
@@ -91,7 +92,7 @@
   margin: 0 0 16px;
   font-size: 15px;
   line-height: 22px;
-  color: #444;
+  color: var(--text-muted);
   white-space: pre-wrap;
 }
 
@@ -99,7 +100,7 @@
   margin-bottom: 12px;
   overflow: hidden;
   border-radius: var(--radius);
-  background: #f0f0f0;
+  background: var(--bg-muted);
 }
 
 .noImage {
@@ -110,7 +111,7 @@
   aspect-ratio: 3 / 4;
   margin-bottom: 12px;
   border-radius: var(--radius);
-  background: #f0f0f0;
+  background: var(--bg-muted);
   color: var(--text-faint);
 }
 
@@ -125,7 +126,7 @@
   margin-bottom: 12px;
   padding: 14px;
   border: 1px solid var(--accent);
-  background: #f8f8f8;
+  background: var(--bg-elevated);
   color: var(--accent);
 }
 
@@ -149,7 +150,7 @@
 .sentBadgeLarge {
   padding: 8px 24px;
   border-radius: 16px;
-  background: var(--success);
+  background: var(--success-bg);
   color: #fff;
   font-weight: 700;
 }

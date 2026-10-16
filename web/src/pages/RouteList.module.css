@@ -35,7 +35,7 @@
   margin-right: 14px;
   overflow: hidden;
   border-radius: 7px;
-  background: #252525;
+  background: var(--bg-elevated);
 }
 
 .thumbnailFrame {
@@ -57,7 +57,7 @@
 }
 
 .thumbnailPlaceholder {
-  color: #777;
+  color: var(--text-faint);
   font-size: 30px;
 }
 
@@ -104,15 +104,15 @@
 }
 
 .draftBadge {
-  background: #858585;
+  background: var(--bg-hover);
 }
 
 .resetBadge {
-  background: #d99528;
+  background: var(--warning-bg);
 }
 
 .sentBadge {
-  background: #34a853;
+  background: var(--success-bg);
 }
 
 .gradeColumn {

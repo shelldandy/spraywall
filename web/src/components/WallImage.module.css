@@ -1,6 +1,6 @@
 .wrapper {
   width: 100% !important;
-  background: #000;
+  background: var(--bg);
   touch-action: none;
 }
 
@@ -23,7 +23,7 @@
 .fitWrapper {
   width: 100% !important;
   height: 100% !important;
-  background: #21182f;
+  background: var(--bg);
   touch-action: none;
 }
 
