@@ -16,7 +16,7 @@
   padding: 24px;
   margin-bottom: 32px;
   border-radius: 12px;
-  background: #f5f5f5;
+  background: var(--bg-elevated);
 }
 
 .gymName {
@@ -33,7 +33,7 @@
 
 .roleValue {
   font-weight: 600;
-  color: #333;
+  color: var(--text);
 }
 
 .expiry {
@@ -54,7 +54,7 @@
   height: 20px;
   border-width: 2px;
   border-color: rgba(255, 255, 255, 0.4);
-  border-top-color: #fff;
+  border-top-color: var(--text);
 }
 
 .loadingText {

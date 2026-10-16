@@ -20,7 +20,7 @@
   margin-bottom: 20px;
   padding: 4px 12px;
   border-radius: 12px;
-  background: var(--success);
+  background: var(--success-bg);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -30,7 +30,7 @@
   margin-bottom: 6px;
   font-size: 15px;
   font-weight: 600;
-  color: #333;
+  color: var(--text);
 }
 
 .field {
@@ -59,8 +59,8 @@
 }
 
 .draftButton {
-  border: 1px solid #ccc;
-  background: #f8f8f8;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-muted);
   color: var(--text-muted);
 }
 

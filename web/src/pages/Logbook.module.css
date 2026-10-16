@@ -30,7 +30,7 @@
 .sectionHeader {
   font-size: 16px;
   font-weight: 700;
-  color: #333;
+  color: var(--text);
   margin: 12px 0 8px;
 }
 
@@ -50,7 +50,7 @@
   gap: 12px;
   padding: 14px;
   border-radius: var(--radius);
-  background: #f8f8f8;
+  background: var(--bg-elevated);
 }
 
 .entryInfo {
@@ -63,7 +63,7 @@
 .entryName {
   font-size: 15px;
   font-weight: 600;
-  color: #333;
+  color: var(--text);
 }
 
 .entryGrade {

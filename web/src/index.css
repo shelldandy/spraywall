@@ -1,16 +1,25 @@
 /* Global tokens and shared primitives. Screen-specific styles live in *.module.css next to each page. */
 :root {
-  --accent: #007aff;
-  --accent-pressed: #0062cc;
-  --danger: #ff3b30;
-  --success: #34c759;
-  --warning: #ff9500;
-  --text: #111;
-  --text-muted: #666;
-  --text-faint: #999;
-  --bg: #fff;
-  --bg-muted: #f2f2f7;
-  --border: #ddd;
+  color-scheme: dark;
+  --accent: #00e5ff;
+  --accent-pressed: #00c7dd;
+  --accent-contrast: #21182f;
+  --accent-soft: #3b3150;
+  --danger: #ff7b85;
+  --danger-bg: #a52c3a;
+  --success: #3ad49a;
+  --success-bg: #167a53;
+  --warning: #ffc46b;
+  --warning-bg: #86551b;
+  --text: #f7f3ff;
+  --text-muted: #c1b9ce;
+  --text-faint: #a399b2;
+  --bg: #21182f;
+  --bg-muted: #3a3049;
+  --bg-elevated: #342a43;
+  --bg-hover: #493d5a;
+  --border: #493d5a;
+  --border-strong: #554967;
   --radius: 8px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -59,6 +68,8 @@ a {
   flex-direction: column;
   min-height: 100%;
   padding-bottom: var(--safe-bottom);
+  background: var(--bg);
+  color: var(--text);
 }
 
 .header {
@@ -122,7 +133,7 @@ a {
 
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
 }
 
 .btn-primary:active:not(:disabled) {
@@ -130,7 +141,7 @@ a {
 }
 
 .btn-danger {
-  background: var(--danger);
+  background: var(--danger-bg);
   color: #fff;
 }
 
@@ -147,11 +158,16 @@ a {
 .input {
   width: 100%;
   padding: 12px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   font: inherit;
-  background: var(--bg);
+  background: var(--bg-elevated);
   color: var(--text);
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+  opacity: 1;
 }
 
 .input:focus {
@@ -160,7 +176,7 @@ a {
 }
 
 .card {
-  background: var(--bg);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
