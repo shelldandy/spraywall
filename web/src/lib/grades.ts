@@ -7,6 +7,38 @@ export interface Grade {
 
 export type GradeSystem = "v" | "font" | "dankyu";
 
+export interface GradeColorStyle {
+  backgroundColor: string;
+  color: string;
+}
+
+// Exact V-scale swatch colors from theCrag's bouldering grade systems table.
+const vGradeColors: Record<string, GradeColorStyle> = {
+  VB: { backgroundColor: "#54b41a", color: "#000" },
+  V0: { backgroundColor: "#fee100", color: "#000" },
+  V1: { backgroundColor: "#ed9f1d", color: "#000" },
+  V2: { backgroundColor: "#e88d25", color: "#000" },
+  V3: { backgroundColor: "#e37726", color: "#000" },
+  V4: { backgroundColor: "#dd5e1f", color: "#000" },
+  V5: { backgroundColor: "#d33113", color: "#fff" },
+  V6: { backgroundColor: "#cf200f", color: "#fff" },
+  V7: { backgroundColor: "#cb100b", color: "#fff" },
+  V8: { backgroundColor: "#c70a11", color: "#fff" },
+  V9: { backgroundColor: "#c30c20", color: "#fff" },
+  V10: { backgroundColor: "#bf0f2f", color: "#fff" },
+  V11: { backgroundColor: "#b41555", color: "#fff" },
+  V12: { backgroundColor: "#b01865", color: "#fff" },
+  V13: { backgroundColor: "#ac1a73", color: "#fff" },
+  V14: { backgroundColor: "#ac1a7d", color: "#fff" },
+  V15: { backgroundColor: "#b21882", color: "#fff" },
+  V16: { backgroundColor: "#b81587", color: "#fff" },
+  V17: { backgroundColor: "#c50f93", color: "#fff" },
+};
+
+export function getGradeColorStyle(grade: string): GradeColorStyle | undefined {
+  return vGradeColors[grade.trim().toUpperCase()];
+}
+
 export const grades: Grade[] = [
   { id: 0,  v: "VB",  font: "1",    dankyu: "7 kyuu" },
   { id: 1,  v: "VB",  font: "2",    dankyu: "7 kyuu" },
