@@ -94,7 +94,7 @@ export default function RouteDetailPage() {
   const isAuthor = routeData?.created_by === userId;
 
   return (
-    <div className="screen">
+    <div className={`screen ${styles.screen}`}>
       <header className="header">
         <button type="button" className={`btn btn-ghost ${styles.side}`} onClick={goBack}>
           {"< Back"}
@@ -193,7 +193,7 @@ export default function RouteDetailPage() {
 
               {wall?.image ? (
                 <div className={styles.imageContainer}>
-                  <WallImage src={wall.image.image_url}>
+                  <WallImage src={wall.image.image_url} fitContainer>
                     {routeHolds.length > 0 && (
                       <HoldOverlay
                         holds={routeHolds}

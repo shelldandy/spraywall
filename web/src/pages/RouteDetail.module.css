@@ -1,3 +1,9 @@
+.screen {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .side {
   min-width: 72px;
   justify-content: flex-start;
@@ -24,6 +30,11 @@
 }
 
 .layout {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   width: 100%;
   max-width: 640px;
   margin: 0 auto;
@@ -47,6 +58,11 @@
 }
 
 .body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
   width: 100%;
   max-width: 640px;
   margin: 0 auto;
@@ -131,19 +147,28 @@
 }
 
 .imageContainer {
-  margin-bottom: 12px;
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  margin: 16px 0 12px;
   overflow: hidden;
   border-radius: var(--radius);
   background: var(--bg-muted);
 }
 
+.imageContainer > div {
+  flex: 1;
+  min-height: 0;
+}
+
 .noImage {
   display: flex;
+  flex: 1 1 0;
   justify-content: center;
   align-items: center;
   width: 100%;
-  aspect-ratio: 3 / 4;
-  margin-bottom: 12px;
+  min-height: 0;
+  margin: 16px 0 12px;
   border-radius: var(--radius);
   background: var(--bg-muted);
   color: var(--text-faint);
@@ -209,7 +234,7 @@
   .layout {
     display: grid;
     grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr);
-    align-items: start;
+    align-items: stretch;
     gap: 24px;
     max-width: 1440px;
   }
