@@ -1,7 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { useHolds, useRouteDetail, useRoutes, useWallDetail } from "../lib/hooks/queries";
-import { useLogSend, useUnsend } from "../lib/hooks/mutations";
+import { useHolds, useRouteDetail, useRouteLogs, useRoutes, useWallDetail } from "../lib/hooks/queries";
+import { useCreateClimbLog, useDeleteClimbLog, useDeleteRouteRating, useSetRouteRating, useUpdateClimbLog } from "../lib/hooks/mutations";
+import type { ClimbLog } from "../lib/api/types";
+import { formatCalendarDate } from "../lib/climbLogs";
+import ClimbLogForm from "../components/ClimbLogForm";
+import StarRating from "../components/StarRating";
 import { getGradeColorStyle } from "../lib/grades";
 import { parseRouteTags } from "../lib/routeTags";
 import { useAuthStore } from "../lib/store/auth";
@@ -24,6 +28,9 @@ export default function RouteDetailPage() {
   const routesQuery = useRoutes(wallId, gymSlug);
   const wallQuery = useWallDetail(wallId, gymSlug);
   const holdsQuery = useHolds(wallId, wallQuery.data?.detection_status === "done", gymSlug);
+  const logsQuery = useRouteLogs(routeId, gymSlug, wallId);
+  const [addingLog, setAddingLog] = useState(false);
+  const [editingLog, setEditingLog] = useState<ClimbLog | null>(null);
 
   const routeData = routeQuery.data;
   const wall = wallQuery.data;
@@ -35,8 +42,22 @@ export default function RouteDetailPage() {
     [allHolds, routeHoldIds],
   );
 
-  const sendMutation = useLogSend(gymSlug, wallId, routeId);
-  const unsendMutation = useUnsend(gymSlug, wallId, routeId);
+  const createLog = useCreateClimbLog(gymSlug, wallId, routeId);
+  const updateLog = useUpdateClimbLog(gymSlug, wallId, routeId);
+  const deleteLog = useDeleteClimbLog(gymSlug, wallId, routeId);
+  const setRating = useSetRouteRating(gymSlug, wallId, routeId);
+  const deleteRating = useDeleteRouteRating(gymSlug, wallId, routeId);
+  const history = logsQuery.data ?? [];
+  const logSubmitting = createLog.isPending || updateLog.isPending;
+  const resetRoute = Boolean(routeData?.is_legacy || routeData?.status === "draft");
+  const submitLog = async (input: { outcome: "attempt" | "send" | "flash"; climbed_on: string; notes: string | null }) => {
+    if (editingLog) { await updateLog.mutateAsync({ ...input, logId: editingLog.id }); setEditingLog(null); }
+    else { await createLog.mutateAsync(input); setAddingLog(false); }
+  };
+  const removeLog = async (log: ClimbLog) => {
+    if (!window.confirm(`Delete this ${log.outcome} entry?`)) return;
+    try { await deleteLog.mutateAsync(log.id); } catch { /* The mutation error is rendered below the form. */ }
+  };
 
   const isLoading = routeQuery.isLoading || wallQuery.isLoading || holdsQuery.isLoading;
   const routes = routesQuery.data ?? [];
@@ -135,16 +156,9 @@ export default function RouteDetailPage() {
                 <span className={styles.sendCount}>
                   {sendCount} send{sendCount !== 1 ? "s" : ""}
                 </span>
-                {routeData?.has_sent && (
-                  <>
-                    <span className={styles.metaSeparator} aria-hidden="true">
-                      |
-                    </span>
-                    <span className={styles.sentIndicator}>
-                      Sent <span aria-hidden="true">✅</span>
-                    </span>
-                  </>
-                )}
+                {routeData?.progress === "projects" && <span className={`${styles.pill} ${styles.projectBadge}`}>Projects</span>}
+                {routeData?.has_sent && <span className={`${styles.pill} ${styles.sentBadge}`}>Sent</span>}
+                {routeData?.has_flashed && <span className={`${styles.pill} ${styles.flashBadge}`}>Flashed</span>}
               </div>
               <RouteTags tags={routeData?.tags} />
 
@@ -172,32 +186,43 @@ export default function RouteDetailPage() {
                 {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""}
               </p>
 
-              {routeData?.has_sent ? (
-                <div className={styles.sentSection}>
-                  <span className={styles.sentBadgeLarge}>Sent</span>
-                  <button
-                    type="button"
-                    className={`btn ${styles.unsendButton}`}
-                    onClick={() => unsendMutation.mutate()}
-                    disabled={unsendMutation.isPending}
-                  >
-                    {unsendMutation.isPending ? "Removing..." : "Remove Send"}
-                  </button>
-                </div>
-              ) : routeData?.is_legacy ? (
-                <button type="button" className={`btn btn-primary btn-block ${styles.sendButton}`} disabled>
-                  Route reset - sends disabled
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className={`btn btn-primary btn-block ${styles.sendButton}`}
-                  onClick={() => sendMutation.mutate()}
-                  disabled={sendMutation.isPending}
-                >
-                  {sendMutation.isPending ? "Logging..." : "Log Send"}
-                </button>
-              )}
+              <section className={styles.ratingSection} aria-labelledby="community-rating-title">
+                <h2 id="community-rating-title" className={styles.sectionTitle}>Community rating</h2>
+                <p className={styles.ratingSummary}>
+                  {routeData?.rating_average == null ? "Unrated" : `★ ${routeData.rating_average.toFixed(1)} out of 5`}
+                  <span> · {routeData?.rating_count ?? 0} vote{routeData?.rating_count === 1 ? "" : "s"}</span>
+                </p>
+                {routeData?.status === "published" && <>
+                  <StarRating value={routeData.my_rating ?? null} disabled={setRating.isPending || deleteRating.isPending} onChange={(stars) => setRating.mutate(stars)} />
+                  {routeData.my_rating != null && <button type="button" className={`btn btn-ghost ${styles.clearRating}`} onClick={() => deleteRating.mutate()} disabled={setRating.isPending || deleteRating.isPending}>Clear rating</button>}
+                  {(setRating.error || deleteRating.error) && <p className="error-text" role="alert">{setRating.error?.message ?? deleteRating.error?.message}</p>}
+                </>}
+              </section>
+
+              <section className={styles.historySection} aria-labelledby="your-history-title">
+                <header className={styles.historyHeader}>
+                  <h2 id="your-history-title" className={styles.sectionTitle}>Your history</h2>
+                  <button type="button" className="btn btn-primary" onClick={() => { setEditingLog(null); setAddingLog(true); }} disabled={resetRoute || addingLog} title={resetRoute ? "New logs are disabled on draft or reset climbs" : undefined}>Log climb</button>
+                </header>
+                {resetRoute && <p className={styles.historyHint}>New activity is disabled for draft or reset climbs; existing entries can still be corrected.</p>}
+                {logsQuery.isLoading && <div className={styles.historyLoading}><div className="spinner" /></div>}
+                {logsQuery.isError && <p className="error-text" role="alert">{logsQuery.error.message}</p>}
+                {addingLog && <ClimbLogForm key="new" history={history} submitting={logSubmitting} onSubmit={submitLog} onCancel={() => setAddingLog(false)} />}
+                {deleteLog.error && <p className="error-text" role="alert">{deleteLog.error.message}</p>}
+                {!logsQuery.isLoading && !logsQuery.isError && history.length === 0 && !addingLog && <p className={styles.historyHint}>No activity logged yet.</p>}
+                {history.length > 0 && <ul className={styles.historyList}>
+                  {history.map((log) => <li key={log.id} className={styles.historyEntry}>
+                    {editingLog?.id === log.id ? <ClimbLogForm key={log.id} history={history} initial={log} submitting={logSubmitting} onSubmit={submitLog} onCancel={() => setEditingLog(null)} /> : <>
+                      <div className={styles.entryHeader}><span className={`${styles.outcome} ${styles[log.outcome]}`}>{log.outcome}</span><time dateTime={log.climbed_on}>{formatCalendarDate(log.climbed_on)}</time></div>
+                      {log.notes && <p className={styles.logNotes}>{log.notes}</p>}
+                      <div className={styles.entryActions}>
+                        <button type="button" className="btn btn-ghost" onClick={() => { setAddingLog(false); setEditingLog(log); }}>Edit</button>
+                        <button type="button" className="btn btn-ghost" onClick={() => void removeLog(log)} disabled={deleteLog.isPending}>Delete</button>
+                      </div>
+                    </>}
+                  </li>)}
+                </ul>}
+              </section>
             </>
           )}
         </section>

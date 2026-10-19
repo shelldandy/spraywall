@@ -75,29 +75,37 @@ export interface Route {
   has_sent: boolean;
   is_legacy: boolean;
   status: "draft" | "published";
+  progress?: "not_tried" | "projects" | "sent";
+  has_flashed?: boolean;
+  rating_average?: number | null;
+  rating_count?: number;
+  my_rating?: number | null;
   /** Optional for compatibility with routes restored from older offline caches. */
   tags?: RouteTagId[];
 }
 
-export interface Send {
+export type ClimbOutcome = "attempt" | "send" | "flash";
+
+export interface ClimbLog {
   id: string;
   route_id: string;
-  user_id: string;
-  sent_at: string;
-  attempts: number | null;
+  outcome: ClimbOutcome;
+  climbed_on: string;
+  logged_at: string;
   notes: string | null;
+  attempts?: number | null;
 }
 
-export interface LogbookEntry {
-  id: string;
-  route_id: string;
+export interface LogbookEntry extends ClimbLog {
   user_id: string;
+  /** Deprecated compatibility alias for cached send clients. */
   sent_at: string;
-  attempts: number | null;
-  notes: string | null;
   route_name: string;
   route_grade: string | null;
+  wall_id: string;
   wall_name: string;
+  gym_id: string;
+  gym_slug: string;
 }
 
 export interface AuthConfig {

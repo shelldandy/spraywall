@@ -94,15 +94,29 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
+	r.Route("/users/me", func(r chi.Router) {
+		r.Use(auth.Authenticate)
+		r.Get("/logbook", routehandler.NewHandler(q, pool).Logbook)
+	})
 	r.Route("/gyms/{gymSlug}", func(r chi.Router) {
 		r.Use(auth.Authenticate)
 		r.Route("/walls/{wallId}/routes", func(r chi.Router) {
-			h := routehandler.NewHandler(q)
+			h := routehandler.NewHandler(q, pool)
 			r.Post("/", h.CreateRoute)
 			r.Get("/", h.ListRoutes)
 			r.Route("/{routeId}", func(r chi.Router) {
 				r.Get("/", h.GetRoute)
 				r.Put("/", h.UpdateRoute)
+				r.Route("/logs", func(r chi.Router) {
+					r.Get("/", h.GetLogs)
+					r.Post("/", h.CreateLog)
+					r.Put("/{logId}", h.UpdateLog)
+					r.Delete("/{logId}", h.DeleteLog)
+				})
+				r.Put("/rating", h.SetRating)
+				r.Delete("/rating", h.DeleteRating)
+				r.Post("/sends", h.LegacyLogSend)
+				r.Delete("/sends/me", h.LegacyRemoveSend)
 			})
 		})
 	})

@@ -1,0 +1,4 @@
+.stars { display: inline-flex; gap: 4px; }
+.star { min-width: 40px; min-height: 42px; padding: 2px; border: 0; border-radius: 8px; background: transparent; color: var(--warning); font-size: 30px; line-height: 1; cursor: pointer; touch-action: manipulation; }
+.star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.star:disabled { opacity: .55; cursor: wait; }

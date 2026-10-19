@@ -41,6 +41,8 @@
   color: var(--text);
 }
 
+.clearAllToggle { color: var(--text-muted); }
+
 .gradeOverlay:not([open]) {
   display: none;
 }
@@ -276,6 +278,9 @@
 .sentBadge {
   background: var(--success-bg);
 }
+
+.projectBadge { background: var(--warning); color: var(--bg); }
+.flashBadge { background: var(--accent); color: var(--bg); }
 
 .gradeColumn {
   flex: none;

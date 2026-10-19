@@ -22,43 +22,81 @@ async function ensureOk(res: Response, fallback: string) {
   }
 }
 
-export function useLogSend(gymSlug: string, wallId: string, routeId: string) {
-  const queryClient = useQueryClient();
+export interface ClimbLogInput {
+  outcome: "attempt" | "send" | "flash";
+  climbed_on: string;
+  notes: string | null;
+}
 
-  return useMutation({
-    mutationFn: async () => {
-      const res = await apiFetch(
-        `/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/sends`,
-        { method: "POST", body: JSON.stringify({}) },
-      );
-      await ensureOk(res, "Failed to log send");
+function invalidateClimbData(queryClient: ReturnType<typeof useQueryClient>, routeId: string, wallId: string) {
+  queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
+  queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+  queryClient.invalidateQueries({ queryKey: ["climb-logs", routeId] });
+  queryClient.invalidateQueries({ queryKey: ["logbook"] });
+}
+
+export function useCreateClimbLog(gymSlug: string, wallId: string, routeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, ClimbLogInput>({
+    mutationFn: async (input) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/logs`, {
+        method: "POST", body: JSON.stringify(input),
+      });
+      await ensureOkJson(res, "Failed to log climb");
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
-      queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
-      queryClient.invalidateQueries({ queryKey: ["logbook"] });
-    },
-    onError: toastError,
+    onSuccess: () => invalidateClimbData(queryClient, routeId, wallId),
   });
 }
 
-export function useUnsend(gymSlug: string, wallId: string, routeId: string) {
+export function useUpdateClimbLog(gymSlug: string, wallId: string, routeId: string) {
   const queryClient = useQueryClient();
+  return useMutation<void, Error, ClimbLogInput & { logId: string }>({
+    mutationFn: async ({ logId, ...input }) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/logs/${logId}`, {
+        method: "PUT", body: JSON.stringify(input),
+      });
+      await ensureOkJson(res, "Failed to update climb");
+    },
+    onSuccess: () => invalidateClimbData(queryClient, routeId, wallId),
+  });
+}
 
-  return useMutation({
-    mutationFn: async () => {
-      const res = await apiFetch(
-        `/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/sends/me`,
-        { method: "DELETE" },
-      );
-      await ensureOk(res, "Failed to remove send");
+export function useDeleteClimbLog(gymSlug: string, wallId: string, routeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (logId) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/logs/${logId}`, { method: "DELETE" });
+      await ensureOkJson(res, "Failed to delete log entry");
+    },
+    onSuccess: () => invalidateClimbData(queryClient, routeId, wallId),
+  });
+}
+
+export function useSetRouteRating(gymSlug: string, wallId: string, routeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, number>({
+    mutationFn: async (stars) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/rating`, { method: "PUT", body: JSON.stringify({ stars }) });
+      await ensureOkJson(res, "Failed to save rating");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
       queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
-      queryClient.invalidateQueries({ queryKey: ["logbook"] });
     },
-    onError: toastError,
+  });
+}
+
+export function useDeleteRouteRating(gymSlug: string, wallId: string, routeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, void>({
+    mutationFn: async () => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/rating`, { method: "DELETE" });
+      await ensureOkJson(res, "Failed to clear rating");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
+      queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+    },
   });
 }
 

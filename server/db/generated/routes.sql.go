@@ -11,15 +11,44 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countSendsByRoute = `-- name: CountSendsByRoute :one
-SELECT COUNT(*) FROM sends WHERE route_id = $1
+const createClimbLog = `-- name: CreateClimbLog :one
+INSERT INTO climb_logs (id, route_id, user_id, outcome, climbed_on, notes, attempts)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, route_id, user_id, logged_at, attempts, notes, outcome, climbed_on
 `
 
-func (q *Queries) CountSendsByRoute(ctx context.Context, routeID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countSendsByRoute, routeID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type CreateClimbLogParams struct {
+	ID        pgtype.UUID `json:"id"`
+	RouteID   pgtype.UUID `json:"route_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+	Outcome   string      `json:"outcome"`
+	ClimbedOn pgtype.Date `json:"climbed_on"`
+	Notes     pgtype.Text `json:"notes"`
+	Attempts  pgtype.Int4 `json:"attempts"`
+}
+
+func (q *Queries) CreateClimbLog(ctx context.Context, arg CreateClimbLogParams) (ClimbLog, error) {
+	row := q.db.QueryRow(ctx, createClimbLog,
+		arg.ID,
+		arg.RouteID,
+		arg.UserID,
+		arg.Outcome,
+		arg.ClimbedOn,
+		arg.Notes,
+		arg.Attempts,
+	)
+	var i ClimbLog
+	err := row.Scan(
+		&i.ID,
+		&i.RouteID,
+		&i.UserID,
+		&i.LoggedAt,
+		&i.Attempts,
+		&i.Notes,
+		&i.Outcome,
+		&i.ClimbedOn,
+	)
+	return i, err
 }
 
 const createRoute = `-- name: CreateRoute :one
@@ -72,36 +101,13 @@ func (q *Queries) CreateRoute(ctx context.Context, arg CreateRouteParams) (Route
 	return i, err
 }
 
-const createSend = `-- name: CreateSend :one
-INSERT INTO sends (route_id, user_id, attempts, notes)
-VALUES ($1, $2, $3, $4)
-RETURNING id, route_id, user_id, sent_at, attempts, notes
+const deleteClimbLog = `-- name: DeleteClimbLog :exec
+DELETE FROM climb_logs WHERE id = $1
 `
 
-type CreateSendParams struct {
-	RouteID  pgtype.UUID `json:"route_id"`
-	UserID   pgtype.UUID `json:"user_id"`
-	Attempts pgtype.Int4 `json:"attempts"`
-	Notes    pgtype.Text `json:"notes"`
-}
-
-func (q *Queries) CreateSend(ctx context.Context, arg CreateSendParams) (Send, error) {
-	row := q.db.QueryRow(ctx, createSend,
-		arg.RouteID,
-		arg.UserID,
-		arg.Attempts,
-		arg.Notes,
-	)
-	var i Send
-	err := row.Scan(
-		&i.ID,
-		&i.RouteID,
-		&i.UserID,
-		&i.SentAt,
-		&i.Attempts,
-		&i.Notes,
-	)
-	return i, err
+func (q *Queries) DeleteClimbLog(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteClimbLog, id)
+	return err
 }
 
 const deleteRoute = `-- name: DeleteRoute :exec
@@ -113,18 +119,40 @@ func (q *Queries) DeleteRoute(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
-const deleteSendByUser = `-- name: DeleteSendByUser :exec
-DELETE FROM sends WHERE route_id = $1 AND user_id = $2
+const deleteRouteRating = `-- name: DeleteRouteRating :exec
+DELETE FROM route_ratings WHERE route_id = $1 AND user_id = $2
 `
 
-type DeleteSendByUserParams struct {
+type DeleteRouteRatingParams struct {
 	RouteID pgtype.UUID `json:"route_id"`
 	UserID  pgtype.UUID `json:"user_id"`
 }
 
-func (q *Queries) DeleteSendByUser(ctx context.Context, arg DeleteSendByUserParams) error {
-	_, err := q.db.Exec(ctx, deleteSendByUser, arg.RouteID, arg.UserID)
+func (q *Queries) DeleteRouteRating(ctx context.Context, arg DeleteRouteRatingParams) error {
+	_, err := q.db.Exec(ctx, deleteRouteRating, arg.RouteID, arg.UserID)
 	return err
+}
+
+const getClimbLogForUpdate = `-- name: GetClimbLogForUpdate :one
+SELECT id, user_id, attempts FROM climb_logs WHERE id = $1 AND route_id = $2
+`
+
+type GetClimbLogForUpdateParams struct {
+	ID      pgtype.UUID `json:"id"`
+	RouteID pgtype.UUID `json:"route_id"`
+}
+
+type GetClimbLogForUpdateRow struct {
+	ID       pgtype.UUID `json:"id"`
+	UserID   pgtype.UUID `json:"user_id"`
+	Attempts pgtype.Int4 `json:"attempts"`
+}
+
+func (q *Queries) GetClimbLogForUpdate(ctx context.Context, arg GetClimbLogForUpdateParams) (GetClimbLogForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getClimbLogForUpdate, arg.ID, arg.RouteID)
+	var i GetClimbLogForUpdateRow
+	err := row.Scan(&i.ID, &i.UserID, &i.Attempts)
+	return i, err
 }
 
 const getRouteByID = `-- name: GetRouteByID :one
@@ -151,27 +179,146 @@ func (q *Queries) GetRouteByID(ctx context.Context, id pgtype.UUID) (Route, erro
 	return i, err
 }
 
-const getSendByUser = `-- name: GetSendByUser :one
-SELECT id, route_id, user_id, sent_at, attempts, notes FROM sends WHERE route_id = $1 AND user_id = $2
+const getRouteLogSummaries = `-- name: GetRouteLogSummaries :many
+SELECT route_id,
+       count(*) FILTER (WHERE outcome IN ('send', 'flash'))::bigint AS send_count,
+       count(*) FILTER (WHERE user_id = $2 AND outcome = 'attempt')::bigint AS own_attempts,
+       count(*) FILTER (WHERE user_id = $2 AND outcome IN ('send', 'flash'))::bigint AS own_successes,
+       COALESCE(bool_or(user_id = $2 AND outcome = 'flash'), false)::boolean AS has_flashed
+FROM climb_logs WHERE route_id = ANY($1::uuid[]) GROUP BY route_id
 `
 
-type GetSendByUserParams struct {
-	RouteID pgtype.UUID `json:"route_id"`
-	UserID  pgtype.UUID `json:"user_id"`
+type GetRouteLogSummariesParams struct {
+	Column1 []pgtype.UUID `json:"column_1"`
+	UserID  pgtype.UUID   `json:"user_id"`
 }
 
-func (q *Queries) GetSendByUser(ctx context.Context, arg GetSendByUserParams) (Send, error) {
-	row := q.db.QueryRow(ctx, getSendByUser, arg.RouteID, arg.UserID)
-	var i Send
-	err := row.Scan(
-		&i.ID,
-		&i.RouteID,
-		&i.UserID,
-		&i.SentAt,
-		&i.Attempts,
-		&i.Notes,
-	)
-	return i, err
+type GetRouteLogSummariesRow struct {
+	RouteID      pgtype.UUID `json:"route_id"`
+	SendCount    int64       `json:"send_count"`
+	OwnAttempts  int64       `json:"own_attempts"`
+	OwnSuccesses int64       `json:"own_successes"`
+	HasFlashed   bool        `json:"has_flashed"`
+}
+
+func (q *Queries) GetRouteLogSummaries(ctx context.Context, arg GetRouteLogSummariesParams) ([]GetRouteLogSummariesRow, error) {
+	rows, err := q.db.Query(ctx, getRouteLogSummaries, arg.Column1, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetRouteLogSummariesRow
+	for rows.Next() {
+		var i GetRouteLogSummariesRow
+		if err := rows.Scan(
+			&i.RouteID,
+			&i.SendCount,
+			&i.OwnAttempts,
+			&i.OwnSuccesses,
+			&i.HasFlashed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getRouteRatingSummaries = `-- name: GetRouteRatingSummaries :many
+SELECT route_id, avg(stars)::float8 AS rating_average, count(*)::bigint AS rating_count,
+       COALESCE(max(stars) FILTER (WHERE user_id = $2), 0)::integer AS my_rating
+FROM route_ratings WHERE route_id = ANY($1::uuid[]) GROUP BY route_id
+`
+
+type GetRouteRatingSummariesParams struct {
+	Column1 []pgtype.UUID `json:"column_1"`
+	UserID  pgtype.UUID   `json:"user_id"`
+}
+
+type GetRouteRatingSummariesRow struct {
+	RouteID       pgtype.UUID `json:"route_id"`
+	RatingAverage float64     `json:"rating_average"`
+	RatingCount   int64       `json:"rating_count"`
+	MyRating      int32       `json:"my_rating"`
+}
+
+func (q *Queries) GetRouteRatingSummaries(ctx context.Context, arg GetRouteRatingSummariesParams) ([]GetRouteRatingSummariesRow, error) {
+	rows, err := q.db.Query(ctx, getRouteRatingSummaries, arg.Column1, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetRouteRatingSummariesRow
+	for rows.Next() {
+		var i GetRouteRatingSummariesRow
+		if err := rows.Scan(
+			&i.RouteID,
+			&i.RatingAverage,
+			&i.RatingCount,
+			&i.MyRating,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listClimbLogsByUserRoute = `-- name: ListClimbLogsByUserRoute :many
+SELECT id, route_id, user_id, logged_at, climbed_on, outcome, attempts, notes
+FROM climb_logs WHERE user_id = $1 AND route_id = $2
+ORDER BY climbed_on, logged_at, id
+`
+
+type ListClimbLogsByUserRouteParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	RouteID pgtype.UUID `json:"route_id"`
+}
+
+type ListClimbLogsByUserRouteRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	RouteID   pgtype.UUID        `json:"route_id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	LoggedAt  pgtype.Timestamptz `json:"logged_at"`
+	ClimbedOn pgtype.Date        `json:"climbed_on"`
+	Outcome   string             `json:"outcome"`
+	Attempts  pgtype.Int4        `json:"attempts"`
+	Notes     pgtype.Text        `json:"notes"`
+}
+
+func (q *Queries) ListClimbLogsByUserRoute(ctx context.Context, arg ListClimbLogsByUserRouteParams) ([]ListClimbLogsByUserRouteRow, error) {
+	rows, err := q.db.Query(ctx, listClimbLogsByUserRoute, arg.UserID, arg.RouteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListClimbLogsByUserRouteRow
+	for rows.Next() {
+		var i ListClimbLogsByUserRouteRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RouteID,
+			&i.UserID,
+			&i.LoggedAt,
+			&i.ClimbedOn,
+			&i.Outcome,
+			&i.Attempts,
+			&i.Notes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRoutesByWall = `-- name: ListRoutesByWall :many
@@ -217,46 +364,54 @@ func (q *Queries) ListRoutesByWall(ctx context.Context, arg ListRoutesByWallPara
 	return items, nil
 }
 
-const listSendsByUser = `-- name: ListSendsByUser :many
-SELECT s.id, s.route_id, s.user_id, s.sent_at, s.attempts, s.notes, r.name AS route_name, r.grade AS route_grade, w.name AS wall_name
-FROM sends s
-JOIN routes r ON s.route_id = r.id
-JOIN walls w ON r.wall_id = w.id
-WHERE s.user_id = $1
-ORDER BY s.sent_at DESC
+const listUserClimbLogs = `-- name: ListUserClimbLogs :many
+SELECT l.id, l.route_id, l.user_id, l.logged_at, l.climbed_on, l.outcome, l.attempts, l.notes,
+       r.name AS route_name, r.grade AS route_grade, w.id AS wall_id, w.name AS wall_name, w.gym_id, g.slug AS gym_slug
+FROM climb_logs l JOIN routes r ON r.id = l.route_id JOIN walls w ON w.id = r.wall_id JOIN gyms g ON g.id = w.gym_id
+WHERE l.user_id = $1 ORDER BY l.climbed_on DESC, l.logged_at DESC, l.id DESC
 `
 
-type ListSendsByUserRow struct {
+type ListUserClimbLogsRow struct {
 	ID         pgtype.UUID        `json:"id"`
 	RouteID    pgtype.UUID        `json:"route_id"`
 	UserID     pgtype.UUID        `json:"user_id"`
-	SentAt     pgtype.Timestamptz `json:"sent_at"`
+	LoggedAt   pgtype.Timestamptz `json:"logged_at"`
+	ClimbedOn  pgtype.Date        `json:"climbed_on"`
+	Outcome    string             `json:"outcome"`
 	Attempts   pgtype.Int4        `json:"attempts"`
 	Notes      pgtype.Text        `json:"notes"`
 	RouteName  string             `json:"route_name"`
 	RouteGrade pgtype.Text        `json:"route_grade"`
+	WallID     pgtype.UUID        `json:"wall_id"`
 	WallName   string             `json:"wall_name"`
+	GymID      pgtype.UUID        `json:"gym_id"`
+	GymSlug    string             `json:"gym_slug"`
 }
 
-func (q *Queries) ListSendsByUser(ctx context.Context, userID pgtype.UUID) ([]ListSendsByUserRow, error) {
-	rows, err := q.db.Query(ctx, listSendsByUser, userID)
+func (q *Queries) ListUserClimbLogs(ctx context.Context, userID pgtype.UUID) ([]ListUserClimbLogsRow, error) {
+	rows, err := q.db.Query(ctx, listUserClimbLogs, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListSendsByUserRow
+	var items []ListUserClimbLogsRow
 	for rows.Next() {
-		var i ListSendsByUserRow
+		var i ListUserClimbLogsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.RouteID,
 			&i.UserID,
-			&i.SentAt,
+			&i.LoggedAt,
+			&i.ClimbedOn,
+			&i.Outcome,
 			&i.Attempts,
 			&i.Notes,
 			&i.RouteName,
 			&i.RouteGrade,
+			&i.WallID,
 			&i.WallName,
+			&i.GymID,
+			&i.GymSlug,
 		); err != nil {
 			return nil, err
 		}
@@ -266,6 +421,39 @@ func (q *Queries) ListSendsByUser(ctx context.Context, userID pgtype.UUID) ([]Li
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockUserForClimbLogs = `-- name: LockUserForClimbLogs :one
+SELECT id FROM users WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockUserForClimbLogs(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockUserForClimbLogs, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
+const updateClimbLog = `-- name: UpdateClimbLog :exec
+UPDATE climb_logs SET outcome = $3, climbed_on = $4, notes = $5 WHERE id = $1 AND route_id = $2
+`
+
+type UpdateClimbLogParams struct {
+	ID        pgtype.UUID `json:"id"`
+	RouteID   pgtype.UUID `json:"route_id"`
+	Outcome   string      `json:"outcome"`
+	ClimbedOn pgtype.Date `json:"climbed_on"`
+	Notes     pgtype.Text `json:"notes"`
+}
+
+func (q *Queries) UpdateClimbLog(ctx context.Context, arg UpdateClimbLogParams) error {
+	_, err := q.db.Exec(ctx, updateClimbLog,
+		arg.ID,
+		arg.RouteID,
+		arg.Outcome,
+		arg.ClimbedOn,
+		arg.Notes,
+	)
+	return err
 }
 
 const updateRoute = `-- name: UpdateRoute :one
@@ -324,4 +512,28 @@ type UpdateRouteStatusParams struct {
 func (q *Queries) UpdateRouteStatus(ctx context.Context, arg UpdateRouteStatusParams) error {
 	_, err := q.db.Exec(ctx, updateRouteStatus, arg.ID, arg.Status)
 	return err
+}
+
+const upsertRouteRating = `-- name: UpsertRouteRating :one
+INSERT INTO route_ratings (route_id, user_id, stars) VALUES ($1, $2, $3)
+ON CONFLICT (route_id, user_id) DO UPDATE SET stars = EXCLUDED.stars, updated_at = now()
+RETURNING route_id, user_id, stars, updated_at
+`
+
+type UpsertRouteRatingParams struct {
+	RouteID pgtype.UUID `json:"route_id"`
+	UserID  pgtype.UUID `json:"user_id"`
+	Stars   int32       `json:"stars"`
+}
+
+func (q *Queries) UpsertRouteRating(ctx context.Context, arg UpsertRouteRatingParams) (RouteRating, error) {
+	row := q.db.QueryRow(ctx, upsertRouteRating, arg.RouteID, arg.UserID, arg.Stars)
+	var i RouteRating
+	err := row.Scan(
+		&i.RouteID,
+		&i.UserID,
+		&i.Stars,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
