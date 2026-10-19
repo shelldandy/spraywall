@@ -126,9 +126,15 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 		HoldIDs     []string         `json:"hold_ids"`
 		HoldRoles   *json.RawMessage `json:"hold_roles"`
 		Status      string           `json:"status"`
+		Tags        json.RawMessage  `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	tags, _, err := decodeRouteTags(body.Tags)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if body.Name == "" {
@@ -210,6 +216,7 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 		HoldIds:     holdIDs,
 		HoldRoles:   holdRoles,
 		Status:      status,
+		Tags:        nonNilRouteTags(tags),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create route")
@@ -287,6 +294,7 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 
 		isLegacy := errors.Is(activeImgErr, pgx.ErrNoRows) || rt.WallImageID != activeImg.ID
 
+		rt.Tags = nonNilRouteTags(rt.Tags)
 		result = append(result, routeResponse{
 			Route:     rt,
 			HoldRoles: json.RawMessage(rt.HoldRoles),
@@ -348,6 +356,7 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	isLegacy := errors.Is(activeImgErr, pgx.ErrNoRows) || rt.WallImageID != activeImg.ID
 
+	rt.Tags = nonNilRouteTags(rt.Tags)
 	writeJSON(w, http.StatusOK, routeResponse{
 		Route:     rt,
 		HoldRoles: json.RawMessage(rt.HoldRoles),
@@ -401,10 +410,19 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 		HoldIDs     []string         `json:"hold_ids"`
 		HoldRoles   *json.RawMessage `json:"hold_roles"`
 		Status      *string          `json:"status"`
+		Tags        json.RawMessage  `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+	tags, tagsSpecified, err := decodeRouteTags(body.Tags)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !tagsSpecified {
+		tags = nonNilRouteTags(rt.Tags)
 	}
 	if body.Name == "" {
 		writeError(w, http.StatusBadRequest, "name is required")
@@ -445,6 +463,7 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 		Description: description,
 		HoldIds:     holdIDs,
 		HoldRoles:   holdRoles,
+		Tags:        nonNilRouteTags(tags),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update route")
@@ -462,6 +481,7 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 		updated.Status = *body.Status
 	}
 
+	updated.Tags = nonNilRouteTags(updated.Tags)
 	writeJSON(w, http.StatusOK, routeResponse{
 		Route:     updated,
 		HoldRoles: json.RawMessage(updated.HoldRoles),

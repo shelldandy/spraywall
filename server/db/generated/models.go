@@ -118,6 +118,7 @@ type Route struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	HoldRoles   []byte             `json:"hold_roles"`
 	Status      string             `json:"status"`
+	Tags        []string           `json:"tags"`
 }
 
 type Send struct {

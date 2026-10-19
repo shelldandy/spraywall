@@ -3,6 +3,22 @@
   justify-content: flex-start;
 }
 
+.editIconButton {
+  min-width: 72px;
+  justify-content: flex-end;
+  padding: 6px 8px;
+}
+
+.editIconButton svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .title {
   text-align: center;
 }
@@ -75,17 +91,21 @@
 }
 
 .gradeBadge {
-  background: var(--accent);
-  color: var(--accent-contrast);
+  background: var(--bg-elevated);
 }
 
 .resetBadge {
   background: var(--warning-bg);
 }
 
-.sendCount {
+.sendCount,
+.sentIndicator {
   font-size: 14px;
   color: var(--text-muted);
+}
+
+.metaSeparator {
+  color: var(--text-faint);
 }
 
 .description {
@@ -120,14 +140,6 @@
   text-align: center;
   font-size: 14px;
   color: var(--text-muted);
-}
-
-.editButton {
-  margin-bottom: 12px;
-  padding: 14px;
-  border: 1px solid var(--accent);
-  background: var(--bg-elevated);
-  color: var(--accent);
 }
 
 .sendButton {

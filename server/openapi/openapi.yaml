@@ -624,6 +624,38 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateRoute
+      summary: Update route metadata
+      description: Only the route creator can edit. Omitted or null tags preserve existing tags; an explicit empty array clears them.
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRouteRequest"
+      responses:
+        "200":
+          description: Route updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Route"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Only the route creator can edit
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /gyms/{gymSlug}/invites:
     post:
@@ -962,18 +994,32 @@ components:
         name:
           type: string
         grade:
-          type: string
-        holds:
+          type: [string, "null"]
+        description:
+          type: [string, "null"]
+        hold_ids:
           type: array
           items:
-            $ref: "#/components/schemas/Hold"
-        setter_id:
+            type: string
+            format: uuid
+        hold_roles:
+          type: object
+          additionalProperties: true
+        status:
           type: string
-          format: uuid
+          enum: [draft, published]
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouteStyleTag"
         created_at:
           type: string
           format: date-time
-      required: [id, wall_id, name]
+      required: [id, wall_id, name, hold_ids, tags]
+
+    RouteStyleTag:
+      type: string
+      enum: [pumpy, crimpy, pinchy, slopey, juggy, powerful, technical, balancy, dynamic, static, reachy, compression]
 
     Hold:
       type: object
@@ -993,12 +1039,53 @@ components:
         name:
           type: string
         grade:
-          type: string
-        holds:
+          type: [string, "null"]
+        description:
+          type: [string, "null"]
+        hold_ids:
           type: array
           items:
-            $ref: "#/components/schemas/Hold"
-      required: [name, holds]
+            type: string
+            format: uuid
+        hold_roles:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [draft, published]
+        tags:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/RouteStyleTag"
+          description: Omitted or null values create the route without tags.
+      required: [name, hold_ids]
+
+    UpdateRouteRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        grade:
+          type: [string, "null"]
+        description:
+          type: [string, "null"]
+        hold_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        hold_roles:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [draft, published]
+        tags:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/RouteStyleTag"
+          description: Omitted or null preserves existing tags; an empty array clears them.
+      required: [name, hold_ids]
 
     Invite:
       type: object

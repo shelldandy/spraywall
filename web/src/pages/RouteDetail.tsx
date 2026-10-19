@@ -2,7 +2,11 @@ import { useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useHolds, useRouteDetail, useRoutes, useWallDetail } from "../lib/hooks/queries";
 import { useLogSend, useUnsend } from "../lib/hooks/mutations";
+import { getGradeColorStyle } from "../lib/grades";
+import { parseRouteTags } from "../lib/routeTags";
+import { useAuthStore } from "../lib/store/auth";
 import HoldOverlay from "../components/HoldOverlay";
+import RouteTags from "../components/RouteTags";
 import WallImage from "../components/WallImage";
 import styles from "./RouteDetail.module.css";
 import { useGoBack } from "../lib/nav";
@@ -14,6 +18,7 @@ export default function RouteDetailPage() {
   const wallId = params.get("wallId") ?? "";
   const gymSlug = params.get("gymSlug") ?? "";
   const navigate = useNavigate();
+  const userId = useAuthStore((s) => s.userId);
 
   const routeQuery = useRouteDetail(routeId, gymSlug, wallId);
   const routesQuery = useRoutes(wallId, gymSlug);
@@ -38,7 +43,12 @@ export default function RouteDetailPage() {
   const allRouteHolds = allHolds ?? [];
   const imageUrl = wall?.image?.image_url ?? null;
 
-  const goBack = useGoBack(`/routes?${new URLSearchParams({ wallId, gymSlug })}`);
+  const fallbackParams = new URLSearchParams(params);
+  fallbackParams.set("wallId", wallId);
+  fallbackParams.set("gymSlug", gymSlug);
+  fallbackParams.delete("tag");
+  for (const tag of parseRouteTags(params.getAll("tag"))) fallbackParams.append("tag", tag);
+  const goBack = useGoBack(`/routes?${fallbackParams}`);
 
   const editRoute = () => {
     const search = new URLSearchParams({
@@ -49,11 +59,13 @@ export default function RouteDetailPage() {
       editName: routeData?.name ?? "",
       editGrade: routeData?.grade ?? "",
       editDescription: routeData?.description ?? "",
+      editTags: JSON.stringify(parseRouteTags(routeData?.tags)),
     });
     navigate(`/walls/${wallId}?${search}`);
   };
 
   const sendCount = routeData?.send_count ?? 0;
+  const isAuthor = routeData?.created_by === userId;
 
   return (
     <div className="screen">
@@ -62,7 +74,22 @@ export default function RouteDetailPage() {
           {"< Back"}
         </button>
         <h1 className={styles.title}>{routeData?.name ?? "Route"}</h1>
-        <span className={styles.side} />
+        {isAuthor ? (
+          <button
+            type="button"
+            className={`btn btn-ghost ${styles.editIconButton}`}
+            onClick={editRoute}
+            aria-label="Edit route"
+            title="Edit route"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+            </svg>
+          </button>
+        ) : (
+          <span className={styles.side} />
+        )}
       </header>
 
       <main className={`content ${styles.layout}`}>
@@ -99,12 +126,27 @@ export default function RouteDetailPage() {
               )}
 
               <div className={styles.metaRow}>
-                {routeData?.grade && <span className={`${styles.pill} ${styles.gradeBadge}`}>{routeData.grade}</span>}
+                {routeData?.grade && (
+                  <span className={`${styles.pill} ${styles.gradeBadge}`} style={getGradeColorStyle(routeData.grade)}>
+                    {routeData.grade}
+                  </span>
+                )}
                 {routeData?.is_legacy && <span className={`${styles.pill} ${styles.resetBadge}`}>Reset</span>}
                 <span className={styles.sendCount}>
                   {sendCount} send{sendCount !== 1 ? "s" : ""}
                 </span>
+                {routeData?.has_sent && (
+                  <>
+                    <span className={styles.metaSeparator} aria-hidden="true">
+                      |
+                    </span>
+                    <span className={styles.sentIndicator}>
+                      Sent <span aria-hidden="true">✅</span>
+                    </span>
+                  </>
+                )}
               </div>
+              <RouteTags tags={routeData?.tags} />
 
               {routeData?.description && <p className={styles.description}>{routeData.description}</p>}
 
@@ -129,10 +171,6 @@ export default function RouteDetailPage() {
               <p className={styles.holdCount}>
                 {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""}
               </p>
-
-              <button type="button" className={`btn btn-block ${styles.editButton}`} onClick={editRoute}>
-                Edit Route
-              </button>
 
               {routeData?.has_sent ? (
                 <div className={styles.sentSection}>

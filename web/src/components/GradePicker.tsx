@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { grades, gradeSystems, type GradeSystem } from "../lib/grades";
+import { getGradeColorStyle, grades, gradeSystems, type GradeSystem } from "../lib/grades";
 import styles from "./GradePicker.module.css";
 
 interface GradePickerProps {
@@ -49,7 +49,13 @@ export default function GradePicker({ selectedGradeId, onSelect, system = "v" }:
         className={`${styles.trigger} ${selected ? "" : styles.placeholder}`}
         onClick={() => setVisible(true)}
       >
-        {displayLabel}
+        {selected ? (
+          <span className={styles.gradeText} style={getGradeColorStyle(selected.v)}>
+            {displayLabel}
+          </span>
+        ) : (
+          displayLabel
+        )}
       </button>
 
       <dialog
@@ -103,7 +109,9 @@ export default function GradePicker({ selectedGradeId, onSelect, system = "v" }:
                   className={`${styles.row} ${selectedGradeId === item.id ? styles.rowSelected : ""}`}
                   onClick={() => choose(item.id)}
                 >
-                  <span className={styles.gradeText}>{item[activeSystem]}</span>
+                  <span className={styles.gradeText} style={getGradeColorStyle(item.v)}>
+                    {item[activeSystem]}
+                  </span>
                   <span className={styles.gradeSubText}>
                     {activeSystem === "v" ? item.font : item.v}
                   </span>

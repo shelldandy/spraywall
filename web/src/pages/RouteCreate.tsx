@@ -3,9 +3,12 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useCreateRoute, useUpdateRoute } from "../lib/hooks/mutations";
 import type { HoldRoles } from "../lib/api/types";
 import GradePicker from "../components/GradePicker";
+import RouteTagPicker from "../components/RouteTagPicker";
+import { parseRouteTags } from "../lib/routeTags";
 import { formatGrade, gradeIdFromV } from "../lib/grades";
 import styles from "./RouteCreate.module.css";
 import { useGoBack } from "../lib/nav";
+import { generateRouteName } from "../lib/routeNames";
 
 function parseJson<T>(value: string | null, fallback: T): T {
   if (!value) return fallback;
@@ -34,11 +37,21 @@ export default function RouteCreatePage() {
   const parsedHoldRoles = useMemo(() => parseJson<HoldRoles | null>(holdRolesParam, null), [holdRolesParam]);
 
   const [name, setName] = useState(params.get("initialName") ?? "");
+  const [suggestion, setSuggestion] = useState(() => generateRouteName());
   const [gradeId, setGradeId] = useState<number | null>(() => {
     const initialGrade = params.get("initialGrade");
     return initialGrade ? gradeIdFromV(initialGrade) : null;
   });
   const [description, setDescription] = useState(params.get("initialDescription") ?? "");
+  const [tags, setTags] = useState(() => {
+    const initialTags = params.get("initialTags");
+    if (!initialTags) return [];
+    try {
+      return parseRouteTags(JSON.parse(initialTags) as unknown);
+    } catch {
+      return [];
+    }
+  });
 
   const createRouteMutation = useCreateRoute(gymSlug, wallId);
   const updateRouteMutation = useUpdateRoute(gymSlug, wallId, routeId);
@@ -46,6 +59,12 @@ export default function RouteCreatePage() {
   const canSave = !!name.trim() && !isPending;
 
   const goBack = useGoBack(`/walls/${wallId}?${new URLSearchParams({ gymSlug })}`);
+
+  const rollName = () => {
+    const next = generateRouteName(name);
+    setName(next);
+    setSuggestion(generateRouteName(next));
+  };
 
   const save = (status: "draft" | "published") => {
     const routeParams = {
@@ -55,6 +74,7 @@ export default function RouteCreatePage() {
       hold_ids: parsedHoldIds,
       hold_roles: parsedHoldRoles,
       status,
+      tags,
     };
     const mutation = isEditing ? updateRouteMutation : createRouteMutation;
     mutation.mutate(routeParams, {
@@ -84,18 +104,32 @@ export default function RouteCreatePage() {
         <label className={styles.label} htmlFor="route-name">
           Name *
         </label>
-        <input
-          id="route-name"
-          className={`input ${styles.field}`}
-          placeholder="Route name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          autoFocus={!isEditing}
-          enterKeyHint="done"
-        />
+        <div className={styles.nameRow}>
+          <input
+            id="route-name"
+            className={`input ${styles.nameInput}`}
+            placeholder={`e.g. ${suggestion}`}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus={!isEditing}
+            enterKeyHint="done"
+          />
+          <button
+            type="button"
+            className={`btn ${styles.diceButton}`}
+            onClick={rollName}
+            aria-label="Generate random name"
+            title="Generate random name"
+          >
+            🎲
+          </button>
+        </div>
 
         <span className={styles.label}>Grade</span>
         <GradePicker selectedGradeId={gradeId} onSelect={setGradeId} />
+
+        <span className={styles.label}>Style tags</span>
+        <RouteTagPicker selectedTags={tags} onChange={setTags} presentation="inline" />
 
         <label className={styles.label} htmlFor="route-description">
           Description
