@@ -1,9 +1,89 @@
 .filterToolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
   padding: 4px 12px 0;
+  scrollbar-width: none;
+}
+
+.filterToolbar::-webkit-scrollbar,
+.gradeOptions::-webkit-scrollbar {
+  display: none;
+}
+
+.filterToolbar > button {
+  flex: none;
+  margin-bottom: 0;
+}
+
+.gradeToggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 6px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.gradeToggleActive {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.gradePanel {
+  margin: 12px 0 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.gradeOptions {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 12px;
+  scrollbar-width: none;
+}
+
+.gradeOption {
+  flex: none;
+  min-width: 68px;
+  min-height: 56px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-muted);
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.gradeOptionSelected {
+  border-width: 2px;
+  font-weight: 750;
+}
+
+.gradeOptionInRange {
+  border-width: 2px;
 }
 
 .noMatches {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 8px;

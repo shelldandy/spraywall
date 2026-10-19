@@ -88,6 +88,30 @@ export function uniqueVGrades(): Grade[] {
   });
 }
 
+const vGradeRanks = new Map(uniqueVGrades().map(({ v }, rank) => [v, rank]));
+
+/** Return a V-grade's rank on the canonical scale, or null for ungraded/unknown values. */
+export function getVGradeRank(grade: unknown): number | null {
+  if (typeof grade !== "string") return null;
+  return vGradeRanks.get(grade.trim().toUpperCase()) ?? null;
+}
+
+/** Check an inclusive V-grade range. Without bounds, ungraded and unknown grades remain visible. */
+export function isVGradeWithinRange(
+  grade: string | null | undefined,
+  minGrade: string | null = null,
+  maxGrade: string | null = null,
+): boolean {
+  if (minGrade === null && maxGrade === null) return true;
+
+  const rank = getVGradeRank(grade);
+  if (rank === null) return false;
+
+  const minRank = minGrade === null ? null : getVGradeRank(minGrade);
+  const maxRank = maxGrade === null ? null : getVGradeRank(maxGrade);
+  return (minRank === null || rank >= minRank) && (maxRank === null || rank <= maxRank);
+}
+
 /** Look up a grade by its ID. */
 export function gradeById(id: number): Grade | undefined {
   return grades.find((g) => g.id === id);
