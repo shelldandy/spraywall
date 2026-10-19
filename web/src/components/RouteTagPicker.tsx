@@ -69,11 +69,12 @@ export default function RouteTagPicker({
       <button
         ref={triggerRef}
         type="button"
-        className={`${styles.trigger} ${compact ? styles.compactTrigger : ""}`}
+        className={`${styles.trigger} ${compact ? styles.compactTrigger : ""} ${compact && selected.length > 0 ? styles.compactTriggerActive : ""}`}
         onClick={() => setVisible(true)}
       >
+        {compact && selected.length > 0 && <span aria-hidden="true">✓</span>}
         <span>{label}</span>
-        <span className={styles.count}>{compact ? selected.length : selected.length ? selected.length : "None"}</span>
+        {!compact && <span className={styles.count}>{selected.length ? selected.length : "None"}</span>}
       </button>
 
       <dialog
