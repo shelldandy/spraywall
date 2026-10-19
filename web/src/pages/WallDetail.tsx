@@ -31,7 +31,7 @@ function initialSelections(editHoldIds: string | null, editHoldRoles: string | n
       if (roles?.start.includes(id)) map.set(id, "start");
       else if (roles?.finish.includes(id)) map.set(id, "finish");
       else if (roles?.foot?.includes(id)) map.set(id, "foot");
-      else map.set(id, "normal");
+      else map.set(id, "hand");
     }
   } catch {
     // Malformed params: start with no selection.
@@ -62,7 +62,7 @@ export default function WallDetailPage() {
   const [holdSelections, setHoldSelections] = useState<Map<string, HoldRole>>(() =>
     initialSelections(searchParams.get("editHoldIds"), searchParams.get("editHoldRoles")),
   );
-  const [createTool, setCreateTool] = useState<CreateTool>("hand");
+  const [createTool, setCreateTool] = useState<CreateTool>(isEditingRoute ? "hand" : "start");
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [imageAspectRatio, setImageAspectRatio] = useState<number>();
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
@@ -236,9 +236,6 @@ export default function WallDetailPage() {
   const holds = holdsQuery.data ?? [];
   const filteredHolds = holds.filter((h) => h.confidence >= confidenceThreshold);
   const selectedIds = new Set(holdSelections.keys());
-  const visibleHolds = isEditingRoute
-    ? holds.filter((hold) => hold.confidence >= confidenceThreshold || selectedIds.has(hold.id))
-    : filteredHolds;
   const filteredIds = new Set(filteredHolds.map((h) => h.id));
   const visibleSelectedIds = new Set([...selectedIds].filter((id) => filteredIds.has(id)));
   const detectionStatus = wall?.detection_status;
@@ -311,7 +308,7 @@ export default function WallDetailPage() {
     return <span className={`${styles.badge} ${variant}`}>{label}</span>;
   };
 
-  if (isCreateMode && !isEditingRoute && !isEditingHolds) {
+  if (isCreateMode && !isEditingHolds) {
     const startCount = [...holdSelections.values()].filter((role) => role === "start").length;
     const finishCount = [...holdSelections.values()].filter((role) => role === "finish").length;
     const tools: CreateTool[] = ["start", "hand", "finish", "foot", "erase"];
@@ -337,12 +334,12 @@ export default function WallDetailPage() {
             type="button"
             className={styles.createExit}
             onClick={closeCreateMode}
-            aria-label="Close new climb"
+            aria-label={isEditingRoute ? "Close edit climb" : "Close new climb"}
           >
             ×
           </button>
           <div className={styles.createTitleBlock}>
-            <h1 className={styles.createTitle}>New climb</h1>
+            <h1 className={styles.createTitle}>{isEditingRoute ? "Edit climb" : "New climb"}</h1>
             <p className={styles.createCounts}>
               Start: {startCount}/2 · Finish: {finishCount}/2
             </p>
@@ -378,7 +375,7 @@ export default function WallDetailPage() {
               onClick={() => goToCreateRoute(selectedIds, allSelectionRoles())}
               disabled={selectedIds.size < 2}
             >
-              Save
+              {isEditingRoute ? "Update" : "Save"}
             </button>
           </div>
         </header>
@@ -485,16 +482,16 @@ export default function WallDetailPage() {
           {wall?.image ? (
             <div className={styles.imageContainer}>
               <WallImage src={wall.image.image_url} alt={wall.wall.name}>
-                {(isEditingHolds || (!isManagingWall && visibleHolds.length > 0)) && (
+                {(isEditingHolds || (!isManagingWall && filteredHolds.length > 0)) && (
                   <HoldOverlay
-                    holds={isEditingHolds ? holds : visibleHolds}
+                    holds={isEditingHolds ? holds : filteredHolds}
                     selectedIds={isEditingHolds ? new Set() : selectedIds}
                     onToggle={isEditingHolds ? handleEditToggle : handleToggle}
                     mode={isEditingHolds ? "edit" : undefined}
                     editHoldMode={editHoldMode}
                     holdToDelete={holdToDelete}
                     onBackgroundPress={editHoldMode === "add" ? addHold : undefined}
-                    holdRoles={holdSelections.size > 0 ? (isEditingRoute ? allSelectionRoles() : visibleRoles()) : null}
+                    holdRoles={holdSelections.size > 0 ? visibleRoles() : null}
                   />
                 )}
               </WallImage>
@@ -599,22 +596,15 @@ export default function WallDetailPage() {
             </>
           )}
 
-          {!isManagingWall &&
-            !isEditingHolds &&
-            (isEditingRoute ? selectedIds.size : visibleSelectedIds.size) >= 2 && (
-              <button
-                type="button"
-                className={`btn btn-block ${styles.createRouteButton}`}
-                onClick={() =>
-                  isEditingRoute
-                    ? goToCreateRoute(selectedIds, allSelectionRoles())
-                    : goToCreateRoute()
-                }
-              >
-                {isEditingRoute ? "Update" : "Create"} Route (
-                {isEditingRoute ? selectedIds.size : visibleSelectedIds.size} holds)
-              </button>
-            )}
+          {!isManagingWall && !isEditingHolds && visibleSelectedIds.size >= 2 && (
+            <button
+              type="button"
+              className={`btn btn-block ${styles.createRouteButton}`}
+              onClick={() => goToCreateRoute()}
+            >
+              Create Route ({visibleSelectedIds.size} holds)
+            </button>
+          )}
 
         </main>
       ) : (
