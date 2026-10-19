@@ -173,6 +173,7 @@ export default function RouteList({
         <RouteTagPicker
           selectedTags={selectedTags}
           onChange={updateTags}
+          label="Style"
           compact
           helperText="Matches any selected tag"
           matchingCount={matchingRoutes.length}
