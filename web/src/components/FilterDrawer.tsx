@@ -5,15 +5,16 @@ interface FilterDrawerProps {
   open: boolean;
   title: string;
   onClose: () => void;
-  onClear: () => void;
-  matchingCount: number;
+  onClear?: () => void;
+  matchingCount?: number;
   countLabel?: string;
+  showFooter?: boolean;
   triggerRef: RefObject<HTMLButtonElement | null>;
   children: ReactNode;
 }
 
-/** Shared accessible native-dialog shell for route filters. */
-export default function FilterDrawer({ open, title, onClose, onClear, matchingCount, countLabel, triggerRef, children }: FilterDrawerProps) {
+/** Shared accessible native-dialog shell for route filters and detail panels. */
+export default function FilterDrawer({ open, title, onClose, onClear, matchingCount, countLabel, showFooter = true, triggerRef, children }: FilterDrawerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = `filter-title-${useId().replaceAll(":", "")}`;
 
@@ -38,10 +39,12 @@ export default function FilterDrawer({ open, title, onClose, onClear, matchingCo
           <button type="button" autoFocus className="btn btn-ghost" onClick={onClose}>Done</button>
         </header>
         <div className={styles.content}>{children}</div>
-        <footer className={styles.footer}>
-          <button type="button" className="btn btn-ghost" onClick={onClear}>Clear</button>
-          <span className={styles.count} aria-live="polite">{countLabel ?? `${matchingCount} matching route${matchingCount === 1 ? "" : "s"}`}</span>
-        </footer>
+        {showFooter && onClear && matchingCount !== undefined && (
+          <footer className={styles.footer}>
+            <button type="button" className="btn btn-ghost" onClick={onClear}>Clear</button>
+            <span className={styles.count} aria-live="polite">{countLabel ?? `${matchingCount} matching route${matchingCount === 1 ? "" : "s"}`}</span>
+          </footer>
+        )}
       </section>
     </dialog>
   );

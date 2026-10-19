@@ -77,9 +77,23 @@
 
 .metaRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.metaActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.metaAction {
+  min-height: 40px;
+  padding: 6px 12px;
+  white-space: nowrap;
 }
 
 .pill {
@@ -147,14 +161,12 @@
   padding: 14px;
 }
 
-.sectionTitle { margin: 0; color: var(--text); font-size: 18px; }
-.ratingSection, .historySection { margin: 20px 0; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elevated); }
-.ratingSummary { margin: 6px 0 10px; color: var(--text-muted); }
-.clearRating { margin-left: 8px; color: var(--text-muted); }
+.drawerSection { display: grid; gap: 12px; min-width: 0; }
+.ratingSummary { margin: 0; color: var(--text-muted); }
+.clearRating { justify-self: start; color: var(--text-muted); }
 .projectBadge { background: var(--warning); color: var(--bg); }
 .sentBadge { background: var(--success-bg); }
 .flashBadge { background: var(--accent); }
-.historyHeader { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
 .historyHint { margin: 8px 0 12px; color: var(--text-muted); font-size: 14px; }
 .historyLoading { display: flex; justify-content: center; padding: 16px; }
 .historyList { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
