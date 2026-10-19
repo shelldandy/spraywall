@@ -4,7 +4,7 @@
   align-items: center;
   gap: 8px;
   overflow-x: auto;
-  padding: 4px 12px 0;
+  padding: 4px 12px 12px;
   scrollbar-width: none;
 }
 
