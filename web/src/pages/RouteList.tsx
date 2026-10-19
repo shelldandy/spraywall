@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import HoldOverlay from "../components/HoldOverlay";
 import RouteTagPicker from "../components/RouteTagPicker";
@@ -80,6 +80,8 @@ export default function RouteList({
 }: RouteListProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [gradePickerOpen, setGradePickerOpen] = useState(false);
+  const gradeTriggerRef = useRef<HTMLButtonElement>(null);
+  const gradeDialogRef = useRef<HTMLDialogElement>(null);
   const selectedTags = parseRouteTags(searchParams.getAll("tag"));
   const minGrade = parseGradeBound(searchParams.getAll("minGrade"));
   const requestedMaxGrade = parseGradeBound(searchParams.getAll("maxGrade"));
@@ -89,6 +91,13 @@ export default function RouteList({
     ? null
     : requestedMaxGrade;
   const gradeOptions = uniqueVGrades();
+
+  useEffect(() => {
+    const dialog = gradeDialogRef.current;
+    if (!dialog) return;
+    if (gradePickerOpen && !dialog.open) dialog.showModal();
+    else if (!gradePickerOpen && dialog.open) dialog.close();
+  }, [gradePickerOpen]);
 
   useEffect(() => {
     const rawTags = searchParams.getAll("tag");
@@ -169,60 +178,86 @@ export default function RouteList({
           matchingCount={matchingRoutes.length}
         />
         <button
+          ref={gradeTriggerRef}
           type="button"
           className={`${styles.gradeToggle} ${hasGradeFilter ? styles.gradeToggleActive : ""}`}
           aria-expanded={gradePickerOpen}
           aria-controls="route-grade-options"
-          onClick={() => setGradePickerOpen((open) => !open)}
+          onClick={() => setGradePickerOpen(true)}
         >
           {hasGradeFilter && <span aria-hidden="true">✓</span>}
           {gradeSummary}
         </button>
       </div>
-      {gradePickerOpen && (
-        <div className={styles.gradePanel} id="route-grade-options">
-          <div className={styles.gradeOptions} role="group" aria-label="Choose a V-grade range">
-            <button
-              type="button"
-              className={`${styles.gradeOption} ${!hasGradeFilter ? styles.gradeOptionSelected : ""}`}
-              aria-pressed={!hasGradeFilter}
-              onClick={() => updateFilters(selectedTags, null, null)}
-            >
-              Any
-            </button>
-            {gradeOptions.map(({ v }) => {
-              const gradeRank = getVGradeRank(v)!;
-              const isEndpoint = v === minGrade || v === maxGrade;
-              const maxRank = maxGrade === null ? null : getVGradeRank(maxGrade);
-              const isInRange = hasGradeFilter
-                && (minRank === null || gradeRank >= minRank)
-                && (maxRank === null || gradeRank <= maxRank);
-              const colorStyle = getGradeColorStyle(v);
-              const swatchStyle = colorStyle ? {
-                borderColor: colorStyle.backgroundColor,
-                ...(isEndpoint
-                  ? colorStyle
-                  : {
-                    backgroundColor: `color-mix(in srgb, ${colorStyle.backgroundColor} ${isInRange ? "30%" : "12%"}, var(--bg-elevated))`,
-                    color: isInRange ? "var(--text)" : colorStyle.backgroundColor,
-                  }),
-              } : undefined;
-              return (
-                <button
-                  key={v}
-                  type="button"
-                  className={`${styles.gradeOption} ${isEndpoint ? styles.gradeOptionSelected : ""} ${isInRange && !isEndpoint ? styles.gradeOptionInRange : ""}`}
-                  style={swatchStyle}
-                  aria-pressed={isEndpoint || isInRange}
-                  onClick={() => selectGrade(v)}
-                >
-                  {v}
-                </button>
-              );
-            })}
+      <dialog
+        ref={gradeDialogRef}
+        id="route-grade-options"
+        className={styles.gradeOverlay}
+        aria-label="Filter by V-grade"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) setGradePickerOpen(false);
+        }}
+        onClose={() => {
+          setGradePickerOpen(false);
+          gradeTriggerRef.current?.focus();
+        }}
+      >
+        <section className={styles.gradeSheet} aria-labelledby="route-grade-picker-title">
+          <header className={styles.gradeHeader}>
+            <h2 id="route-grade-picker-title" className={styles.gradeTitle}>Grade</h2>
+            <button type="button" autoFocus className="btn btn-ghost" onClick={() => setGradePickerOpen(false)}>Done</button>
+          </header>
+          <div className={styles.gradeContent}>
+            <p className={styles.gradeHelper}>Select one grade, then another to set an inclusive range.</p>
+            <div className={styles.gradeOptions} role="group" aria-label="Choose a V-grade range">
+              <button
+                type="button"
+                className={`${styles.gradeOption} ${!hasGradeFilter ? styles.gradeOptionAnySelected : ""}`}
+                aria-pressed={!hasGradeFilter}
+                onClick={() => updateFilters(selectedTags, null, null)}
+              >
+                Any
+              </button>
+              {gradeOptions.map(({ v }) => {
+                const gradeRank = getVGradeRank(v)!;
+                const isEndpoint = v === minGrade || v === maxGrade;
+                const maxRank = maxGrade === null ? null : getVGradeRank(maxGrade);
+                const isInRange = hasGradeFilter
+                  && (minRank === null || gradeRank >= minRank)
+                  && (maxRank === null || gradeRank <= maxRank);
+                const colorStyle = getGradeColorStyle(v);
+                const swatchStyle = colorStyle ? {
+                  borderColor: colorStyle.backgroundColor,
+                  ...(isInRange
+                    ? colorStyle
+                    : {
+                      backgroundColor: `color-mix(in srgb, ${colorStyle.backgroundColor} 12%, var(--bg-elevated))`,
+                      color: colorStyle.backgroundColor,
+                    }),
+                } : undefined;
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`${styles.gradeOption} ${isEndpoint ? styles.gradeOptionSelected : ""} ${isInRange && !isEndpoint ? styles.gradeOptionInRange : ""}`}
+                    style={swatchStyle}
+                    aria-pressed={isEndpoint || isInRange}
+                    onClick={() => selectGrade(v)}
+                  >
+                    {v}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+          <footer className={styles.gradeFooter}>
+            <button type="button" className="btn btn-ghost" onClick={() => updateFilters(selectedTags, null, null)}>Clear</button>
+            <span className={styles.gradeCount} aria-live="polite">
+              {matchingRoutes.length} matching route{matchingRoutes.length === 1 ? "" : "s"}
+            </span>
+          </footer>
+        </section>
+      </dialog>
       {hasActiveFilters && matchingRoutes.length === 0 && (
         <div className={styles.noMatches} role="status">
           <span>{noMatchesMessage}</span>
