@@ -23,9 +23,9 @@ func (q *Queries) CountSendsByRoute(ctx context.Context, routeID pgtype.UUID) (i
 }
 
 const createRoute = `-- name: CreateRoute :one
-INSERT INTO routes (wall_id, wall_image_id, created_by, name, grade, description, hold_ids, hold_roles, status)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status
+INSERT INTO routes (wall_id, wall_image_id, created_by, name, grade, description, hold_ids, hold_roles, status, tags)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status, tags
 `
 
 type CreateRouteParams struct {
@@ -38,6 +38,7 @@ type CreateRouteParams struct {
 	HoldIds     []pgtype.UUID `json:"hold_ids"`
 	HoldRoles   []byte        `json:"hold_roles"`
 	Status      string        `json:"status"`
+	Tags        []string      `json:"tags"`
 }
 
 func (q *Queries) CreateRoute(ctx context.Context, arg CreateRouteParams) (Route, error) {
@@ -51,6 +52,7 @@ func (q *Queries) CreateRoute(ctx context.Context, arg CreateRouteParams) (Route
 		arg.HoldIds,
 		arg.HoldRoles,
 		arg.Status,
+		arg.Tags,
 	)
 	var i Route
 	err := row.Scan(
@@ -65,6 +67,7 @@ func (q *Queries) CreateRoute(ctx context.Context, arg CreateRouteParams) (Route
 		&i.CreatedAt,
 		&i.HoldRoles,
 		&i.Status,
+		&i.Tags,
 	)
 	return i, err
 }
@@ -125,7 +128,7 @@ func (q *Queries) DeleteSendByUser(ctx context.Context, arg DeleteSendByUserPara
 }
 
 const getRouteByID = `-- name: GetRouteByID :one
-SELECT id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status FROM routes WHERE id = $1
+SELECT id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status, tags FROM routes WHERE id = $1
 `
 
 func (q *Queries) GetRouteByID(ctx context.Context, id pgtype.UUID) (Route, error) {
@@ -143,6 +146,7 @@ func (q *Queries) GetRouteByID(ctx context.Context, id pgtype.UUID) (Route, erro
 		&i.CreatedAt,
 		&i.HoldRoles,
 		&i.Status,
+		&i.Tags,
 	)
 	return i, err
 }
@@ -171,7 +175,7 @@ func (q *Queries) GetSendByUser(ctx context.Context, arg GetSendByUserParams) (S
 }
 
 const listRoutesByWall = `-- name: ListRoutesByWall :many
-SELECT id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status FROM routes WHERE wall_id = $1 AND (status = 'published' OR created_by = $2)
+SELECT id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status, tags FROM routes WHERE wall_id = $1 AND (status = 'published' OR created_by = $2)
 ORDER BY created_at DESC
 `
 
@@ -201,6 +205,7 @@ func (q *Queries) ListRoutesByWall(ctx context.Context, arg ListRoutesByWallPara
 			&i.CreatedAt,
 			&i.HoldRoles,
 			&i.Status,
+			&i.Tags,
 		); err != nil {
 			return nil, err
 		}
@@ -264,9 +269,9 @@ func (q *Queries) ListSendsByUser(ctx context.Context, userID pgtype.UUID) ([]Li
 }
 
 const updateRoute = `-- name: UpdateRoute :one
-UPDATE routes SET name = $2, grade = $3, description = $4, hold_ids = $5, hold_roles = $6
+UPDATE routes SET name = $2, grade = $3, description = $4, hold_ids = $5, hold_roles = $6, tags = $7
 WHERE id = $1
-RETURNING id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status
+RETURNING id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status, tags
 `
 
 type UpdateRouteParams struct {
@@ -276,6 +281,7 @@ type UpdateRouteParams struct {
 	Description pgtype.Text   `json:"description"`
 	HoldIds     []pgtype.UUID `json:"hold_ids"`
 	HoldRoles   []byte        `json:"hold_roles"`
+	Tags        []string      `json:"tags"`
 }
 
 func (q *Queries) UpdateRoute(ctx context.Context, arg UpdateRouteParams) (Route, error) {
@@ -286,6 +292,7 @@ func (q *Queries) UpdateRoute(ctx context.Context, arg UpdateRouteParams) (Route
 		arg.Description,
 		arg.HoldIds,
 		arg.HoldRoles,
+		arg.Tags,
 	)
 	var i Route
 	err := row.Scan(
@@ -300,6 +307,7 @@ func (q *Queries) UpdateRoute(ctx context.Context, arg UpdateRouteParams) (Route
 		&i.CreatedAt,
 		&i.HoldRoles,
 		&i.Status,
+		&i.Tags,
 	)
 	return i, err
 }

@@ -6,6 +6,7 @@ import { useHolds, useRoutes } from "../lib/hooks/queries";
 import { toast, toastError } from "../lib/toast";
 import { prepareImageForUpload } from "../lib/image";
 import type { Hold, HoldRoles, WallDetail } from "../lib/api/types";
+import { parseRouteTags } from "../lib/routeTags";
 import HoldOverlay from "../components/HoldOverlay";
 import WallImage from "../components/WallImage";
 import RouteList from "./RouteList";
@@ -19,6 +20,15 @@ const POLL_INTERVAL_MS = 4000;
 
 function isDetecting(status: string | null | undefined) {
   return status === "pending" || status === "processing";
+}
+
+function initialRouteTags(rawTags: string | null) {
+  if (!rawTags) return [];
+  try {
+    return parseRouteTags(JSON.parse(rawTags) as unknown);
+  } catch {
+    return [];
+  }
 }
 
 function initialSelections(editHoldIds: string | null, editHoldRoles: string | null) {
@@ -47,6 +57,7 @@ export default function WallDetailPage() {
   const editName = searchParams.get("editName");
   const editGrade = searchParams.get("editGrade");
   const editDescription = searchParams.get("editDescription");
+  const editTags = searchParams.get("editTags");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -274,6 +285,7 @@ export default function WallDetailPage() {
       params.set("initialName", editName ?? "");
       params.set("initialGrade", editGrade ?? "");
       params.set("initialDescription", editDescription ?? "");
+      params.set("initialTags", JSON.stringify(initialRouteTags(editTags)));
     }
     navigate(`/routes/create?${params}`);
   };

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../api/fetch";
 import type { HoldRoles, Me } from "../api/types";
+import type { RouteTagId } from "../routeTags";
 import { useAuthStore } from "../store/auth";
 import { toastError } from "../toast";
 
@@ -11,6 +12,7 @@ export interface RouteParams {
   hold_ids: string[];
   hold_roles: HoldRoles | null;
   status: "draft" | "published";
+  tags: RouteTagId[];
 }
 
 async function ensureOk(res: Response, fallback: string) {

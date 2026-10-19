@@ -3,6 +3,7 @@ import { useHolds, useRoutes, useWallDetail } from "../lib/hooks/queries";
 import RouteList from "./RouteList";
 import styles from "./Routes.module.css";
 import { useGoBack } from "../lib/nav";
+import { parseRouteTags } from "../lib/routeTags";
 
 export default function RoutesPage() {
   const [params] = useSearchParams();
@@ -17,7 +18,12 @@ export default function RoutesPage() {
   const holds = holdsQuery.data ?? [];
   const imageUrl = wallQuery.data?.image?.image_url ?? null;
 
-  const goBack = useGoBack(`/walls/${wallId}?${new URLSearchParams({ gymSlug: gymSlug ?? "" })}`);
+  const fallbackParams = new URLSearchParams(params);
+  fallbackParams.set("wallId", wallId);
+  fallbackParams.set("gymSlug", gymSlug ?? "");
+  fallbackParams.delete("tag");
+  for (const tag of parseRouteTags(params.getAll("tag"))) fallbackParams.append("tag", tag);
+  const goBack = useGoBack(`/walls/${wallId}?${fallbackParams}`);
 
   return (
     <div className="screen">

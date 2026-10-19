@@ -3,8 +3,10 @@ import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useHolds, useRouteDetail, useRoutes, useWallDetail } from "../lib/hooks/queries";
 import { useLogSend, useUnsend } from "../lib/hooks/mutations";
 import { getGradeColorStyle } from "../lib/grades";
+import { parseRouteTags } from "../lib/routeTags";
 import { useAuthStore } from "../lib/store/auth";
 import HoldOverlay from "../components/HoldOverlay";
+import RouteTags from "../components/RouteTags";
 import WallImage from "../components/WallImage";
 import styles from "./RouteDetail.module.css";
 import { useGoBack } from "../lib/nav";
@@ -41,7 +43,12 @@ export default function RouteDetailPage() {
   const allRouteHolds = allHolds ?? [];
   const imageUrl = wall?.image?.image_url ?? null;
 
-  const goBack = useGoBack(`/routes?${new URLSearchParams({ wallId, gymSlug })}`);
+  const fallbackParams = new URLSearchParams(params);
+  fallbackParams.set("wallId", wallId);
+  fallbackParams.set("gymSlug", gymSlug);
+  fallbackParams.delete("tag");
+  for (const tag of parseRouteTags(params.getAll("tag"))) fallbackParams.append("tag", tag);
+  const goBack = useGoBack(`/routes?${fallbackParams}`);
 
   const editRoute = () => {
     const search = new URLSearchParams({
@@ -52,6 +59,7 @@ export default function RouteDetailPage() {
       editName: routeData?.name ?? "",
       editGrade: routeData?.grade ?? "",
       editDescription: routeData?.description ?? "",
+      editTags: JSON.stringify(parseRouteTags(routeData?.tags)),
     });
     navigate(`/walls/${wallId}?${search}`);
   };
@@ -138,6 +146,7 @@ export default function RouteDetailPage() {
                   </>
                 )}
               </div>
+              <RouteTags tags={routeData?.tags} />
 
               {routeData?.description && <p className={styles.description}>{routeData.description}</p>}
 

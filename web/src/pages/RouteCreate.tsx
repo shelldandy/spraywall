@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useCreateRoute, useUpdateRoute } from "../lib/hooks/mutations";
 import type { HoldRoles } from "../lib/api/types";
 import GradePicker from "../components/GradePicker";
+import RouteTagPicker from "../components/RouteTagPicker";
+import { parseRouteTags } from "../lib/routeTags";
 import { formatGrade, gradeIdFromV } from "../lib/grades";
 import styles from "./RouteCreate.module.css";
 import { useGoBack } from "../lib/nav";
@@ -41,6 +43,15 @@ export default function RouteCreatePage() {
     return initialGrade ? gradeIdFromV(initialGrade) : null;
   });
   const [description, setDescription] = useState(params.get("initialDescription") ?? "");
+  const [tags, setTags] = useState(() => {
+    const initialTags = params.get("initialTags");
+    if (!initialTags) return [];
+    try {
+      return parseRouteTags(JSON.parse(initialTags) as unknown);
+    } catch {
+      return [];
+    }
+  });
 
   const createRouteMutation = useCreateRoute(gymSlug, wallId);
   const updateRouteMutation = useUpdateRoute(gymSlug, wallId, routeId);
@@ -63,6 +74,7 @@ export default function RouteCreatePage() {
       hold_ids: parsedHoldIds,
       hold_roles: parsedHoldRoles,
       status,
+      tags,
     };
     const mutation = isEditing ? updateRouteMutation : createRouteMutation;
     mutation.mutate(routeParams, {
@@ -115,6 +127,9 @@ export default function RouteCreatePage() {
 
         <span className={styles.label}>Grade</span>
         <GradePicker selectedGradeId={gradeId} onSelect={setGradeId} />
+
+        <span className={styles.label}>Style tags</span>
+        <RouteTagPicker selectedTags={tags} onChange={setTags} presentation="inline" />
 
         <label className={styles.label} htmlFor="route-description">
           Description

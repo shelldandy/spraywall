@@ -1,3 +1,5 @@
+import type { RouteTagId } from "../routeTags";
+
 export interface Gym {
   id: string;
   name: string;
@@ -73,6 +75,8 @@ export interface Route {
   has_sent: boolean;
   is_legacy: boolean;
   status: "draft" | "published";
+  /** Optional for compatibility with routes restored from older offline caches. */
+  tags?: RouteTagId[];
 }
 
 export interface Send {
