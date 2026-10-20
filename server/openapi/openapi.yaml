@@ -564,7 +564,7 @@ paths:
     put:
       operationId: replaceCircuitRoutes
       summary: Atomically replace ordered circuit routes
-      description: Only the owner may replace the order. The list has at most 100 unique routes, all on this wall and published or caller-owned drafts.
+      description: Only the owner may replace the visible route order. The list has at most 100 unique routes, all on this wall and published or caller-owned drafts; routes hidden from the caller are preserved in their prior relative position.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"
@@ -591,7 +591,7 @@ paths:
     post:
       operationId: appendCircuitRoute
       summary: Append a route idempotently
-      description: Only the owner may append. Repeating an existing route_id is a no-op; the circuit limit is 100 routes.
+      description: Only the owner may append. Repeating an existing route_id is a no-op; the circuit limit is 100 routes, including routes hidden from the caller.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"

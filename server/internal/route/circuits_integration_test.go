@@ -173,6 +173,31 @@ func TestCircuitAppendRequiresRouteAndRespectsLimit(t *testing.T) {
 	if got.Code != http.StatusOK || json.Unmarshal(got.Body.Bytes(), &after) != nil || len(after.RouteIDs) != 100 {
 		t.Fatalf("route limit should retain 100 routes: status=%d count=%d body=%s", got.Code, len(after.RouteIDs), got.Body)
 	}
+	var otherID uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `SELECT id FROM users WHERE email='route-other@example.com'`).Scan(&otherID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(context.Background(), `UPDATE routes SET status='draft',created_by=$2 WHERE id=$1`, uuid.MustParse(routeIDs[0]), otherID); err != nil {
+		t.Fatal(err)
+	}
+	if r := circuitRequest(e, http.MethodPost, c.ID+"/routes", e.token, fmt.Sprintf(`{"route_id":%q}`, routeIDs[100])); r.Code != http.StatusBadRequest {
+		t.Fatalf("hidden route must count toward append limit: %d %s", r.Code, r.Body)
+	}
+	replacement := append(append([]string(nil), routeIDs[1:100]...), routeIDs[100])
+	body, err := json.Marshal(map[string][]string{"route_ids": replacement})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := circuitRequest(e, http.MethodPut, c.ID+"/routes", e.token, string(body)); r.Code != http.StatusBadRequest {
+		t.Fatalf("hidden route must count toward replacement limit: %d %s", r.Code, r.Body)
+	}
+	if _, err := e.pool.Exec(context.Background(), `UPDATE routes SET status='published' WHERE id=$1`, uuid.MustParse(routeIDs[0])); err != nil {
+		t.Fatal(err)
+	}
+	got = circuitRequest(e, http.MethodGet, c.ID, e.token, "")
+	if got.Code != http.StatusOK || json.Unmarshal(got.Body.Bytes(), &after) != nil || len(after.RouteIDs) != 100 || after.RouteIDs[0] != routeIDs[0] {
+		t.Fatalf("failed replacement must preserve hidden route rows: status=%d count=%d body=%s", got.Code, len(after.RouteIDs), got.Body)
+	}
 }
 
 func TestCircuitWallMismatchIsNotFound(t *testing.T) {
@@ -237,6 +262,47 @@ func TestCircuitRejectsRouteFromAnotherWallAtomically(t *testing.T) {
 	}
 	if len(after.RouteIDs) != 1 || after.RouteIDs[0] != published.ID {
 		t.Fatalf("failed replacement changed prior routes: %#v", after.RouteIDs)
+	}
+}
+
+func TestCircuitReplacementPreservesNewlyHiddenRoutes(t *testing.T) {
+	e := newRouteTestEnv(t)
+	otherBody := fmt.Sprintf(`{"name":"Other published route","hold_ids":[%q,%q],"status":"published"}`, e.holdIDs[0], e.holdIDs[1])
+	otherResponse := e.request(http.MethodPost, "", e.other, otherBody)
+	if otherResponse.Code != http.StatusCreated {
+		t.Fatalf("other user's published route: %d %s", otherResponse.Code, otherResponse.Body)
+	}
+	var otherRoute routeTestResponse
+	if err := json.Unmarshal(otherResponse.Body.Bytes(), &otherRoute); err != nil {
+		t.Fatal(err)
+	}
+	ownRoute := e.create(t, "", "published")
+	otherOwnRoute := e.create(t, ",\"grade\":\"V2\"", "published")
+	c := circuitCreate(t, e, e.token, "Preserve hidden route", false, []string{ownRoute.ID, otherOwnRoute.ID, otherRoute.ID})
+
+	if _, err := e.pool.Exec(context.Background(), `UPDATE routes SET status='draft' WHERE id=$1`, uuid.MustParse(otherRoute.ID)); err != nil {
+		t.Fatal(err)
+	}
+	visible := circuitRequest(e, http.MethodGet, c.ID, e.token, "")
+	var beforeReplace circuitHTTP
+	if visible.Code != http.StatusOK || json.Unmarshal(visible.Body.Bytes(), &beforeReplace) != nil || len(beforeReplace.RouteIDs) != 2 || beforeReplace.RouteIDs[0] != ownRoute.ID || beforeReplace.RouteIDs[1] != otherOwnRoute.ID {
+		t.Fatalf("newly hidden route should not be listed: status=%d body=%s", visible.Code, visible.Body)
+	}
+
+	replaced := circuitRequest(e, http.MethodPut, c.ID+"/routes", e.token, fmt.Sprintf(`{"route_ids":[%q]}`, ownRoute.ID))
+	if replaced.Code != http.StatusOK {
+		t.Fatalf("replace visible route order: %d %s", replaced.Code, replaced.Body)
+	}
+	if _, err := e.pool.Exec(context.Background(), `UPDATE routes SET status='published' WHERE id=$1`, uuid.MustParse(otherRoute.ID)); err != nil {
+		t.Fatal(err)
+	}
+	after := circuitRequest(e, http.MethodGet, c.ID, e.token, "")
+	var restored circuitHTTP
+	if after.Code != http.StatusOK || json.Unmarshal(after.Body.Bytes(), &restored) != nil {
+		t.Fatalf("circuit after republishing hidden route: %d %s", after.Code, after.Body)
+	}
+	if len(restored.RouteIDs) != 2 || restored.RouteIDs[0] != ownRoute.ID || restored.RouteIDs[1] != otherRoute.ID {
+		t.Fatalf("replacement discarded or misplaced hidden route: %#v", restored.RouteIDs)
 	}
 }
 

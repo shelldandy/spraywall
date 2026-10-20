@@ -37,6 +37,16 @@ type circuitRow struct {
 	created, updated                     time.Time
 }
 
+type circuitRouteEntry struct {
+	id     pgtype.UUID
+	hidden bool
+}
+
+type hiddenCircuitRoute struct {
+	id            pgtype.UUID
+	visibleBefore int
+}
+
 func (h *Handler) circuitWall(w http.ResponseWriter, r *http.Request) (pgtype.UUID, pgtype.UUID, generated.GymMember, bool) {
 	gym, member, err := h.requireGymMember(w, r)
 	if err != nil {
@@ -61,9 +71,15 @@ func (h *Handler) circuitWall(w http.ResponseWriter, r *http.Request) (pgtype.UU
 }
 
 func (h *Handler) loadCircuit(r *http.Request, id uuid.UUID) (circuitRow, error) {
-	var c circuitRow
-	err := h.db.QueryRow(r.Context(), `SELECT c.id::text,c.wall_id::text,c.created_by::text,u.display_name,c.name,c.is_shared,c.created_at,c.updated_at FROM circuits c JOIN users u ON u.id=c.created_by WHERE c.id=$1`, shared.PgUUID(id)).Scan(&c.id, &c.wall, &c.creator, &c.creatorName, &c.name, &c.shared, &c.created, &c.updated)
-	return c, err
+	row, err := h.queries.GetCircuitByID(r.Context(), shared.PgUUID(id))
+	if err != nil {
+		return circuitRow{}, err
+	}
+	return circuitRow{
+		id: uuid.UUID(row.ID.Bytes).String(), wall: uuid.UUID(row.WallID.Bytes).String(),
+		creator: uuid.UUID(row.CreatedBy.Bytes).String(), creatorName: row.CreatorName,
+		name: row.Name, shared: row.IsShared, created: row.CreatedAt.Time, updated: row.UpdatedAt.Time,
+	}, nil
 }
 func (h *Handler) circuitJSON(r *http.Request, c circuitRow, owner bool) (circuit, error) {
 	out := circuit{ID: c.id, WallID: c.wall, CreatedBy: c.creator, CreatorName: c.creatorName, Name: c.name, IsShared: c.shared, IsOwner: owner, RouteIDs: []string{}, CreatedAt: c.created, UpdatedAt: c.updated}
@@ -190,14 +206,19 @@ func (h *Handler) CreateCircuit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	id := uuid.New()
-	_, err = tx.Exec(r.Context(), `INSERT INTO circuits(id,wall_id,created_by,name,is_shared) VALUES($1,$2,$3,$4,$5)`, shared.PgUUID(id), wall, uid, in.Name, in.Shared)
+	txQueries := h.queries.WithTx(tx)
+	createdCircuit, err := txQueries.CreateCircuit(r.Context(), generated.CreateCircuitParams{
+		WallID: wall, CreatedBy: uid, Name: in.Name, IsShared: in.Shared,
+	})
 	if err != nil {
 		writeError(w, 500, "database error")
 		return
 	}
+	id := uuid.UUID(createdCircuit.ID.Bytes)
 	for i, routeID := range ids {
-		if _, err = tx.Exec(r.Context(), `INSERT INTO circuit_routes(circuit_id,route_id,position) VALUES($1,$2,$3)`, shared.PgUUID(id), shared.PgUUID(routeID), i); err != nil {
+		if err = txQueries.InsertCircuitRoute(r.Context(), generated.InsertCircuitRouteParams{
+			CircuitID: createdCircuit.ID, RouteID: shared.PgUUID(routeID), Position: int32(i),
+		}); err != nil {
 			writeError(w, 500, "database error")
 			return
 		}
@@ -276,7 +297,13 @@ func (h *Handler) PatchCircuit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "name must be 1-60 characters")
 		return
 	}
-	_, err := h.db.Exec(r.Context(), `UPDATE circuits SET name=$2,is_shared=$3,updated_at=now() WHERE id=$1`, mustUUID(c.id), name, sh)
+	_, err := h.queries.UpdateCircuit(r.Context(), generated.UpdateCircuitParams{
+		ID: mustUUID(c.id), Name: name, IsShared: sh,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 404, "circuit not found")
+		return
+	}
 	if err != nil {
 		writeError(w, 500, "database error")
 		return
@@ -344,21 +371,48 @@ func (h *Handler) writeCircuitRoutes(w http.ResponseWriter, r *http.Request, rep
 	defer func() { _ = tx.Rollback(r.Context()) }()
 	circuitID := mustUUID(c.id)
 	var lockedID pgtype.UUID
-	if e = tx.QueryRow(r.Context(), `SELECT id FROM circuits WHERE id=$1 FOR UPDATE`, circuitID).Scan(&lockedID); e != nil {
-		writeError(w, 500, "database error")
+	e = tx.QueryRow(r.Context(), `SELECT id FROM circuits WHERE id=$1 FOR UPDATE`, circuitID).Scan(&lockedID)
+	if errors.Is(e, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "circuit not found")
+		return
+	}
+	if e != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 	txQueries := h.queries.WithTx(tx)
+	var hidden []hiddenCircuitRoute
 	if replace {
-		if e = txQueries.DeleteCircuitRoutes(r.Context(), circuitID); e != nil {
+		existing, queryErr := txQueries.ListCircuitRoutesForReplacement(r.Context(), generated.ListCircuitRoutesForReplacementParams{
+			CircuitID: circuitID, ViewerID: shared.PgUUID(user.GetUserID(r.Context())),
+		})
+		if queryErr != nil {
 			writeError(w, 500, "database error")
 			return
 		}
+		requestedSet := make(map[uuid.UUID]struct{}, len(ids))
+		for _, id := range ids {
+			requestedSet[id] = struct{}{}
+		}
+		visibleBefore := 0
+		for _, route := range existing {
+			if route.Visible.Bool {
+				visibleBefore++
+				continue
+			}
+			if _, included := requestedSet[uuid.UUID(route.RouteID.Bytes)]; !included {
+				hidden = append(hidden, hiddenCircuitRoute{id: route.RouteID, visibleBefore: visibleBefore})
+			}
+		}
+		if len(ids)+len(hidden) > 100 {
+			writeError(w, 400, "a circuit can contain at most 100 routes, including hidden routes")
+			return
+		}
 	}
-	for position, id := range ids {
-		var wallID pgtype.UUID
+	for _, id := range ids {
+		var routeWall pgtype.UUID
 		var status, creator string
-		e = tx.QueryRow(r.Context(), `SELECT wall_id,status,created_by::text FROM routes WHERE id=$1`, shared.PgUUID(id)).Scan(&wallID, &status, &creator)
+		e = tx.QueryRow(r.Context(), `SELECT wall_id,status,created_by::text FROM routes WHERE id=$1`, shared.PgUUID(id)).Scan(&routeWall, &status, &creator)
 		if errors.Is(e, pgx.ErrNoRows) {
 			writeError(w, 400, "route is unavailable")
 			return
@@ -367,30 +421,58 @@ func (h *Handler) writeCircuitRoutes(w http.ResponseWriter, r *http.Request, rep
 			writeError(w, 500, "database error")
 			return
 		}
-		if uuidString(wallID) != c.wall || status != "published" && creator != user.GetUserID(r.Context()).String() {
+		if uuidString(routeWall) != c.wall || status != "published" && creator != user.GetUserID(r.Context()).String() {
 			writeError(w, 400, "route is unavailable")
 			return
 		}
-		if replace {
-			e = txQueries.InsertCircuitRoute(r.Context(), generated.InsertCircuitRouteParams{
-				CircuitID: circuitID, RouteID: shared.PgUUID(id), Position: int32(position),
-			})
-		} else {
-			var exists bool
-			e = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM circuit_routes WHERE circuit_id=$1 AND route_id=$2)`, circuitID, shared.PgUUID(id)).Scan(&exists)
-			if e == nil && !exists {
-				var count int
-				e = tx.QueryRow(r.Context(), `SELECT count(*) FROM circuit_routes WHERE circuit_id=$1`, circuitID).Scan(&count)
-				if e == nil && count >= 100 {
-					writeError(w, 400, "a circuit can contain at most 100 routes")
-					return
-				}
+	}
+	if replace {
+		offset := int32(len(ids) + len(hidden) + 1)
+		if e = txQueries.ShiftCircuitRoutePositions(r.Context(), generated.ShiftCircuitRoutePositionsParams{
+			CircuitID: circuitID, PositionShift: offset,
+		}); e != nil {
+			writeError(w, 500, "database error")
+			return
+		}
+		if e = txQueries.DeleteVisibleCircuitRoutes(r.Context(), generated.DeleteVisibleCircuitRoutesParams{
+			CircuitID: circuitID, ViewerID: shared.PgUUID(user.GetUserID(r.Context())),
+		}); e != nil {
+			writeError(w, 500, "database error")
+			return
+		}
+		ordered := make([]circuitRouteEntry, 0, len(ids)+len(hidden))
+		hiddenIndex := 0
+		for visibleIndex := 0; visibleIndex <= len(ids); visibleIndex++ {
+			for hiddenIndex < len(hidden) && (hidden[hiddenIndex].visibleBefore <= visibleIndex || visibleIndex == len(ids)) {
+				ordered = append(ordered, circuitRouteEntry{id: hidden[hiddenIndex].id, hidden: true})
+				hiddenIndex++
 			}
-			if e == nil {
-				e = txQueries.AppendCircuitRoute(r.Context(), generated.AppendCircuitRouteParams{
-					CircuitID: circuitID, RouteID: shared.PgUUID(id),
+			if visibleIndex < len(ids) {
+				ordered = append(ordered, circuitRouteEntry{id: shared.PgUUID(ids[visibleIndex])})
+			}
+		}
+		for position, entry := range ordered {
+			if entry.hidden {
+				e = txQueries.UpdateCircuitRoutePosition(r.Context(), generated.UpdateCircuitRoutePositionParams{
+					CircuitID: circuitID, RouteID: entry.id, Position: int32(position),
+				})
+			} else {
+				e = txQueries.InsertCircuitRoute(r.Context(), generated.InsertCircuitRouteParams{
+					CircuitID: circuitID, RouteID: entry.id, Position: int32(position),
 				})
 			}
+			if e != nil {
+				writeError(w, 500, "database error")
+				return
+			}
+		}
+	} else {
+		_, e = txQueries.AppendCircuitRoute(r.Context(), generated.AppendCircuitRouteParams{
+			CircuitID: circuitID, RouteID: shared.PgUUID(ids[0]),
+		})
+		if errors.Is(e, pgx.ErrNoRows) {
+			writeError(w, 400, "a circuit can contain at most 100 routes")
+			return
 		}
 		if e != nil {
 			writeError(w, 500, "database error")

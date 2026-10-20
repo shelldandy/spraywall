@@ -11,12 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const appendCircuitRoute = `-- name: AppendCircuitRoute :exec
+const appendCircuitRoute = `-- name: AppendCircuitRoute :one
 INSERT INTO circuit_routes (circuit_id, route_id, position)
 SELECT $1, $2, COALESCE(max(position) + 1, 0)
 FROM circuit_routes
 WHERE circuit_id = $1
-ON CONFLICT (circuit_id, route_id) DO NOTHING
+HAVING count(*) < 100 OR EXISTS (
+    SELECT 1 FROM circuit_routes WHERE circuit_id = $1 AND route_id = $2
+)
+ON CONFLICT (circuit_id, route_id) DO UPDATE SET position = circuit_routes.position
+RETURNING route_id
 `
 
 type AppendCircuitRouteParams struct {
@@ -24,9 +28,11 @@ type AppendCircuitRouteParams struct {
 	RouteID   pgtype.UUID `json:"route_id"`
 }
 
-func (q *Queries) AppendCircuitRoute(ctx context.Context, arg AppendCircuitRouteParams) error {
-	_, err := q.db.Exec(ctx, appendCircuitRoute, arg.CircuitID, arg.RouteID)
-	return err
+func (q *Queries) AppendCircuitRoute(ctx context.Context, arg AppendCircuitRouteParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, appendCircuitRoute, arg.CircuitID, arg.RouteID)
+	var route_id pgtype.UUID
+	err := row.Scan(&route_id)
+	return route_id, err
 }
 
 const createCircuit = `-- name: CreateCircuit :one
@@ -69,12 +75,21 @@ func (q *Queries) DeleteCircuit(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
-const deleteCircuitRoutes = `-- name: DeleteCircuitRoutes :exec
-DELETE FROM circuit_routes WHERE circuit_id=$1
+const deleteVisibleCircuitRoutes = `-- name: DeleteVisibleCircuitRoutes :exec
+DELETE FROM circuit_routes cr
+USING routes r
+WHERE cr.circuit_id = $1
+  AND r.id = cr.route_id
+  AND (r.status = 'published' OR r.created_by = $2)
 `
 
-func (q *Queries) DeleteCircuitRoutes(ctx context.Context, circuitID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteCircuitRoutes, circuitID)
+type DeleteVisibleCircuitRoutesParams struct {
+	CircuitID pgtype.UUID `json:"circuit_id"`
+	ViewerID  pgtype.UUID `json:"viewer_id"`
+}
+
+func (q *Queries) DeleteVisibleCircuitRoutes(ctx context.Context, arg DeleteVisibleCircuitRoutesParams) error {
+	_, err := q.db.Exec(ctx, deleteVisibleCircuitRoutes, arg.CircuitID, arg.ViewerID)
 	return err
 }
 
@@ -122,6 +137,44 @@ type InsertCircuitRouteParams struct {
 func (q *Queries) InsertCircuitRoute(ctx context.Context, arg InsertCircuitRouteParams) error {
 	_, err := q.db.Exec(ctx, insertCircuitRoute, arg.CircuitID, arg.RouteID, arg.Position)
 	return err
+}
+
+const listCircuitRoutesForReplacement = `-- name: ListCircuitRoutesForReplacement :many
+SELECT cr.route_id, (r.status = 'published' OR r.created_by = $1) AS visible
+FROM circuit_routes cr
+JOIN routes r ON r.id = cr.route_id
+WHERE cr.circuit_id = $2
+ORDER BY cr.position, cr.route_id
+`
+
+type ListCircuitRoutesForReplacementParams struct {
+	ViewerID  pgtype.UUID `json:"viewer_id"`
+	CircuitID pgtype.UUID `json:"circuit_id"`
+}
+
+type ListCircuitRoutesForReplacementRow struct {
+	RouteID pgtype.UUID `json:"route_id"`
+	Visible pgtype.Bool `json:"visible"`
+}
+
+func (q *Queries) ListCircuitRoutesForReplacement(ctx context.Context, arg ListCircuitRoutesForReplacementParams) ([]ListCircuitRoutesForReplacementRow, error) {
+	rows, err := q.db.Query(ctx, listCircuitRoutesForReplacement, arg.ViewerID, arg.CircuitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCircuitRoutesForReplacementRow
+	for rows.Next() {
+		var i ListCircuitRoutesForReplacementRow
+		if err := rows.Scan(&i.RouteID, &i.Visible); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listVisibleCircuitsByWall = `-- name: ListVisibleCircuitsByWall :many
@@ -198,6 +251,21 @@ func (q *Queries) RemoveCircuitRoute(ctx context.Context, arg RemoveCircuitRoute
 	return err
 }
 
+const shiftCircuitRoutePositions = `-- name: ShiftCircuitRoutePositions :exec
+UPDATE circuit_routes SET position = position + $1::integer
+WHERE circuit_id = $2
+`
+
+type ShiftCircuitRoutePositionsParams struct {
+	PositionShift int32       `json:"position_shift"`
+	CircuitID     pgtype.UUID `json:"circuit_id"`
+}
+
+func (q *Queries) ShiftCircuitRoutePositions(ctx context.Context, arg ShiftCircuitRoutePositionsParams) error {
+	_, err := q.db.Exec(ctx, shiftCircuitRoutePositions, arg.PositionShift, arg.CircuitID)
+	return err
+}
+
 const updateCircuit = `-- name: UpdateCircuit :one
 UPDATE circuits SET name = $2, is_shared = $3, updated_at = now() WHERE id = $1 RETURNING id, wall_id, created_by, name, is_shared, created_at, updated_at
 `
@@ -221,4 +289,19 @@ func (q *Queries) UpdateCircuit(ctx context.Context, arg UpdateCircuitParams) (C
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const updateCircuitRoutePosition = `-- name: UpdateCircuitRoutePosition :exec
+UPDATE circuit_routes SET position = $3 WHERE circuit_id = $1 AND route_id = $2
+`
+
+type UpdateCircuitRoutePositionParams struct {
+	CircuitID pgtype.UUID `json:"circuit_id"`
+	RouteID   pgtype.UUID `json:"route_id"`
+	Position  int32       `json:"position"`
+}
+
+func (q *Queries) UpdateCircuitRoutePosition(ctx context.Context, arg UpdateCircuitRoutePositionParams) error {
+	_, err := q.db.Exec(ctx, updateCircuitRoutePosition, arg.CircuitID, arg.RouteID, arg.Position)
+	return err
 }

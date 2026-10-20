@@ -22,15 +22,37 @@ UPDATE circuits SET name = $2, is_shared = $3, updated_at = now() WHERE id = $1 
 -- name: DeleteCircuit :exec
 DELETE FROM circuits WHERE id = $1;
 
--- name: AppendCircuitRoute :exec
+-- name: AppendCircuitRoute :one
 INSERT INTO circuit_routes (circuit_id, route_id, position)
 SELECT $1, $2, COALESCE(max(position) + 1, 0)
 FROM circuit_routes
 WHERE circuit_id = $1
-ON CONFLICT (circuit_id, route_id) DO NOTHING;
+HAVING count(*) < 100 OR EXISTS (
+    SELECT 1 FROM circuit_routes WHERE circuit_id = $1 AND route_id = $2
+)
+ON CONFLICT (circuit_id, route_id) DO UPDATE SET position = circuit_routes.position
+RETURNING route_id;
 
--- name: DeleteCircuitRoutes :exec
-DELETE FROM circuit_routes WHERE circuit_id=$1;
+-- name: ListCircuitRoutesForReplacement :many
+SELECT cr.route_id, (r.status = 'published' OR r.created_by = sqlc.arg(viewer_id)) AS visible
+FROM circuit_routes cr
+JOIN routes r ON r.id = cr.route_id
+WHERE cr.circuit_id = sqlc.arg(circuit_id)
+ORDER BY cr.position, cr.route_id;
+
+-- name: ShiftCircuitRoutePositions :exec
+UPDATE circuit_routes SET position = position + sqlc.arg(position_shift)::integer
+WHERE circuit_id = sqlc.arg(circuit_id);
+
+-- name: DeleteVisibleCircuitRoutes :exec
+DELETE FROM circuit_routes cr
+USING routes r
+WHERE cr.circuit_id = sqlc.arg(circuit_id)
+  AND r.id = cr.route_id
+  AND (r.status = 'published' OR r.created_by = sqlc.arg(viewer_id));
+
+-- name: UpdateCircuitRoutePosition :exec
+UPDATE circuit_routes SET position = $3 WHERE circuit_id = $1 AND route_id = $2;
 
 -- name: InsertCircuitRoute :exec
 INSERT INTO circuit_routes(circuit_id,route_id,position) VALUES($1,$2,$3);
