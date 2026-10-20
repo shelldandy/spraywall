@@ -585,6 +585,7 @@ paths:
         "200": {description: Updated circuit}
         "400": {$ref: "#/components/responses/BadRequest"}
         "403": {description: Not owner}
+  /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}/routes/{routeId}:
     delete:
       operationId: removeCircuitRoute
       summary: Remove a route from the circuit
@@ -593,14 +594,7 @@ paths:
         - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [route_id]
-              properties: {route_id: {type: string, format: uuid}}
+        - {name: routeId, in: path, required: true, schema: {type: string, format: uuid}}
       responses:
         "204": {description: Route removed}
         "403": {description: Not owner}

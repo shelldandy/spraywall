@@ -403,14 +403,7 @@ func (h *Handler) DeleteCircuitRoute(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 403, "only the circuit owner can edit it")
 		return
 	}
-	var body struct {
-		ID string `json:"route_id"`
-	}
-	if json.NewDecoder(r.Body).Decode(&body) != nil {
-		writeError(w, 400, "invalid request body")
-		return
-	}
-	id, e := uuid.Parse(body.ID)
+	id, e := uuid.Parse(chi.URLParam(r, "routeId"))
 	if e != nil {
 		writeError(w, 400, "invalid route id")
 		return

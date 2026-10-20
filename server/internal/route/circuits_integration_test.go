@@ -10,8 +10,10 @@ import (
 	"testing"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
+	"github.com/bowlinedandy/spraywall/server/internal/shared"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type circuitHTTP struct {
@@ -93,7 +95,7 @@ func TestCircuitReplaceAppendAndDeleteSemantics(t *testing.T) {
 	if len(got.RouteIDs) != 2 || got.RouteIDs[0] != second.ID || got.RouteIDs[1] != first.ID {
 		t.Fatalf("route order: %#v", got.RouteIDs)
 	}
-	if r = circuitRequest(e, "DELETE", c.ID+"/routes", e.token, fmt.Sprintf(`{"route_id":%q}`, first.ID)); r.Code != 204 {
+	if r = circuitRequest(e, "DELETE", c.ID+"/routes/"+first.ID, e.token, ""); r.Code != 204 {
 		t.Fatalf("delete circuit route status %d", r.Code)
 	}
 	if _, err := e.pool.Exec(context.Background(), `DELETE FROM routes WHERE id=$1`, uuid.MustParse(second.ID)); err != nil {
@@ -121,6 +123,51 @@ func TestCircuitWallMismatchIsNotFound(t *testing.T) {
 	e.router.ServeHTTP(rec, req)
 	if rec.Code != 404 {
 		t.Fatalf("wall mismatch status %d", rec.Code)
+	}
+}
+
+func TestCircuitRejectsRouteFromAnotherWallAtomically(t *testing.T) {
+	e := newRouteTestEnv(t)
+	published := e.create(t, "", "published")
+	gym, err := e.q.GetGymBySlug(context.Background(), "route-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wall, err := e.q.CreateWall(context.Background(), generated.CreateWallParams{GymID: gym.ID, Name: "Other circuit wall"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := e.q.CreateWallImage(context.Background(), generated.CreateWallImageParams{WallID: wall.ID, StorageKey: "other-wall-image"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	holds := make([]pgtype.UUID, 0, 2)
+	for i := 0; i < 2; i++ {
+		hold, createErr := e.q.CreateHold(context.Background(), generated.CreateHoldParams{WallImageID: image.ID, Bbox: []byte(`{}`), Confidence: 1})
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		holds = append(holds, hold.ID)
+	}
+	foreign, err := e.q.CreateRoute(context.Background(), generated.CreateRouteParams{WallID: wall.ID, WallImageID: image.ID, CreatedBy: shared.PgUUID(e.creatorID), Name: "Foreign wall route", HoldIds: holds, HoldRoles: []byte(`{}`), Status: "published", Tags: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := circuitCreate(t, e, e.token, "Atomic replace", true, []string{published.ID})
+	rec := circuitRequest(e, http.MethodPut, c.ID+"/routes", e.token, fmt.Sprintf(`{"route_ids":[%q,%q]}`, published.ID, uuid.UUID(foreign.ID.Bytes)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("cross-wall replace status %d: %s", rec.Code, rec.Body)
+	}
+	got := circuitRequest(e, http.MethodGet, c.ID, e.token, "")
+	var after circuitHTTP
+	if got.Code != http.StatusOK {
+		t.Fatalf("circuit get: %d", got.Code)
+	}
+	if err := json.Unmarshal(got.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if len(after.RouteIDs) != 1 || after.RouteIDs[0] != published.ID {
+		t.Fatalf("failed replacement changed prior routes: %#v", after.RouteIDs)
 	}
 }
 
