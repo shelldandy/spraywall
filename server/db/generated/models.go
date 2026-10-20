@@ -54,6 +54,22 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type Circuit struct {
+	ID        pgtype.UUID        `json:"id"`
+	WallID    pgtype.UUID        `json:"wall_id"`
+	CreatedBy pgtype.UUID        `json:"created_by"`
+	Name      string             `json:"name"`
+	IsShared  bool               `json:"is_shared"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CircuitRoute struct {
+	CircuitID pgtype.UUID `json:"circuit_id"`
+	RouteID   pgtype.UUID `json:"route_id"`
+	Position  int32       `json:"position"`
+}
+
 type ClimbLog struct {
 	ID        pgtype.UUID        `json:"id"`
 	RouteID   pgtype.UUID        `json:"route_id"`

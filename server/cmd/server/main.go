@@ -184,6 +184,18 @@ func main() {
 					r.Post("/images", wallHandler.UploadImage)
 					r.Get("/holds", wallHandler.GetHolds)
 					r.Post("/holds", wallHandler.CreateHold)
+					r.Route("/circuits", func(r chi.Router) {
+						r.Get("/", routeHandler.ListCircuits)
+						r.Post("/", routeHandler.CreateCircuit)
+						r.Route("/{circuitId}", func(r chi.Router) {
+							r.Get("/", routeHandler.GetCircuit)
+							r.Patch("/", routeHandler.PatchCircuit)
+							r.Delete("/", routeHandler.DeleteCircuit)
+							r.Put("/routes", routeHandler.ReplaceCircuitRoutes)
+							r.Post("/routes", routeHandler.AppendCircuitRoute)
+							r.Delete("/routes/{routeId}", routeHandler.DeleteCircuitRoute)
+						})
+					})
 					r.Delete("/holds/{holdId}", wallHandler.DeleteHold)
 					r.Route("/routes", func(r chi.Router) {
 						r.Post("/", routeHandler.CreateRoute)
