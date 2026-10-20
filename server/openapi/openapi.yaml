@@ -457,6 +457,149 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /gyms/{gymSlug}/walls/{wallId}/circuits:
+    get:
+      operationId: listCircuits
+      summary: List visible circuits on a wall
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+      responses:
+        "200":
+          description: Visible circuits
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Circuit"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: createCircuit
+      summary: Create a circuit
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, minLength: 1, maxLength: 60}
+                is_shared: {type: boolean, default: false}
+                route_ids: {type: array, maxItems: 100, uniqueItems: true, items: {type: string, format: uuid}}
+      responses:
+        "201": {description: Circuit created}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}:
+    get:
+      operationId: getCircuit
+      summary: Get a visible circuit
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: Circuit, content: {application/json: {schema: {$ref: "#/components/schemas/Circuit"}}}}
+        "404": {$ref: "#/components/responses/NotFound"}
+    patch:
+      operationId: updateCircuit
+      summary: Update an owned circuit
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string, minLength: 1, maxLength: 60}
+                is_shared: {type: boolean}
+      responses:
+        "200": {description: Updated circuit}
+        "403": {description: Not owner}
+        "404": {$ref: "#/components/responses/NotFound"}
+    delete:
+      operationId: deleteCircuit
+      summary: Delete an owned circuit
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "204": {description: Circuit deleted}
+        "403": {description: Not owner}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}/routes:
+    put:
+      operationId: replaceCircuitRoutes
+      summary: Atomically replace ordered circuit routes
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [route_ids]
+              properties:
+                route_ids: {type: array, maxItems: 100, uniqueItems: true, items: {type: string, format: uuid}}
+      responses:
+        "200": {description: Updated circuit}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "403": {description: Not owner}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: appendCircuitRoute
+      summary: Append a route idempotently
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [route_id]
+              properties: {route_id: {type: string, format: uuid}}
+      responses:
+        "200": {description: Updated circuit}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "403": {description: Not owner}
+  /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}/routes/{routeId}:
+    delete:
+      operationId: removeCircuitRoute
+      summary: Remove a route from the circuit
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: routeId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "204": {description: Route removed}
+        "403": {description: Not owner}
+        "404": {$ref: "#/components/responses/NotFound"}
+
   /gyms/{gymSlug}:
     get:
       operationId: getGym
@@ -921,6 +1064,20 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    Circuit:
+      type: object
+      required: [id, wall_id, created_by, creator_name, name, is_shared, is_owner, route_ids, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        wall_id: {type: string, format: uuid}
+        created_by: {type: string, format: uuid}
+        creator_name: {type: string}
+        name: {type: string, minLength: 1, maxLength: 60}
+        is_shared: {type: boolean}
+        is_owner: {type: boolean}
+        route_ids: {type: array, items: {type: string, format: uuid}}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
     Error:
       type: object
       properties:
