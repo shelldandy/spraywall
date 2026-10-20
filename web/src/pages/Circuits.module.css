@@ -2,7 +2,9 @@
 .body { max-width: 760px; margin: 0 auto; padding-bottom: 32px; }
 .create, .card { padding: 16px; border-bottom: 1px solid var(--border); }
 .create label { display: block; margin-bottom: 8px; font-weight: 700; }
-.create > div, .rename, .actions, .cardHeader { display: flex; align-items: center; gap: 8px; }
+.create > div, .rename, .actions, .cardHeader, .quickNames { display: flex; align-items: center; gap: 8px; }
+.quickNames { flex-wrap: wrap; margin-top: 8px; }
+.quickNames span, .saveHint { color: var(--text-muted); font-size: 13px; }
 .create input, .rename input { flex: 1; min-width: 0; }
 .cardHeader { justify-content: space-between; align-items: flex-start; }
 .cardHeader h2 { margin: 0; font-size: 19px; }

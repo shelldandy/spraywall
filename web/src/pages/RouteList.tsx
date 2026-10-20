@@ -159,8 +159,7 @@ export default function RouteList({
         <button ref={starsTriggerRef} type="button" className={`${styles.gradeToggle} ${minStars !== null ? styles.gradeToggleActive : ""}`} aria-expanded={starsPickerOpen} onClick={() => setStarsPickerOpen(true)}>
           {minStars !== null && <span aria-hidden="true">✓</span>}Community: {starsLabel}
         </button>
-        <button ref={circuitTriggerRef} type="button" className={`${styles.gradeToggle} ${activeCircuit ? styles.gradeToggleActive : ""}`} onClick={() => setCircuitPickerOpen(true)}>{activeCircuit?.name ?? "Circuit"}</button>
-        <Link className={styles.gradeToggle} to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
+        <button ref={circuitTriggerRef} type="button" className={`${styles.gradeToggle} ${activeCircuit ? styles.gradeToggleActive : ""}`} onClick={() => setCircuitPickerOpen(true)}>Circuit: {activeCircuit?.name ?? "Any"}</button>
         {hasActiveFilters && <button type="button" className={`${styles.gradeToggle} ${styles.clearAllToggle}`} onClick={clearFilters}>Clear all</button>}
       </div>
       <FilterDrawer open={gradePickerOpen} title="Grade" onClose={() => setGradePickerOpen(false)} onClear={() => updateFilters({ minGrade: null, maxGrade: null })} matchingCount={matchingRoutes.length} triggerRef={gradeTriggerRef}>
@@ -185,10 +184,12 @@ export default function RouteList({
         </div>
       </FilterDrawer>
       <FilterDrawer open={circuitPickerOpen} title="Circuit" onClose={() => setCircuitPickerOpen(false)} onClear={() => updateCircuit(null)} matchingCount={matchingRoutes.length} triggerRef={circuitTriggerRef}>
-        <div className={styles.gradeOptions} role="group" aria-label="Filter by circuit">
-          <button type="button" className={`${styles.gradeOption} ${!activeCircuit ? styles.gradeOptionAnySelected : ""}`} onClick={() => updateCircuit(null)}>All routes</button>
-          {circuits.map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} onClick={() => updateCircuit(circuit.id)}>{circuit.name}</button>)}
+        <div className={styles.circuitChoices} role="group" aria-label="Filter by circuit">
+          <button type="button" className={`${styles.gradeOption} ${!activeCircuit ? styles.gradeOptionAnySelected : ""}`} onClick={() => updateCircuit(null)}>Any</button>
+          {circuits.some((circuit) => circuit.is_owner) && <><h3 className={styles.circuitGroup}>Yours</h3>{circuits.filter((circuit) => circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} onClick={() => updateCircuit(circuit.id)}>{circuit.name}</button>)}</>}
+          {circuits.some((circuit) => !circuit.is_owner) && <><h3 className={styles.circuitGroup}>Shared</h3>{circuits.filter((circuit) => !circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} onClick={() => updateCircuit(circuit.id)}>{circuit.name}</button>)}</>}
         </div>
+        <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
       </FilterDrawer>
       <FilterDrawer open={starsPickerOpen} title="Community ratings" onClose={() => setStarsPickerOpen(false)} onClear={() => updateFilters({ minStars: null })} matchingCount={matchingRoutes.length} triggerRef={starsTriggerRef}>
         <p className={styles.gradeHelper}>Minimum unrounded community average. Unrated climbs appear under Any.</p>
@@ -218,7 +219,7 @@ export default function RouteList({
                 >
                   <RouteThumbnail route={route} holds={holds} imageUrl={imageUrl} />
                   <div className={styles.routeInfo}>
-                    <div className={styles.routeName}>{activeCircuit ? `${matchingRoutes.indexOf(route) + 1}. ` : ""}{route.name}</div>
+                    <div className={styles.routeName}>{activeCircuit ? `${activeCircuit.route_ids.indexOf(route.id) + 1}. ` : ""}{route.name}</div>
                     <div className={styles.routeMeta}>
                       {route.send_count} send{route.send_count !== 1 ? "s" : ""}
                       <span className={styles.metaSeparator}> · </span>

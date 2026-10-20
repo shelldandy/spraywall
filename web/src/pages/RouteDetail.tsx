@@ -31,7 +31,7 @@ function QuickCircuit({ name, circuits, gymSlug, wallId, routeId, createCircuit 
       if (!existing.route_ids.includes(routeId)) toggle.mutate({ route_id: routeId, included: true });
     } else await createCircuit({ name, is_shared: false, route_ids: [routeId] });
   };
-  return <button type="button" className="btn btn-ghost" disabled={toggle.isPending} onClick={() => void create()}>{existing?.route_ids.includes(routeId) ? `✓ ${name}` : `+ ${name}`}</button>;
+  return <button type="button" className="btn btn-ghost" disabled={toggle.isPending} onClick={() => { void create().catch(() => undefined); }}>{existing?.route_ids.includes(routeId) ? `✓ ${name}` : `+ ${name}`}</button>;
 }
 
 export default function RouteDetailPage() {
@@ -53,6 +53,7 @@ export default function RouteDetailPage() {
   const [logDrawerOpen, setLogDrawerOpen] = useState(false);
   const [ratingDrawerOpen, setRatingDrawerOpen] = useState(false);
   const [circuitDrawerOpen, setCircuitDrawerOpen] = useState(false);
+  const [newCircuitName, setNewCircuitName] = useState("");
   const logTriggerRef = useRef<HTMLButtonElement>(null);
   const ratingTriggerRef = useRef<HTMLButtonElement>(null);
   const circuitTriggerRef = useRef<HTMLButtonElement>(null);
@@ -221,8 +222,8 @@ export default function RouteDetailPage() {
                 </div>
               </div>
               {selectedCircuit && currentCircuitIndex >= 0 && <nav aria-label={`${selectedCircuit.name} circuit navigation`} className={styles.metaActions}>
-                <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === 0} onClick={() => moveCircuit(-1)}>‹ Previous</button>
-                <span>{currentCircuitIndex + 1} / {circuitRouteIds.length}</span>
+                <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === 0} onClick={() => moveCircuit(-1)}>‹ Prev</button>
+                <span>· {currentCircuitIndex + 1} of {circuitRouteIds.length} ·</span>
                 <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === circuitRouteIds.length - 1} onClick={() => moveCircuit(1)}>Next ›</button>
               </nav>}
               <RouteTags tags={routeData?.tags} />
@@ -254,6 +255,11 @@ export default function RouteDetailPage() {
               <FilterDrawer open={circuitDrawerOpen} title="Circuits" onClose={() => setCircuitDrawerOpen(false)} triggerRef={circuitTriggerRef} showFooter={false}>
                 <section className={styles.drawerSection} aria-label="Add route to a circuit">
                   {circuits.filter((circuit) => circuit.is_owner).map((circuit) => <CircuitToggle key={circuit.id} circuit={circuit} gymSlug={gymSlug} wallId={wallId} routeId={routeId} />)}
+                  <form onSubmit={(event) => { event.preventDefault(); const clean = newCircuitName.trim(); if (!clean) return; void createCircuit.mutateAsync({ name: clean, is_shared: false, route_ids: [routeId] }).then(() => setNewCircuitName("")).catch(() => undefined); }}>
+                    <label htmlFor="new-circuit-name">New circuit</label>
+                    <input id="new-circuit-name" value={newCircuitName} onChange={(event) => setNewCircuitName(event.target.value)} placeholder="Circuit name" maxLength={80} />
+                    <button type="submit" className="btn btn-primary" disabled={!newCircuitName.trim() || createCircuit.isPending}>Create</button>
+                  </form>
                   <QuickCircuit name="Warmups" circuits={circuits} gymSlug={gymSlug} wallId={wallId} routeId={routeId} createCircuit={createCircuit.mutateAsync} />
                   <QuickCircuit name="Projects" circuits={circuits} gymSlug={gymSlug} wallId={wallId} routeId={routeId} createCircuit={createCircuit.mutateAsync} />
                   <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
