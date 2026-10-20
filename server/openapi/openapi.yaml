@@ -566,13 +566,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  routes:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Route"
-                required: [routes]
+                type: array
+                items:
+                  $ref: "#/components/schemas/Route"
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
@@ -656,6 +652,169 @@ paths:
           description: Only the route creator can edit
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/logs:
+    get:
+      operationId: listClimbLogs
+      summary: List the current user's history for a climb
+      description: Returns only the authenticated member's entries; notes are never shared with other members.
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
+      responses:
+        "200":
+          description: Entries ordered by climbing date and logging timestamp (empty array when none)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClimbLog"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createClimbLog
+      summary: Add a climb activity
+      description: New logs are unavailable for drafts and reset climbs. Flash must be first in chronological history.
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClimbLogRequest"
+      responses:
+        "201":
+          description: Activity logged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClimbLog"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Activity would precede a recorded Flash
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/logs/{logId}:
+    put:
+      operationId: updateClimbLog
+      summary: Correct an owned climb entry
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
+        - name: logId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClimbLogRequest"
+      responses:
+        "200":
+          description: Updated activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClimbLog"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          description: Entry is owned by another user
+        "409":
+          description: Updated chronology conflicts with Flash
+    delete:
+      operationId: deleteClimbLog
+      summary: Delete one owned climb entry
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
+        - name: logId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Entry deleted }
+        "403": { description: Entry is owned by another user }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/rating:
+    put:
+      operationId: setRouteRating
+      summary: Set or update the current user's community rating
+      description: One editable vote per user and published route; logging activity is not required.
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stars: { type: integer, minimum: 1, maximum: 5 }
+              required: [stars]
+      responses:
+        "200": { description: Rating saved }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      operationId: removeRouteRating
+      summary: Remove the current user's rating
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
+      responses:
+        "204": { description: Vote removed }
+
+  /users/me/logbook:
+    get:
+      operationId: getLogbook
+      summary: Get all of the current user's climb activity
+      description: Includes attempts, sends, flashes, notes, climbing dates, and wall/gym identifiers for detail navigation.
+      tags: [User]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User logbook, newest climbing date first within each wall
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LogbookEntry"
 
   /gyms/{gymSlug}/invites:
     post:
@@ -1015,7 +1174,56 @@ components:
         created_at:
           type: string
           format: date-time
-      required: [id, wall_id, name, hold_ids, tags]
+        send_count:
+          type: integer
+          description: Total Send and Flash events, including repeats.
+        has_sent:
+          type: boolean
+        progress:
+          type: string
+          enum: [not_tried, projects, sent]
+        has_flashed:
+          type: boolean
+        rating_average:
+          type: [number, "null"]
+        rating_count:
+          type: integer
+        my_rating:
+          type: [integer, "null"]
+      required: [id, wall_id, name, hold_ids, tags, send_count, has_sent, progress, has_flashed, rating_average, rating_count, my_rating]
+
+    ClimbLogRequest:
+      type: object
+      properties:
+        outcome: { type: string, enum: [attempt, send, flash] }
+        climbed_on: { type: string, format: date }
+        notes: { type: [string, "null"] }
+      required: [outcome, climbed_on]
+
+    ClimbLog:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        route_id: { type: string, format: uuid }
+        outcome: { type: string, enum: [attempt, send, flash] }
+        climbed_on: { type: string, format: date }
+        logged_at: { type: string, format: date-time }
+        notes: { type: [string, "null"] }
+      required: [id, route_id, outcome, climbed_on, logged_at, notes]
+
+    LogbookEntry:
+      allOf:
+        - $ref: "#/components/schemas/ClimbLog"
+        - type: object
+          properties:
+            user_id: { type: string, format: uuid }
+            sent_at: { type: string, format: date-time, deprecated: true }
+            route_name: { type: string }
+            route_grade: { type: [string, "null"] }
+            wall_id: { type: string, format: uuid }
+            wall_name: { type: string }
+            gym_id: { type: string, format: uuid }
+            gym_slug: { type: string }
 
     RouteStyleTag:
       type: string

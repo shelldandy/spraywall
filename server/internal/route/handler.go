@@ -3,13 +3,11 @@ package route
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
@@ -20,11 +18,20 @@ import (
 // Handler holds dependencies for route HTTP handlers.
 type Handler struct {
 	queries *generated.Queries
+	db      generated.DBTX
+	txPool  txBeginner
 }
 
-// NewHandler creates a new Handler.
-func NewHandler(queries *generated.Queries) *Handler {
-	return &Handler{queries: queries}
+// NewHandler creates a new Handler. The pool enables atomic climb-log writes.
+func NewHandler(queries *generated.Queries, databases ...generated.DBTX) *Handler {
+	h := &Handler{queries: queries}
+	if len(databases) > 0 {
+		h.db = databases[0]
+		if pool, ok := databases[0].(txBeginner); ok {
+			h.txPool = pool
+		}
+	}
+	return h
 }
 
 // ---------- helpers ----------
@@ -82,10 +89,15 @@ func parseRouteID(r *http.Request) (uuid.UUID, error) {
 
 type routeResponse struct {
 	generated.Route
-	HoldRoles json.RawMessage `json:"hold_roles"`
-	SendCount int             `json:"send_count"`
-	HasSent   bool            `json:"has_sent"`
-	IsLegacy  bool            `json:"is_legacy"`
+	HoldRoles     json.RawMessage `json:"hold_roles"`
+	SendCount     int             `json:"send_count"`
+	HasSent       bool            `json:"has_sent"`
+	IsLegacy      bool            `json:"is_legacy"`
+	Progress      string          `json:"progress"`
+	HasFlashed    bool            `json:"has_flashed"`
+	RatingAverage *float64        `json:"rating_average"`
+	RatingCount   int             `json:"rating_count"`
+	MyRating      *int            `json:"my_rating"`
 }
 
 // ---------- endpoints ----------
@@ -223,12 +235,14 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, routeResponse{
-		Route:     route,
-		HoldRoles: json.RawMessage(route.HoldRoles),
-		SendCount: 0,
-		HasSent:   false,
-	})
+	summaries, err := h.summarizeRoutes(r.Context(), []generated.Route{route}, shared.PgUUID(userID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	response := routeResponse{Route: route, HoldRoles: json.RawMessage(route.HoldRoles)}
+	applySummary(&response, summaries[route.ID])
+	writeJSON(w, http.StatusCreated, response)
 }
 
 // ListRoutes handles GET /gyms/{gymSlug}/walls/{wallId}/routes
@@ -276,32 +290,18 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := user.GetUserID(r.Context())
-	pgUserID := shared.PgUUID(userID)
-
+	summaries, err := h.summarizeRoutes(r.Context(), routes, shared.PgUUID(userID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
 	result := make([]routeResponse, 0, len(routes))
 	for _, rt := range routes {
-		count, err := h.queries.CountSendsByRoute(r.Context(), rt.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "database error")
-			return
-		}
-
-		_, sendErr := h.queries.GetSendByUser(r.Context(), generated.GetSendByUserParams{
-			RouteID: rt.ID,
-			UserID:  pgUserID,
-		})
-		hasSent := sendErr == nil
-
 		isLegacy := errors.Is(activeImgErr, pgx.ErrNoRows) || rt.WallImageID != activeImg.ID
-
 		rt.Tags = nonNilRouteTags(rt.Tags)
-		result = append(result, routeResponse{
-			Route:     rt,
-			HoldRoles: json.RawMessage(rt.HoldRoles),
-			SendCount: int(count),
-			HasSent:   hasSent,
-			IsLegacy:  isLegacy,
-		})
+		response := routeResponse{Route: rt, HoldRoles: json.RawMessage(rt.HoldRoles), IsLegacy: isLegacy}
+		applySummary(&response, summaries[rt.ID])
+		result = append(result, response)
 	}
 
 	writeJSON(w, http.StatusOK, result)
@@ -336,17 +336,12 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	count, err := h.queries.CountSendsByRoute(r.Context(), rt.ID)
+	userID := user.GetUserID(r.Context())
+	summaries, err := h.summarizeRoutes(r.Context(), []generated.Route{rt}, shared.PgUUID(userID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-
-	userID := user.GetUserID(r.Context())
-	_, sendErr := h.queries.GetSendByUser(r.Context(), generated.GetSendByUserParams{
-		RouteID: rt.ID,
-		UserID:  shared.PgUUID(userID),
-	})
 
 	// Determine legacy status.
 	activeImg, activeImgErr := h.queries.GetActiveWallImage(r.Context(), rt.WallID)
@@ -357,13 +352,9 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 	isLegacy := errors.Is(activeImgErr, pgx.ErrNoRows) || rt.WallImageID != activeImg.ID
 
 	rt.Tags = nonNilRouteTags(rt.Tags)
-	writeJSON(w, http.StatusOK, routeResponse{
-		Route:     rt,
-		HoldRoles: json.RawMessage(rt.HoldRoles),
-		SendCount: int(count),
-		HasSent:   sendErr == nil,
-		IsLegacy:  isLegacy,
-	})
+	response := routeResponse{Route: rt, HoldRoles: json.RawMessage(rt.HoldRoles), IsLegacy: isLegacy}
+	applySummary(&response, summaries[rt.ID])
+	writeJSON(w, http.StatusOK, response)
 }
 
 // UpdateRoute handles PUT /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}
@@ -482,10 +473,20 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated.Tags = nonNilRouteTags(updated.Tags)
-	writeJSON(w, http.StatusOK, routeResponse{
-		Route:     updated,
-		HoldRoles: json.RawMessage(updated.HoldRoles),
-	})
+	activeImage, imageErr := h.queries.GetActiveWallImage(r.Context(), updated.WallID)
+	if imageErr != nil && !errors.Is(imageErr, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	isLegacy := errors.Is(imageErr, pgx.ErrNoRows) || (imageErr == nil && updated.WallImageID != activeImage.ID)
+	summaries, summaryErr := h.summarizeRoutes(r.Context(), []generated.Route{updated}, shared.PgUUID(userID))
+	if summaryErr != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	response := routeResponse{Route: updated, HoldRoles: json.RawMessage(updated.HoldRoles), IsLegacy: isLegacy}
+	applySummary(&response, summaries[updated.ID])
+	writeJSON(w, http.StatusOK, response)
 }
 
 // DeleteRoute handles DELETE /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}
@@ -529,153 +530,6 @@ func (h *Handler) DeleteRoute(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.queries.DeleteRoute(r.Context(), pgRouteID); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not delete route")
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// LogSend handles POST /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/sends
-func (h *Handler) LogSend(w http.ResponseWriter, r *http.Request) {
-	gym, _, err := h.requireGymMember(w, r)
-	if err != nil {
-		return
-	}
-
-	routeUUID, err := parseRouteID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid route id")
-		return
-	}
-	pgRouteID := shared.PgUUID(routeUUID)
-
-	// Verify route exists.
-	rt, err := h.queries.GetRouteByID(r.Context(), pgRouteID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "route not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-
-	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
-	if err != nil || wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "route not found")
-		return
-	}
-
-	// Block sends on legacy routes.
-	activeImg, activeImgErr := h.queries.GetActiveWallImage(r.Context(), rt.WallID)
-	if activeImgErr != nil {
-		if errors.Is(activeImgErr, pgx.ErrNoRows) {
-			writeError(w, http.StatusBadRequest, "cannot log send on legacy route")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-	if rt.WallImageID != activeImg.ID {
-		writeError(w, http.StatusBadRequest, "cannot log send on legacy route")
-		return
-	}
-
-	// Block sends on draft routes.
-	if rt.Status == "draft" {
-		writeError(w, http.StatusBadRequest, "cannot log send on draft route")
-		return
-	}
-
-	var body struct {
-		Attempts *int32  `json:"attempts"`
-		Notes    *string `json:"notes"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	userID := user.GetUserID(r.Context())
-	pgUserID := shared.PgUUID(userID)
-
-	// Check if already sent.
-	_, err = h.queries.GetSendByUser(r.Context(), generated.GetSendByUserParams{
-		RouteID: pgRouteID,
-		UserID:  pgUserID,
-	})
-	if err == nil {
-		writeError(w, http.StatusConflict, "route already sent")
-		return
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusInternalServerError, "database error")
-		return
-	}
-
-	var attempts pgtype.Int4
-	if body.Attempts != nil {
-		attempts = pgtype.Int4{Int32: *body.Attempts, Valid: true}
-	}
-	var notes pgtype.Text
-	if body.Notes != nil {
-		notes = pgtype.Text{String: *body.Notes, Valid: true}
-	}
-
-	send, err := h.queries.CreateSend(r.Context(), generated.CreateSendParams{
-		RouteID:  pgRouteID,
-		UserID:   pgUserID,
-		Attempts: attempts,
-		Notes:    notes,
-	})
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			writeError(w, http.StatusConflict, "route already sent")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "could not log send")
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, send)
-}
-
-// RemoveSend handles DELETE /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/sends/me
-func (h *Handler) RemoveSend(w http.ResponseWriter, r *http.Request) {
-	gym, _, err := h.requireGymMember(w, r)
-	if err != nil {
-		return
-	}
-
-	routeUUID, err := parseRouteID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid route id")
-		return
-	}
-
-	rt, err := h.queries.GetRouteByID(r.Context(), shared.PgUUID(routeUUID))
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "route not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
-	if err != nil || wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "route not found")
-		return
-	}
-
-	userID := user.GetUserID(r.Context())
-
-	if err := h.queries.DeleteSendByUser(r.Context(), generated.DeleteSendByUserParams{
-		RouteID: shared.PgUUID(routeUUID),
-		UserID:  shared.PgUUID(userID),
-	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not remove send")
 		return
 	}
 
@@ -731,17 +585,4 @@ func (h *Handler) PublishRoute(w http.ResponseWriter, r *http.Request) {
 }
 
 // Logbook handles GET /users/me/logbook
-func (h *Handler) Logbook(w http.ResponseWriter, r *http.Request) {
-	userID := user.GetUserID(r.Context())
-
-	sends, err := h.queries.ListSendsByUser(r.Context(), shared.PgUUID(userID))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not fetch logbook")
-		return
-	}
-	if sends == nil {
-		sends = []generated.ListSendsByUserRow{}
-	}
-
-	writeJSON(w, http.StatusOK, sends)
-}
+func (h *Handler) Logbook(w http.ResponseWriter, r *http.Request) { h.GetLegacyLogbook(w, r) }

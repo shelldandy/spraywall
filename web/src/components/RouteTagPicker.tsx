@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { parseRouteTags, routeTags, type RouteTagId } from "../lib/routeTags";
+import FilterDrawer from "./FilterDrawer";
 import styles from "./RouteTagPicker.module.css";
 
 interface RouteTagPickerProps {
@@ -24,16 +25,9 @@ export default function RouteTagPicker({
 }: RouteTagPickerProps) {
   const [visible, setVisible] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const selected = parseRouteTags(selectedTags);
   const selectedSet = new Set(selected);
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (visible && !dialog.open) dialog.showModal();
-    else if (!visible && dialog.open) dialog.close();
-  }, [visible]);
 
   const toggle = (tagId: RouteTagId) => {
     onChange(selectedSet.has(tagId)
@@ -70,6 +64,7 @@ export default function RouteTagPicker({
         ref={triggerRef}
         type="button"
         className={`${styles.trigger} ${compact ? styles.compactTrigger : ""} ${compact && selected.length > 0 ? styles.compactTriggerActive : ""}`}
+        aria-expanded={visible}
         onClick={() => setVisible(true)}
       >
         {compact && selected.length > 0 && <span aria-hidden="true">✓</span>}
@@ -77,37 +72,18 @@ export default function RouteTagPicker({
         {!compact && <span className={styles.count}>{selected.length ? selected.length : "None"}</span>}
       </button>
 
-      <dialog
-        ref={dialogRef}
-        className={styles.overlay}
-        aria-label={label}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) setVisible(false);
-        }}
-        onClose={() => {
-          setVisible(false);
-          triggerRef.current?.focus();
-        }}
+      <FilterDrawer
+        open={visible}
+        title={label}
+        onClose={() => setVisible(false)}
+        onClear={() => onChange([])}
+        matchingCount={matchingCount ?? selected.length}
+        countLabel={matchingCount !== undefined ? undefined : selected.length ? `${selected.length} selected` : "No tags selected"}
+        triggerRef={triggerRef}
       >
-        <section className={styles.sheet} aria-labelledby="route-tag-picker-title">
-          <header className={styles.header}>
-            <h2 id="route-tag-picker-title" className={styles.title}>{label}</h2>
-            <button type="button" autoFocus className="btn btn-ghost" onClick={() => setVisible(false)}>Done</button>
-          </header>
-          <div className={styles.content}>
-            {helperText && <p className={styles.helperText}>{helperText}</p>}
-            {chips}
-          </div>
-          <footer className={styles.footer}>
-            <button type="button" className="btn btn-ghost" onClick={() => onChange([])}>Clear</button>
-            <span className={styles.selectedCount} aria-live="polite">
-              {matchingCount !== undefined
-                ? `${matchingCount} matching route${matchingCount === 1 ? "" : "s"}`
-                : selected.length ? `${selected.length} selected` : "No tags selected"}
-            </span>
-          </footer>
-        </section>
-      </dialog>
+        {helperText && <p className={styles.helperText}>{helperText}</p>}
+        {chips}
+      </FilterDrawer>
     </>
   );
 }

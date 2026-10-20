@@ -54,6 +54,17 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type ClimbLog struct {
+	ID        pgtype.UUID        `json:"id"`
+	RouteID   pgtype.UUID        `json:"route_id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	LoggedAt  pgtype.Timestamptz `json:"logged_at"`
+	Attempts  pgtype.Int4        `json:"attempts"`
+	Notes     pgtype.Text        `json:"notes"`
+	Outcome   string             `json:"outcome"`
+	ClimbedOn pgtype.Date        `json:"climbed_on"`
+}
+
 type DetectionJob struct {
 	ID          pgtype.UUID        `json:"id"`
 	WallImageID pgtype.UUID        `json:"wall_image_id"`
@@ -121,13 +132,11 @@ type Route struct {
 	Tags        []string           `json:"tags"`
 }
 
-type Send struct {
-	ID       pgtype.UUID        `json:"id"`
-	RouteID  pgtype.UUID        `json:"route_id"`
-	UserID   pgtype.UUID        `json:"user_id"`
-	SentAt   pgtype.Timestamptz `json:"sent_at"`
-	Attempts pgtype.Int4        `json:"attempts"`
-	Notes    pgtype.Text        `json:"notes"`
+type RouteRating struct {
+	RouteID   pgtype.UUID        `json:"route_id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Stars     int32              `json:"stars"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 type User struct {

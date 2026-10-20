@@ -8,6 +8,7 @@ import type {
   Hold,
   Route,
   LogbookEntry,
+  ClimbLog,
   Me,
 } from "../api/types";
 import { useAuthStore } from "../store/auth";
@@ -76,8 +77,9 @@ export function useHolds(wallId: string, enabled = true, gymSlug?: string) {
 }
 
 export function useRoutes(wallId: string, gymSlug?: string) {
+  const userId = useAuthStore((s) => s.userId);
   return useQuery<Route[]>({
-    queryKey: ["routes", wallId],
+    queryKey: ["routes", wallId, userId],
     queryFn: async () => {
       if (!gymSlug) return [];
       const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes`);
@@ -88,14 +90,29 @@ export function useRoutes(wallId: string, gymSlug?: string) {
 }
 
 export function useRouteDetail(routeId: string, gymSlug?: string, wallId?: string) {
+  const userId = useAuthStore((s) => s.userId);
   return useQuery<Route | null>({
-    queryKey: ["route-detail", routeId],
+    queryKey: ["route-detail", routeId, userId],
     queryFn: async () => {
       if (!gymSlug || !wallId) return null;
       const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}`);
       if (!res.ok) throw new Error("Failed to fetch route");
       return res.json();
     },
+  });
+}
+
+export function useRouteLogs(routeId: string, gymSlug?: string, wallId?: string) {
+  const userId = useAuthStore((s) => s.userId);
+  return useQuery<ClimbLog[]>({
+    queryKey: ["climb-logs", routeId, userId],
+    queryFn: async () => {
+      if (!gymSlug || !wallId) return [];
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/logs`);
+      if (!res.ok) throw new Error("Failed to fetch climb history");
+      return res.json();
+    },
+    enabled: Boolean(routeId && gymSlug && wallId),
   });
 }
 

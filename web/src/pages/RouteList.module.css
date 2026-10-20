@@ -4,7 +4,7 @@
   align-items: center;
   gap: 8px;
   overflow-x: auto;
-  padding: 4px 12px 0;
+  padding: 4px 12px 12px;
   scrollbar-width: none;
 }
 
@@ -40,6 +40,8 @@
   background: var(--accent-soft);
   color: var(--text);
 }
+
+.clearAllToggle { color: var(--text-muted); }
 
 .gradeOverlay:not([open]) {
   display: none;
@@ -276,6 +278,9 @@
 .sentBadge {
   background: var(--success-bg);
 }
+
+.projectBadge { background: var(--warning); color: var(--bg); }
+.flashBadge { background: var(--accent); color: var(--bg); }
 
 .gradeColumn {
   flex: none;

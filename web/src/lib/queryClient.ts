@@ -35,7 +35,7 @@ export const persistOptions = {
   persister,
   maxAge: ONE_DAY,
   // Bump to discard caches written by an incompatible build.
-  buster: "v1",
+  buster: "v2",
 };
 
 /** Log out: drop tokens and every cached response, in memory and in IndexedDB. */

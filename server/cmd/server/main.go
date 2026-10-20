@@ -141,7 +141,7 @@ func main() {
 	})
 
 	// Handlers
-	routeHandler := route.NewHandler(queries)
+	routeHandler := route.NewHandler(queries, pool)
 	wallHandler := wall.NewHandler(queries, storageClient)
 	inviteHandler := invite.NewHandler(queries, pool)
 
@@ -193,8 +193,16 @@ func main() {
 							r.Put("/", routeHandler.UpdateRoute)
 							r.Delete("/", routeHandler.DeleteRoute)
 							r.Patch("/publish", routeHandler.PublishRoute)
-							r.Post("/sends", routeHandler.LogSend)
-							r.Delete("/sends/me", routeHandler.RemoveSend)
+							r.Route("/logs", func(r chi.Router) {
+								r.Get("/", routeHandler.GetLogs)
+								r.Post("/", routeHandler.CreateLog)
+								r.Put("/{logId}", routeHandler.UpdateLog)
+								r.Delete("/{logId}", routeHandler.DeleteLog)
+							})
+							r.Put("/rating", routeHandler.SetRating)
+							r.Delete("/rating", routeHandler.DeleteRating)
+							r.Post("/sends", routeHandler.LegacyLogSend)
+							r.Delete("/sends/me", routeHandler.LegacyRemoveSend)
 						})
 					})
 				})
