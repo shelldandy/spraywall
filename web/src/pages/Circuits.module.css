@@ -1,0 +1,17 @@
+.screen { min-height: 100%; }
+.body { max-width: 760px; margin: 0 auto; padding-bottom: 32px; }
+.create, .card { padding: 16px; border-bottom: 1px solid var(--border); }
+.create label { display: block; margin-bottom: 8px; font-weight: 700; }
+.create > div, .rename, .actions, .cardHeader { display: flex; align-items: center; gap: 8px; }
+.create input, .rename input { flex: 1; min-width: 0; }
+.cardHeader { justify-content: space-between; align-items: flex-start; }
+.cardHeader h2 { margin: 0; font-size: 19px; }
+.cardHeader p, .empty { color: var(--text-muted); }
+.rename { margin-top: 14px; }
+.share { display: flex; gap: 8px; align-items: center; margin: 14px 0; }
+.routes { padding-left: 24px; }
+.routes li { padding: 5px 0; }
+.card > .routes li { display: flex; align-items: center; gap: 8px; }
+.card > .routes li span { flex: 1; }
+.actions { flex-wrap: wrap; margin-top: 12px; }
+.actions select { flex: 1; min-width: 140px; }
