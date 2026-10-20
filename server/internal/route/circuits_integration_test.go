@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
+	"github.com/bowlinedandy/spraywall/server/internal/user"
 	"github.com/google/uuid"
 )
 
@@ -120,5 +121,66 @@ func TestCircuitWallMismatchIsNotFound(t *testing.T) {
 	e.router.ServeHTTP(rec, req)
 	if rec.Code != 404 {
 		t.Fatalf("wall mismatch status %d", rec.Code)
+	}
+}
+
+func TestCircuitDraftVisibilityAndDeletePermissions(t *testing.T) {
+	e := newRouteTestEnv(t)
+	body := fmt.Sprintf(`{"name":"Other draft","hold_ids":[%q,%q],"status":"draft"}`, e.holdIDs[0], e.holdIDs[1])
+	draftResponse := e.request(http.MethodPost, "", e.other, body)
+	if draftResponse.Code != http.StatusCreated {
+		t.Fatalf("draft create: %d %s", draftResponse.Code, draftResponse.Body)
+	}
+	var draft routeTestResponse
+	if err := json.Unmarshal(draftResponse.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if r := circuitRequest(e, http.MethodPost, "", e.token, fmt.Sprintf(`{"name":"Invalid","is_shared":true,"route_ids":[%q]}`, draft.ID)); r.Code != http.StatusBadRequest {
+		t.Fatalf("other draft accepted: %d", r.Code)
+	}
+	ownBody := fmt.Sprintf(`{"name":"Own draft","hold_ids":[%q,%q],"status":"draft"}`, e.holdIDs[0], e.holdIDs[1])
+	ownResponse := e.request(http.MethodPost, "", e.token, ownBody)
+	if ownResponse.Code != http.StatusCreated {
+		t.Fatalf("own draft: %d %s", ownResponse.Code, ownResponse.Body)
+	}
+	var own routeTestResponse
+	if err := json.Unmarshal(ownResponse.Body.Bytes(), &own); err != nil {
+		t.Fatal(err)
+	}
+	c := circuitCreate(t, e, e.token, "Shared with draft", true, []string{own.ID})
+	visible := circuitRequest(e, http.MethodGet, c.ID, e.other, "")
+	var other circuitHTTP
+	if visible.Code != 200 {
+		t.Fatalf("shared GET: %d", visible.Code)
+	}
+	if err := json.Unmarshal(visible.Body.Bytes(), &other); err != nil {
+		t.Fatal(err)
+	}
+	if len(other.RouteIDs) != 0 {
+		t.Fatalf("draft leaked: %#v", other.RouteIDs)
+	}
+	if r := circuitRequest(e, http.MethodDelete, c.ID, e.other, ""); r.Code != http.StatusForbidden {
+		t.Fatalf("other delete: %d", r.Code)
+	}
+	if r := circuitRequest(e, http.MethodDelete, c.ID, e.token, ""); r.Code != http.StatusNoContent {
+		t.Fatalf("owner delete: %d", r.Code)
+	}
+}
+
+func TestCircuitAdminCanDelete(t *testing.T) {
+	e := newRouteTestEnv(t)
+	admin, err := e.q.CreateUser(context.Background(), generated.CreateUserParams{Email: "circuits-admin@example.com", DisplayName: "Admin", Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := user.NewHandler(e.q, routeTestJWTSecret, e.pool, user.Options{})
+	tokens, err := auth.IssueTokens(context.Background(), e.q, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := circuitCreate(t, e, e.token, "Admin delete", false, nil)
+	r := circuitRequest(e, http.MethodDelete, c.ID, tokens.AccessToken, "")
+	if r.Code != http.StatusNoContent {
+		t.Fatalf("admin delete: %d %s", r.Code, r.Body)
 	}
 }
