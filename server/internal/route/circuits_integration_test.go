@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
@@ -57,11 +58,14 @@ func circuitCreate(t *testing.T, e *routeTestEnv, token, name string, shared boo
 func TestCircuitPrivacyVisibilityAndOrdering(t *testing.T) {
 	e := newRouteTestEnv(t)
 	route := e.create(t, "", "published")
-	private := circuitCreate(t, e, e.token, "Private", false, []string{route.ID})
+	private := circuitCreate(t, e, e.token, "Z private", false, []string{route.ID})
 	if r := circuitRequest(e, "GET", private.ID, e.other, ""); r.Code != 404 {
 		t.Fatalf("private circuit status %d", r.Code)
 	}
-	shared := circuitCreate(t, e, e.token, "Shared", true, []string{route.ID})
+	if r := circuitRequest(e, http.MethodDelete, private.ID, e.other, ""); r.Code != 404 {
+		t.Fatalf("private circuit delete should be hidden: %d", r.Code)
+	}
+	shared := circuitCreate(t, e, e.token, "A shared", true, []string{route.ID})
 	got := circuitRequest(e, "GET", shared.ID, e.other, "")
 	if got.Code != 200 {
 		t.Fatalf("shared GET: %d %s", got.Code, got.Body)
@@ -75,6 +79,30 @@ func TestCircuitPrivacyVisibilityAndOrdering(t *testing.T) {
 	}
 	if r := circuitRequest(e, "PATCH", shared.ID, e.other, `{"name":"Changed"}`); r.Code != 403 {
 		t.Fatalf("non-owner PATCH status %d", r.Code)
+	}
+	if r := circuitRequest(e, "PUT", shared.ID+"/routes", e.other, `{"route_ids":[]}`); r.Code != 403 {
+		t.Fatalf("non-owner PUT status %d", r.Code)
+	}
+	if r := circuitRequest(e, http.MethodDelete, shared.ID+"/routes/"+route.ID, e.other, ""); r.Code != 403 {
+		t.Fatalf("non-owner route delete status %d", r.Code)
+	}
+	circuitCreate(t, e, e.other, "M own", false, nil)
+
+	ownerList := circuitRequest(e, http.MethodGet, "", e.token, "")
+	var ownerCircuits []circuitHTTP
+	if ownerList.Code != http.StatusOK || json.Unmarshal(ownerList.Body.Bytes(), &ownerCircuits) != nil {
+		t.Fatalf("owner circuit list: %d %s", ownerList.Code, ownerList.Body)
+	}
+	if len(ownerCircuits) != 2 || ownerCircuits[0].Name != "A shared" || ownerCircuits[1].Name != "Z private" {
+		t.Fatalf("owner circuits should be first and name-ordered: %#v", ownerCircuits)
+	}
+	otherList := circuitRequest(e, http.MethodGet, "", e.other, "")
+	var otherCircuits []circuitHTTP
+	if otherList.Code != http.StatusOK || json.Unmarshal(otherList.Body.Bytes(), &otherCircuits) != nil {
+		t.Fatalf("other circuit list: %d %s", otherList.Code, otherList.Body)
+	}
+	if len(otherCircuits) != 2 || otherCircuits[0].Name != "M own" || otherCircuits[1].Name != "A shared" {
+		t.Fatalf("viewer-owned circuits should precede shared circuits: %#v", otherCircuits)
 	}
 }
 func TestCircuitReplaceAppendAndDeleteSemantics(t *testing.T) {
@@ -91,7 +119,9 @@ func TestCircuitReplaceAppendAndDeleteSemantics(t *testing.T) {
 		t.Fatalf("append duplicate: %d %s", r.Code, r.Body)
 	}
 	var got circuitHTTP
-	json.Unmarshal(r.Body.Bytes(), &got)
+	if err := json.Unmarshal(r.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
 	if len(got.RouteIDs) != 2 || got.RouteIDs[0] != second.ID || got.RouteIDs[1] != first.ID {
 		t.Fatalf("route order: %#v", got.RouteIDs)
 	}
@@ -106,6 +136,45 @@ func TestCircuitReplaceAppendAndDeleteSemantics(t *testing.T) {
 		t.Fatalf("cascade count=%d err=%v", count, err)
 	}
 }
+func TestCircuitAppendRequiresRouteAndRespectsLimit(t *testing.T) {
+	e := newRouteTestEnv(t)
+	var imageID pgtype.UUID
+	if err := e.pool.QueryRow(context.Background(), `SELECT id FROM wall_images WHERE wall_id=$1`, shared.PgUUID(e.wallID)).Scan(&imageID); err != nil {
+		t.Fatal(err)
+	}
+	holdIDs := []pgtype.UUID{shared.PgUUID(e.holdIDs[0]), shared.PgUUID(e.holdIDs[1])}
+	routeIDs := make([]string, 0, 101)
+	for i := 0; i < 101; i++ {
+		route, err := e.q.CreateRoute(context.Background(), generated.CreateRouteParams{
+			WallID: shared.PgUUID(e.wallID), WallImageID: imageID, CreatedBy: shared.PgUUID(e.creatorID),
+			Name: fmt.Sprintf("Circuit route %d", i), HoldIds: holdIDs, HoldRoles: []byte(`{}`),
+			Status: "published", Tags: []string{},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		routeIDs = append(routeIDs, uuid.UUID(route.ID.Bytes).String())
+	}
+	c := circuitCreate(t, e, e.token, "Limit", false, routeIDs[:100])
+	if r := circuitRequest(e, http.MethodPost, c.ID+"/routes", e.token, `{}`); r.Code != http.StatusBadRequest {
+		t.Fatalf("append without route_id status %d", r.Code)
+	}
+	if r := circuitRequest(e, http.MethodPut, c.ID+"/routes", e.token, `{}`); r.Code != http.StatusBadRequest {
+		t.Fatalf("replace without route_ids status %d", r.Code)
+	}
+	if r := circuitRequest(e, http.MethodPost, c.ID+"/routes", e.token, fmt.Sprintf(`{"route_id":%q}`, routeIDs[0])); r.Code != http.StatusOK {
+		t.Fatalf("idempotent duplicate append at limit: %d %s", r.Code, r.Body)
+	}
+	if r := circuitRequest(e, http.MethodPost, c.ID+"/routes", e.token, fmt.Sprintf(`{"route_id":%q}`, routeIDs[100])); r.Code != http.StatusBadRequest {
+		t.Fatalf("append beyond 100 routes status %d", r.Code)
+	}
+	got := circuitRequest(e, http.MethodGet, c.ID, e.token, "")
+	var after circuitHTTP
+	if got.Code != http.StatusOK || json.Unmarshal(got.Body.Bytes(), &after) != nil || len(after.RouteIDs) != 100 {
+		t.Fatalf("route limit should retain 100 routes: status=%d count=%d body=%s", got.Code, len(after.RouteIDs), got.Body)
+	}
+}
+
 func TestCircuitWallMismatchIsNotFound(t *testing.T) {
 	e := newRouteTestEnv(t)
 	c := circuitCreate(t, e, e.token, "Mismatch", true, nil)
@@ -214,7 +283,7 @@ func TestCircuitDraftVisibilityAndDeletePermissions(t *testing.T) {
 	}
 }
 
-func TestCircuitAdminCanDelete(t *testing.T) {
+func TestCircuitAdminCanDeleteVisibleSharedCircuit(t *testing.T) {
 	e := newRouteTestEnv(t)
 	admin, err := e.q.CreateUser(context.Background(), generated.CreateUserParams{Email: "circuits-admin@example.com", DisplayName: "Admin", Role: generated.UserRoleAdmin})
 	if err != nil {
@@ -225,9 +294,47 @@ func TestCircuitAdminCanDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := circuitCreate(t, e, e.token, "Admin delete", false, nil)
-	r := circuitRequest(e, http.MethodDelete, c.ID, tokens.AccessToken, "")
-	if r.Code != http.StatusNoContent {
-		t.Fatalf("admin delete: %d %s", r.Code, r.Body)
+	private := circuitCreate(t, e, e.token, "Private from admin", false, nil)
+	if r := circuitRequest(e, http.MethodDelete, private.ID, tokens.AccessToken, ""); r.Code != http.StatusNotFound {
+		t.Fatalf("private circuit must remain hidden from admins: %d %s", r.Code, r.Body)
+	}
+	shared := circuitCreate(t, e, e.token, "Shared for admin", true, nil)
+	if r := circuitRequest(e, http.MethodDelete, shared.ID, tokens.AccessToken, ""); r.Code != http.StatusNoContent {
+		t.Fatalf("admin delete of visible shared circuit: %d %s", r.Code, r.Body)
+	}
+}
+
+func TestCircuitConcurrentAppendsSerialize(t *testing.T) {
+	e := newRouteTestEnv(t)
+	first := e.create(t, "", "published")
+	second := e.create(t, ",\"grade\":\"V2\"", "published")
+	c := circuitCreate(t, e, e.token, "Concurrent", false, nil)
+
+	start := make(chan struct{})
+	statuses := make([]int, 2)
+	var wg sync.WaitGroup
+	for i, routeID := range []string{first.ID, second.ID} {
+		wg.Add(1)
+		go func(index int, routeID string) {
+			defer wg.Done()
+			<-start
+			body := fmt.Sprintf(`{"route_id":%q}`, routeID)
+			statuses[index] = circuitRequest(e, http.MethodPost, c.ID+"/routes", e.token, body).Code
+		}(i, routeID)
+	}
+	close(start)
+	wg.Wait()
+	for _, status := range statuses {
+		if status != http.StatusOK {
+			t.Fatalf("concurrent append status %d, want 200", status)
+		}
+	}
+	got := circuitRequest(e, http.MethodGet, c.ID, e.token, "")
+	var saved circuitHTTP
+	if got.Code != http.StatusOK || json.Unmarshal(got.Body.Bytes(), &saved) != nil || len(saved.RouteIDs) != 2 {
+		t.Fatalf("concurrent appends should both persist: status=%d body=%s", got.Code, got.Body)
+	}
+	if saved.RouteIDs[0] == saved.RouteIDs[1] {
+		t.Fatalf("concurrent appends duplicated a route: %#v", saved.RouteIDs)
 	}
 }

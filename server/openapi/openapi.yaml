@@ -461,6 +461,10 @@ paths:
     get:
       operationId: listCircuits
       summary: List visible circuits on a wall
+      description: >-
+        Returns the caller's circuits first, ordered by name, then shared circuits from other members,
+        also ordered by name. Each route_ids list includes published routes and only drafts visible to
+        the caller.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"
@@ -478,6 +482,9 @@ paths:
     post:
       operationId: createCircuit
       summary: Create a circuit
+      description: >-
+        Names are trimmed and must contain 1–60 characters. Every route must belong to this wall and
+        be published or a draft created by the caller. A circuit can contain at most 100 unique routes.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"
@@ -494,13 +501,18 @@ paths:
                 is_shared: {type: boolean, default: false}
                 route_ids: {type: array, maxItems: 100, uniqueItems: true, items: {type: string, format: uuid}}
       responses:
-        "201": {description: Circuit created}
+        "201":
+          description: Circuit created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Circuit"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "404": {$ref: "#/components/responses/NotFound"}
   /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}:
     get:
       operationId: getCircuit
       summary: Get a visible circuit
+      description: The owner can read private circuits; any gym member can read a shared circuit. Other private circuits return 404.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"
@@ -512,6 +524,7 @@ paths:
     patch:
       operationId: updateCircuit
       summary: Update an owned circuit
+      description: Only the circuit owner may rename it or change its sharing setting. Names are trimmed and limited to 1–60 characters.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"
@@ -527,12 +540,17 @@ paths:
                 name: {type: string, minLength: 1, maxLength: 60}
                 is_shared: {type: boolean}
       responses:
-        "200": {description: Updated circuit}
+        "200":
+          description: Updated circuit
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Circuit"}
         "403": {description: Not owner}
         "404": {$ref: "#/components/responses/NotFound"}
     delete:
       operationId: deleteCircuit
-      summary: Delete an owned circuit
+      summary: Delete a visible circuit as its owner or a gym admin
+      description: Private circuits are hidden from non-owners, including gym admins. Gym admins may delete shared circuits visible to them.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"
@@ -540,12 +558,13 @@ paths:
         - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
       responses:
         "204": {description: Circuit deleted}
-        "403": {description: Not owner}
+        "403": {description: Not owner or gym admin of a visible circuit}
         "404": {$ref: "#/components/responses/NotFound"}
   /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}/routes:
     put:
       operationId: replaceCircuitRoutes
       summary: Atomically replace ordered circuit routes
+      description: Only the owner may replace the order. The list has at most 100 unique routes, all on this wall and published or caller-owned drafts.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"
@@ -561,13 +580,18 @@ paths:
               properties:
                 route_ids: {type: array, maxItems: 100, uniqueItems: true, items: {type: string, format: uuid}}
       responses:
-        "200": {description: Updated circuit}
+        "200":
+          description: Updated circuit
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Circuit"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "403": {description: Not owner}
         "404": {$ref: "#/components/responses/NotFound"}
     post:
       operationId: appendCircuitRoute
       summary: Append a route idempotently
+      description: Only the owner may append. Repeating an existing route_id is a no-op; the circuit limit is 100 routes.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"
@@ -582,13 +606,18 @@ paths:
               required: [route_id]
               properties: {route_id: {type: string, format: uuid}}
       responses:
-        "200": {description: Updated circuit}
+        "200":
+          description: Updated circuit
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Circuit"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "403": {description: Not owner}
   /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}/routes/{routeId}:
     delete:
       operationId: removeCircuitRoute
       summary: Remove a route from the circuit
+      description: Only the owner may remove a route; this returns 204 whether or not the route was present.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"

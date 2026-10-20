@@ -23,15 +23,24 @@ function CircuitToggle({ circuit, gymSlug, wallId, routeId }: { circuit: Circuit
   return <label style={{ display: "flex", gap: 8, padding: "10px 0" }}><input type="checkbox" checked={included} disabled={toggle.isPending} onChange={(event) => toggle.mutate({ route_id: routeId, included: event.target.checked })} />{circuit.name}</label>;
 }
 
-function QuickCircuit({ name, circuits, gymSlug, wallId, routeId, createCircuit }: { name: string; circuits: Circuit[]; gymSlug: string; wallId: string; routeId: string; createCircuit: (input: { name: string; is_shared?: boolean; route_ids?: string[] }) => Promise<Circuit> }) {
+function QuickCircuit({ name, circuits, gymSlug, wallId, routeId, createCircuit, creating }: { name: string; circuits: Circuit[]; gymSlug: string; wallId: string; routeId: string; createCircuit: (input: { name: string; is_shared?: boolean; route_ids?: string[] }) => Promise<Circuit>; creating: boolean }) {
   const existing = circuits.find((circuit) => circuit.is_owner && circuit.name.toLowerCase() === name.toLowerCase());
   const toggle = useToggleCircuitRoute(gymSlug, wallId, existing?.id ?? "");
+  const creatingRef = useRef(false);
   const create = async () => {
     if (existing) {
       if (!existing.route_ids.includes(routeId)) toggle.mutate({ route_id: routeId, included: true });
-    } else await createCircuit({ name, is_shared: false, route_ids: [routeId] });
+      return;
+    }
+    if (creating || creatingRef.current) return;
+    creatingRef.current = true;
+    try {
+      await createCircuit({ name, is_shared: false, route_ids: [routeId] });
+    } finally {
+      creatingRef.current = false;
+    }
   };
-  return <button type="button" className="btn btn-ghost" disabled={toggle.isPending} onClick={() => { void create().catch(() => undefined); }}>{existing?.route_ids.includes(routeId) ? `✓ ${name}` : `+ ${name}`}</button>;
+  return <button type="button" className="btn btn-ghost" disabled={toggle.isPending || creating} onClick={() => { void create().catch(() => undefined); }}>{existing?.route_ids.includes(routeId) ? `✓ ${name}` : `+ ${name}`}</button>;
 }
 
 export default function RouteDetailPage() {
@@ -257,11 +266,11 @@ export default function RouteDetailPage() {
                   {circuits.filter((circuit) => circuit.is_owner).map((circuit) => <CircuitToggle key={circuit.id} circuit={circuit} gymSlug={gymSlug} wallId={wallId} routeId={routeId} />)}
                   <form onSubmit={(event) => { event.preventDefault(); const clean = newCircuitName.trim(); if (!clean) return; void createCircuit.mutateAsync({ name: clean, is_shared: false, route_ids: [routeId] }).then(() => setNewCircuitName("")).catch(() => undefined); }}>
                     <label htmlFor="new-circuit-name">New circuit</label>
-                    <input id="new-circuit-name" value={newCircuitName} onChange={(event) => setNewCircuitName(event.target.value)} placeholder="Circuit name" maxLength={80} />
+                    <input id="new-circuit-name" value={newCircuitName} onChange={(event) => setNewCircuitName(event.target.value)} placeholder="Circuit name" maxLength={60} />
                     <button type="submit" className="btn btn-primary" disabled={!newCircuitName.trim() || createCircuit.isPending}>Create</button>
                   </form>
-                  <QuickCircuit name="Warmups" circuits={circuits} gymSlug={gymSlug} wallId={wallId} routeId={routeId} createCircuit={createCircuit.mutateAsync} />
-                  <QuickCircuit name="Projects" circuits={circuits} gymSlug={gymSlug} wallId={wallId} routeId={routeId} createCircuit={createCircuit.mutateAsync} />
+                  <QuickCircuit name="Warmups" circuits={circuits} gymSlug={gymSlug} wallId={wallId} routeId={routeId} createCircuit={createCircuit.mutateAsync} creating={createCircuit.isPending} />
+                  <QuickCircuit name="Projects" circuits={circuits} gymSlug={gymSlug} wallId={wallId} routeId={routeId} createCircuit={createCircuit.mutateAsync} creating={createCircuit.isPending} />
                   <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
                   {createCircuit.error && <p className="error-text" role="alert">{createCircuit.error.message}</p>}
                 </section>

@@ -12,17 +12,20 @@ import (
 )
 
 const appendCircuitRoute = `-- name: AppendCircuitRoute :exec
-INSERT INTO circuit_routes (circuit_id, route_id, position) VALUES ($1, $2, $3) ON CONFLICT (circuit_id, route_id) DO NOTHING
+INSERT INTO circuit_routes (circuit_id, route_id, position)
+SELECT $1, $2, COALESCE(max(position) + 1, 0)
+FROM circuit_routes
+WHERE circuit_id = $1
+ON CONFLICT (circuit_id, route_id) DO NOTHING
 `
 
 type AppendCircuitRouteParams struct {
 	CircuitID pgtype.UUID `json:"circuit_id"`
 	RouteID   pgtype.UUID `json:"route_id"`
-	Position  int32       `json:"position"`
 }
 
 func (q *Queries) AppendCircuitRoute(ctx context.Context, arg AppendCircuitRouteParams) error {
-	_, err := q.db.Exec(ctx, appendCircuitRoute, arg.CircuitID, arg.RouteID, arg.Position)
+	_, err := q.db.Exec(ctx, appendCircuitRoute, arg.CircuitID, arg.RouteID)
 	return err
 }
 
@@ -75,25 +78,6 @@ func (q *Queries) DeleteCircuitRoutes(ctx context.Context, circuitID pgtype.UUID
 	return err
 }
 
-const getCircuit = `-- name: GetCircuit :one
-SELECT id, wall_id, created_by, name, is_shared, created_at, updated_at FROM circuits WHERE id = $1
-`
-
-func (q *Queries) GetCircuit(ctx context.Context, id pgtype.UUID) (Circuit, error) {
-	row := q.db.QueryRow(ctx, getCircuit, id)
-	var i Circuit
-	err := row.Scan(
-		&i.ID,
-		&i.WallID,
-		&i.CreatedBy,
-		&i.Name,
-		&i.IsShared,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getCircuitByID = `-- name: GetCircuitByID :one
 SELECT c.id, c.wall_id, c.created_by, c.name, c.is_shared, c.created_at, c.updated_at, u.display_name AS creator_name FROM circuits c JOIN users u ON u.id=c.created_by WHERE c.id=$1
 `
@@ -140,52 +124,17 @@ func (q *Queries) InsertCircuitRoute(ctx context.Context, arg InsertCircuitRoute
 	return err
 }
 
-const listCircuits = `-- name: ListCircuits :many
-SELECT c.id, c.wall_id, c.created_by, c.name, c.is_shared, c.created_at, c.updated_at FROM circuits c WHERE c.wall_id = $1 AND (c.is_shared OR c.created_by = $2) ORDER BY c.created_at DESC
-`
-
-type ListCircuitsParams struct {
-	WallID    pgtype.UUID `json:"wall_id"`
-	CreatedBy pgtype.UUID `json:"created_by"`
-}
-
-func (q *Queries) ListCircuits(ctx context.Context, arg ListCircuitsParams) ([]Circuit, error) {
-	rows, err := q.db.Query(ctx, listCircuits, arg.WallID, arg.CreatedBy)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Circuit
-	for rows.Next() {
-		var i Circuit
-		if err := rows.Scan(
-			&i.ID,
-			&i.WallID,
-			&i.CreatedBy,
-			&i.Name,
-			&i.IsShared,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listVisibleCircuitsByWall = `-- name: ListVisibleCircuitsByWall :many
 SELECT c.id, c.wall_id, c.created_by, c.name, c.is_shared, c.created_at, c.updated_at, u.display_name AS creator_name,
-       COALESCE(array_agg(cr.route_id ORDER BY cr.position, cr.route_id) FILTER (WHERE cr.route_id IS NOT NULL AND (r.status = 'published' OR r.created_by = $1)), ARRAY[]::uuid[]) AS route_ids
+       ARRAY(
+         SELECT cr.route_id::text FROM circuit_routes cr
+         JOIN routes r ON r.id = cr.route_id
+         WHERE cr.circuit_id = c.id AND (r.status = 'published' OR r.created_by = $1)
+         ORDER BY cr.position, cr.route_id
+       )::text[] AS route_ids
 FROM circuits c JOIN users u ON u.id = c.created_by
-LEFT JOIN circuit_routes cr ON cr.circuit_id = c.id
-LEFT JOIN routes r ON r.id = cr.route_id
 WHERE c.wall_id = $2 AND (c.is_shared OR c.created_by = $1)
-GROUP BY c.id, u.display_name
-ORDER BY (c.created_by = $1) DESC, c.is_shared DESC, c.name
+ORDER BY (c.created_by = $1) DESC, c.name
 `
 
 type ListVisibleCircuitsByWallParams struct {
@@ -202,7 +151,7 @@ type ListVisibleCircuitsByWallRow struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 	CreatorName string             `json:"creator_name"`
-	RouteIds    interface{}        `json:"route_ids"`
+	RouteIds    []string           `json:"route_ids"`
 }
 
 func (q *Queries) ListVisibleCircuitsByWall(ctx context.Context, arg ListVisibleCircuitsByWallParams) ([]ListVisibleCircuitsByWallRow, error) {
@@ -235,17 +184,6 @@ func (q *Queries) ListVisibleCircuitsByWall(ctx context.Context, arg ListVisible
 	return items, nil
 }
 
-const nextCircuitRoutePosition = `-- name: NextCircuitRoutePosition :one
-SELECT COALESCE(max(position)+1,0)::integer FROM circuit_routes WHERE circuit_id=$1
-`
-
-func (q *Queries) NextCircuitRoutePosition(ctx context.Context, circuitID pgtype.UUID) (int32, error) {
-	row := q.db.QueryRow(ctx, nextCircuitRoutePosition, circuitID)
-	var column_1 int32
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const removeCircuitRoute = `-- name: RemoveCircuitRoute :exec
 DELETE FROM circuit_routes WHERE circuit_id=$1 AND route_id=$2
 `
@@ -257,15 +195,6 @@ type RemoveCircuitRouteParams struct {
 
 func (q *Queries) RemoveCircuitRoute(ctx context.Context, arg RemoveCircuitRouteParams) error {
 	_, err := q.db.Exec(ctx, removeCircuitRoute, arg.CircuitID, arg.RouteID)
-	return err
-}
-
-const replaceCircuitRoutes = `-- name: ReplaceCircuitRoutes :exec
-DELETE FROM circuit_routes WHERE circuit_id = $1
-`
-
-func (q *Queries) ReplaceCircuitRoutes(ctx context.Context, circuitID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, replaceCircuitRoutes, circuitID)
 	return err
 }
 

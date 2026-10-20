@@ -1,6 +1,9 @@
 package route
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestValidateCircuitName(t *testing.T) {
 	tests := []struct {
@@ -12,6 +15,8 @@ func TestValidateCircuitName(t *testing.T) {
 		{"   ", "", false},
 		{string(make([]byte, 61)), string(make([]byte, 61)), false},
 		{string(make([]byte, 60)), string(make([]byte, 60)), true},
+		{strings.Repeat("é", 60), strings.Repeat("é", 60), true},
+		{strings.Repeat("é", 61), strings.Repeat("é", 61), false},
 	}
 	for _, tt := range tests {
 		got, valid := validateCircuitName(tt.name)

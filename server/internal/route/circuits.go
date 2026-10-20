@@ -37,23 +37,27 @@ type circuitRow struct {
 	created, updated                     time.Time
 }
 
-func (h *Handler) circuitWall(w http.ResponseWriter, r *http.Request) (pgtype.UUID, pgtype.UUID, bool) {
-	gym, _, err := h.requireGymMember(w, r)
+func (h *Handler) circuitWall(w http.ResponseWriter, r *http.Request) (pgtype.UUID, pgtype.UUID, generated.GymMember, bool) {
+	gym, member, err := h.requireGymMember(w, r)
 	if err != nil {
-		return pgtype.UUID{}, pgtype.UUID{}, false
+		return pgtype.UUID{}, pgtype.UUID{}, generated.GymMember{}, false
 	}
 	id, err := parseWallID(r)
 	if err != nil {
 		writeError(w, 400, "invalid wall id")
-		return pgtype.UUID{}, pgtype.UUID{}, false
+		return pgtype.UUID{}, pgtype.UUID{}, generated.GymMember{}, false
 	}
 	wallID := shared.PgUUID(id)
 	wall, err := h.queries.GetWallByID(r.Context(), wallID)
-	if err != nil || wall.GymID != gym.ID {
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && wall.GymID != gym.ID {
 		writeError(w, http.StatusNotFound, "wall not found")
-		return pgtype.UUID{}, pgtype.UUID{}, false
+		return pgtype.UUID{}, pgtype.UUID{}, generated.GymMember{}, false
 	}
-	return gym.ID, wallID, true
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return pgtype.UUID{}, pgtype.UUID{}, generated.GymMember{}, false
+	}
+	return gym.ID, wallID, member, true
 }
 
 func (h *Handler) loadCircuit(r *http.Request, id uuid.UUID) (circuitRow, error) {
@@ -78,57 +82,54 @@ func (h *Handler) circuitJSON(r *http.Request, c circuitRow, owner bool) (circui
 	return out, rows.Err()
 }
 func mustUUID(s string) pgtype.UUID { id, _ := uuid.Parse(s); return shared.PgUUID(id) }
-func (h *Handler) circuitScope(w http.ResponseWriter, r *http.Request) (circuitRow, pgtype.UUID, bool) {
-	_, wall, ok := h.circuitWall(w, r)
+func (h *Handler) circuitScope(w http.ResponseWriter, r *http.Request) (circuitRow, pgtype.UUID, generated.GymMember, bool) {
+	_, wall, member, ok := h.circuitWall(w, r)
 	if !ok {
-		return circuitRow{}, wall, false
+		return circuitRow{}, wall, member, false
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "circuitId"))
 	if err != nil {
 		writeError(w, 400, "invalid circuit id")
-		return circuitRow{}, wall, false
+		return circuitRow{}, wall, member, false
 	}
 	c, err := h.loadCircuit(r, id)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && c.wall != uuidString(wall) {
 		writeError(w, 404, "circuit not found")
-		return c, wall, false
+		return c, wall, member, false
 	}
 	if err != nil {
 		writeError(w, 500, "database error")
-		return c, wall, false
+		return c, wall, member, false
 	}
 	uid := user.GetUserID(r.Context())
 	if !c.shared && c.creator != uid.String() {
 		writeError(w, 404, "circuit not found")
-		return c, wall, false
+		return c, wall, member, false
 	}
-	return c, wall, true
+	return c, wall, member, true
 }
 func uuidString(id pgtype.UUID) string { return uuid.UUID(id.Bytes).String() }
 func (h *Handler) ListCircuits(w http.ResponseWriter, r *http.Request) {
-	_, wall, ok := h.circuitWall(w, r)
+	_, wall, _, ok := h.circuitWall(w, r)
 	if !ok {
 		return
 	}
-	rows, err := h.db.Query(r.Context(), `SELECT c.id::text,c.wall_id::text,c.created_by::text,u.display_name,c.name,c.is_shared,c.created_at,c.updated_at FROM circuits c JOIN users u ON u.id=c.created_by WHERE c.wall_id=$1 AND (c.is_shared OR c.created_by=$2) ORDER BY (c.created_by=$2) DESC, c.is_shared DESC, c.name`, wall, shared.PgUUID(user.GetUserID(r.Context())))
+	rows, err := h.queries.ListVisibleCircuitsByWall(r.Context(), generated.ListVisibleCircuitsByWallParams{
+		ViewerID: shared.PgUUID(user.GetUserID(r.Context())), WallID: wall,
+	})
 	if err != nil {
 		writeError(w, 500, "database error")
 		return
 	}
-	defer rows.Close()
-	out := []circuit{}
-	for rows.Next() {
-		var c circuitRow
-		if err = rows.Scan(&c.id, &c.wall, &c.creator, &c.creatorName, &c.name, &c.shared, &c.created, &c.updated); err != nil {
-			writeError(w, 500, "database error")
-			return
-		}
-		v, e := h.circuitJSON(r, c, c.creator == user.GetUserID(r.Context()).String())
-		if e != nil {
-			writeError(w, 500, "database error")
-			return
-		}
-		out = append(out, v)
+	viewerID := user.GetUserID(r.Context())
+	out := make([]circuit, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, circuit{
+			ID: uuid.UUID(row.ID.Bytes).String(), WallID: uuid.UUID(row.WallID.Bytes).String(),
+			CreatedBy: uuid.UUID(row.CreatedBy.Bytes).String(), CreatorName: row.CreatorName,
+			Name: row.Name, IsShared: row.IsShared, IsOwner: row.CreatedBy == shared.PgUUID(viewerID),
+			RouteIDs: row.RouteIds, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
+		})
 	}
 	writeJSON(w, 200, out)
 }
@@ -138,7 +139,7 @@ func validateCircuitName(name string) (string, bool) {
 }
 
 func (h *Handler) CreateCircuit(w http.ResponseWriter, r *http.Request) {
-	_, wall, ok := h.circuitWall(w, r)
+	_, wall, _, ok := h.circuitWall(w, r)
 	if !ok {
 		return
 	}
@@ -170,13 +171,21 @@ func (h *Handler) CreateCircuit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "database error")
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer func() { _ = tx.Rollback(r.Context()) }()
 	uid := shared.PgUUID(user.GetUserID(r.Context()))
 	for _, routeID := range ids {
 		var routeWall pgtype.UUID
 		var status, creator string
 		err = tx.QueryRow(r.Context(), `SELECT wall_id,status,created_by::text FROM routes WHERE id=$1`, shared.PgUUID(routeID)).Scan(&routeWall, &status, &creator)
-		if err != nil || routeWall != wall || (status != "published" && creator != user.GetUserID(r.Context()).String()) {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, 400, "route is unavailable")
+			return
+		}
+		if err != nil {
+			writeError(w, 500, "database error")
+			return
+		}
+		if routeWall != wall || (status != "published" && creator != user.GetUserID(r.Context()).String()) {
 			writeError(w, 400, "route is unavailable")
 			return
 		}
@@ -227,7 +236,7 @@ func parseCircuitRouteIDs(values []string) ([]uuid.UUID, bool) {
 }
 
 func (h *Handler) GetCircuit(w http.ResponseWriter, r *http.Request) {
-	c, _, ok := h.circuitScope(w, r)
+	c, _, _, ok := h.circuitScope(w, r)
 	if !ok {
 		return
 	}
@@ -239,7 +248,7 @@ func (h *Handler) GetCircuit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 func (h *Handler) PatchCircuit(w http.ResponseWriter, r *http.Request) {
-	c, _, ok := h.circuitScope(w, r)
+	c, _, _, ok := h.circuitScope(w, r)
 	if !ok {
 		return
 	}
@@ -275,48 +284,22 @@ func (h *Handler) PatchCircuit(w http.ResponseWriter, r *http.Request) {
 	h.GetCircuit(w, r)
 }
 func (h *Handler) DeleteCircuit(w http.ResponseWriter, r *http.Request) {
-	gym, member, err := h.requireGymMember(w, r)
-	if err != nil {
-		return
-	}
-	wallUUID, err := parseWallID(r)
-	if err != nil {
-		writeError(w, 400, "invalid wall id")
-		return
-	}
-	wallID := shared.PgUUID(wallUUID)
-	wall, err := h.queries.GetWallByID(r.Context(), wallID)
-	if err != nil || wall.GymID != gym.ID {
-		writeError(w, 404, "wall not found")
-		return
-	}
-	id, err := uuid.Parse(chi.URLParam(r, "circuitId"))
-	if err != nil {
-		writeError(w, 400, "invalid circuit id")
-		return
-	}
-	c, err := h.loadCircuit(r, id)
-	if errors.Is(err, pgx.ErrNoRows) || err == nil && c.wall != uuidString(wallID) {
-		writeError(w, 404, "circuit not found")
-		return
-	}
-	if err != nil {
-		writeError(w, 500, "database error")
+	c, _, member, ok := h.circuitScope(w, r)
+	if !ok {
 		return
 	}
 	if c.creator != user.GetUserID(r.Context()).String() && member.Role != generated.UserRoleAdmin {
-		writeError(w, 403, "only the circuit owner or gym admin can delete it")
+		writeError(w, 403, "only the circuit owner or gym admin can delete a visible circuit")
 		return
 	}
-	_, err = h.db.Exec(r.Context(), `DELETE FROM circuits WHERE id=$1`, mustUUID(c.id))
-	if err != nil {
+	if err := h.queries.DeleteCircuit(r.Context(), mustUUID(c.id)); err != nil {
 		writeError(w, 500, "database error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 func (h *Handler) writeCircuitRoutes(w http.ResponseWriter, r *http.Request, replace bool) {
-	c, _, ok := h.circuitScope(w, r)
+	c, _, _, ok := h.circuitScope(w, r)
 	if !ok {
 		return
 	}
@@ -324,24 +307,33 @@ func (h *Handler) writeCircuitRoutes(w http.ResponseWriter, r *http.Request, rep
 		writeError(w, 403, "only the circuit owner can edit it")
 		return
 	}
-	var in struct {
-		IDs []string `json:"route_ids"`
-		ID  string   `json:"route_id"`
+	var requested []string
+	if replace {
+		var in struct {
+			IDs *[]string `json:"route_ids"`
+		}
+		if json.NewDecoder(r.Body).Decode(&in) != nil || in.IDs == nil {
+			writeError(w, 400, "request must include route_ids")
+			return
+		}
+		requested = *in.IDs
+	} else {
+		var in struct {
+			ID *string `json:"route_id"`
+		}
+		if json.NewDecoder(r.Body).Decode(&in) != nil || in.ID == nil || strings.TrimSpace(*in.ID) == "" {
+			writeError(w, 400, "request must include route_id")
+			return
+		}
+		requested = []string{*in.ID}
 	}
-	if json.NewDecoder(r.Body).Decode(&in) != nil {
-		writeError(w, 400, "invalid request body")
-		return
-	}
-	if in.ID != "" {
-		in.IDs = append(in.IDs, in.ID)
-	}
-	if len(in.IDs) > 100 {
-		writeError(w, 400, "at most 100 routes are allowed")
-		return
-	}
-	ids, valid := parseCircuitRouteIDs(in.IDs)
+	ids, valid := parseCircuitRouteIDs(requested)
 	if !valid {
 		writeError(w, 400, "route ids must be unique valid UUIDs (maximum 100)")
+		return
+	}
+	if h.txPool == nil {
+		writeError(w, 500, "transactions unavailable")
 		return
 	}
 	tx, e := h.txPool.Begin(r.Context())
@@ -349,38 +341,61 @@ func (h *Handler) writeCircuitRoutes(w http.ResponseWriter, r *http.Request, rep
 		writeError(w, 500, "database error")
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	circuitID := mustUUID(c.id)
+	var lockedID pgtype.UUID
+	if e = tx.QueryRow(r.Context(), `SELECT id FROM circuits WHERE id=$1 FOR UPDATE`, circuitID).Scan(&lockedID); e != nil {
+		writeError(w, 500, "database error")
+		return
+	}
+	txQueries := h.queries.WithTx(tx)
 	if replace {
-		if _, e = tx.Exec(r.Context(), `DELETE FROM circuit_routes WHERE circuit_id=$1`, mustUUID(c.id)); e != nil {
+		if e = txQueries.DeleteCircuitRoutes(r.Context(), circuitID); e != nil {
 			writeError(w, 500, "database error")
 			return
 		}
 	}
-	var position int
-	if !replace {
-		if e = tx.QueryRow(r.Context(), `SELECT COALESCE(max(position)+1,0) FROM circuit_routes WHERE circuit_id=$1`, mustUUID(c.id)).Scan(&position); e != nil {
-			writeError(w, 500, "database error")
-			return
-		}
-	}
-	for _, id := range ids {
+	for position, id := range ids {
 		var wallID pgtype.UUID
 		var status, creator string
 		e = tx.QueryRow(r.Context(), `SELECT wall_id,status,created_by::text FROM routes WHERE id=$1`, shared.PgUUID(id)).Scan(&wallID, &status, &creator)
-		if e != nil || uuidString(wallID) != c.wall || status != "published" && creator != user.GetUserID(r.Context()).String() {
+		if errors.Is(e, pgx.ErrNoRows) {
 			writeError(w, 400, "route is unavailable")
 			return
-		}
-		if replace {
-			_, e = tx.Exec(r.Context(), `INSERT INTO circuit_routes(circuit_id,route_id,position) VALUES($1,$2,$3)`, mustUUID(c.id), shared.PgUUID(id), position)
-		} else {
-			_, e = tx.Exec(r.Context(), `INSERT INTO circuit_routes(circuit_id,route_id,position) VALUES($1,$2,$3) ON CONFLICT(circuit_id,route_id) DO NOTHING`, mustUUID(c.id), shared.PgUUID(id), position)
 		}
 		if e != nil {
 			writeError(w, 500, "database error")
 			return
 		}
-		position++
+		if uuidString(wallID) != c.wall || status != "published" && creator != user.GetUserID(r.Context()).String() {
+			writeError(w, 400, "route is unavailable")
+			return
+		}
+		if replace {
+			e = txQueries.InsertCircuitRoute(r.Context(), generated.InsertCircuitRouteParams{
+				CircuitID: circuitID, RouteID: shared.PgUUID(id), Position: int32(position),
+			})
+		} else {
+			var exists bool
+			e = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM circuit_routes WHERE circuit_id=$1 AND route_id=$2)`, circuitID, shared.PgUUID(id)).Scan(&exists)
+			if e == nil && !exists {
+				var count int
+				e = tx.QueryRow(r.Context(), `SELECT count(*) FROM circuit_routes WHERE circuit_id=$1`, circuitID).Scan(&count)
+				if e == nil && count >= 100 {
+					writeError(w, 400, "a circuit can contain at most 100 routes")
+					return
+				}
+			}
+			if e == nil {
+				e = txQueries.AppendCircuitRoute(r.Context(), generated.AppendCircuitRouteParams{
+					CircuitID: circuitID, RouteID: shared.PgUUID(id),
+				})
+			}
+		}
+		if e != nil {
+			writeError(w, 500, "database error")
+			return
+		}
 	}
 	if e = tx.Commit(r.Context()); e != nil {
 		writeError(w, 500, "database error")
@@ -395,7 +410,7 @@ func (h *Handler) AppendCircuitRoute(w http.ResponseWriter, r *http.Request) {
 	h.writeCircuitRoutes(w, r, false)
 }
 func (h *Handler) DeleteCircuitRoute(w http.ResponseWriter, r *http.Request) {
-	c, _, ok := h.circuitScope(w, r)
+	c, _, _, ok := h.circuitScope(w, r)
 	if !ok {
 		return
 	}
@@ -408,7 +423,9 @@ func (h *Handler) DeleteCircuitRoute(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid route id")
 		return
 	}
-	_, e = h.db.Exec(r.Context(), `DELETE FROM circuit_routes WHERE circuit_id=$1 AND route_id=$2`, mustUUID(c.id), shared.PgUUID(id))
+	e = h.queries.RemoveCircuitRoute(r.Context(), generated.RemoveCircuitRouteParams{
+		CircuitID: mustUUID(c.id), RouteID: shared.PgUUID(id),
+	})
 	if e != nil {
 		writeError(w, 500, "database error")
 		return
