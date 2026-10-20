@@ -12,6 +12,7 @@ import SettingsPage from "./pages/Settings";
 import InvitePage from "./pages/Invite";
 import OidcCallbackPage from "./pages/OidcCallback";
 import ProfilePage from "./pages/Profile";
+import CircuitsPage from "./pages/Circuits";
 
 export const router = createBrowserRouter([
   {
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
           { path: "/walls", element: <WallsPage /> },
           { path: "/walls/:wallId", element: <WallDetailPage /> },
           { path: "/routes", element: <RoutesPage /> },
+          { path: "/circuits", element: <CircuitsPage /> },
           { path: "/routes/create", element: <RouteCreatePage /> },
           { path: "/routes/:routeId", element: <RouteDetailPage /> },
           { path: "/logbook", element: <LogbookPage /> },

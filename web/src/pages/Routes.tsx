@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router";
-import { useHolds, useRoutes, useWallDetail } from "../lib/hooks/queries";
+import { useCircuits, useHolds, useRoutes, useWallDetail } from "../lib/hooks/queries";
 import RouteList from "./RouteList";
 import styles from "./Routes.module.css";
 import { useGoBack } from "../lib/nav";
@@ -11,6 +11,7 @@ export default function RoutesPage() {
   const gymSlug = params.get("gymSlug") ?? undefined;
 
   const routesQuery = useRoutes(wallId, gymSlug);
+  const circuitsQuery = useCircuits(wallId, gymSlug);
   const wallQuery = useWallDetail(wallId, gymSlug);
   const holdsQuery = useHolds(wallId, wallQuery.data?.detection_status === "done", gymSlug);
 
@@ -51,6 +52,8 @@ export default function RoutesPage() {
             imageUrl={imageUrl}
             wallId={wallId}
             gymSlug={gymSlug ?? ""}
+            circuits={circuitsQuery.data ?? []}
+            circuitsLoaded={circuitsQuery.isSuccess}
           />
         )}
       </main>

@@ -132,6 +132,9 @@
   font-weight: 750;
 }
 
+.circuitChoices { display: grid; gap: 8px; }
+.circuitGroup { grid-column: 1 / -1; margin: 8px 0 0; font-size: 14px; color: var(--text-muted); }
+
 .gradeCount { color: var(--text-muted); font-size: 14px; }
 
 @media (max-width: 420px) {
