@@ -542,6 +542,70 @@ paths:
         "204": {description: Circuit deleted}
         "403": {description: Not owner}
         "404": {$ref: "#/components/responses/NotFound"}
+  /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}/routes:
+    put:
+      operationId: replaceCircuitRoutes
+      summary: Atomically replace ordered circuit routes
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [route_ids]
+              properties:
+                route_ids: {type: array, maxItems: 100, uniqueItems: true, items: {type: string, format: uuid}}
+      responses:
+        "200": {description: Updated circuit}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "403": {description: Not owner}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: appendCircuitRoute
+      summary: Append a route idempotently
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [route_id]
+              properties: {route_id: {type: string, format: uuid}}
+      responses:
+        "200": {description: Updated circuit}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "403": {description: Not owner}
+    delete:
+      operationId: removeCircuitRoute
+      summary: Remove a route from the circuit
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [route_id]
+              properties: {route_id: {type: string, format: uuid}}
+      responses:
+        "204": {description: Route removed}
+        "403": {description: Not owner}
+        "404": {$ref: "#/components/responses/NotFound"}
+
   /gyms/{gymSlug}:
     get:
       operationId: getGym

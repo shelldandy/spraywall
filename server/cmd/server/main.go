@@ -193,7 +193,7 @@ func main() {
 							r.Delete("/", routeHandler.DeleteCircuit)
 							r.Put("/routes", routeHandler.ReplaceCircuitRoutes)
 							r.Post("/routes", routeHandler.AppendCircuitRoute)
-							r.Delete("/routes/{routeId}", routeHandler.DeleteCircuitRoute)
+							r.Delete("/routes", routeHandler.DeleteCircuitRoute)
 						})
 					})
 					r.Delete("/holds/{holdId}", wallHandler.DeleteHold)

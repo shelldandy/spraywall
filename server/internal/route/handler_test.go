@@ -100,6 +100,19 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 	})
 	r.Route("/gyms/{gymSlug}", func(r chi.Router) {
 		r.Use(auth.Authenticate)
+		r.Route("/walls/{wallId}/circuits", func(r chi.Router) {
+			h := routehandler.NewHandler(q, pool)
+			r.Get("/", h.ListCircuits)
+			r.Post("/", h.CreateCircuit)
+			r.Route("/{circuitId}", func(r chi.Router) {
+				r.Get("/", h.GetCircuit)
+				r.Patch("/", h.PatchCircuit)
+				r.Delete("/", h.DeleteCircuit)
+				r.Put("/routes", h.ReplaceCircuitRoutes)
+				r.Post("/routes", h.AppendCircuitRoute)
+				r.Delete("/routes", h.DeleteCircuitRoute)
+			})
+		})
 		r.Route("/walls/{wallId}/routes", func(r chi.Router) {
 			h := routehandler.NewHandler(q, pool)
 			r.Post("/", h.CreateRoute)

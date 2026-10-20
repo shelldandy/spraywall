@@ -66,6 +66,15 @@ func (q *Queries) DeleteCircuit(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const deleteCircuitRoutes = `-- name: DeleteCircuitRoutes :exec
+DELETE FROM circuit_routes WHERE circuit_id=$1
+`
+
+func (q *Queries) DeleteCircuitRoutes(ctx context.Context, circuitID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCircuitRoutes, circuitID)
+	return err
+}
+
 const getCircuit = `-- name: GetCircuit :one
 SELECT id, wall_id, created_by, name, is_shared, created_at, updated_at FROM circuits WHERE id = $1
 `
@@ -83,6 +92,52 @@ func (q *Queries) GetCircuit(ctx context.Context, id pgtype.UUID) (Circuit, erro
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getCircuitByID = `-- name: GetCircuitByID :one
+SELECT c.id, c.wall_id, c.created_by, c.name, c.is_shared, c.created_at, c.updated_at, u.display_name AS creator_name FROM circuits c JOIN users u ON u.id=c.created_by WHERE c.id=$1
+`
+
+type GetCircuitByIDRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	WallID      pgtype.UUID        `json:"wall_id"`
+	CreatedBy   pgtype.UUID        `json:"created_by"`
+	Name        string             `json:"name"`
+	IsShared    bool               `json:"is_shared"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	CreatorName string             `json:"creator_name"`
+}
+
+func (q *Queries) GetCircuitByID(ctx context.Context, id pgtype.UUID) (GetCircuitByIDRow, error) {
+	row := q.db.QueryRow(ctx, getCircuitByID, id)
+	var i GetCircuitByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.WallID,
+		&i.CreatedBy,
+		&i.Name,
+		&i.IsShared,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatorName,
+	)
+	return i, err
+}
+
+const insertCircuitRoute = `-- name: InsertCircuitRoute :exec
+INSERT INTO circuit_routes(circuit_id,route_id,position) VALUES($1,$2,$3)
+`
+
+type InsertCircuitRouteParams struct {
+	CircuitID pgtype.UUID `json:"circuit_id"`
+	RouteID   pgtype.UUID `json:"route_id"`
+	Position  int32       `json:"position"`
+}
+
+func (q *Queries) InsertCircuitRoute(ctx context.Context, arg InsertCircuitRouteParams) error {
+	_, err := q.db.Exec(ctx, insertCircuitRoute, arg.CircuitID, arg.RouteID, arg.Position)
+	return err
 }
 
 const listCircuits = `-- name: ListCircuits :many
@@ -120,6 +175,89 @@ func (q *Queries) ListCircuits(ctx context.Context, arg ListCircuitsParams) ([]C
 		return nil, err
 	}
 	return items, nil
+}
+
+const listVisibleCircuitsByWall = `-- name: ListVisibleCircuitsByWall :many
+SELECT c.id, c.wall_id, c.created_by, c.name, c.is_shared, c.created_at, c.updated_at, u.display_name AS creator_name,
+       COALESCE(array_agg(cr.route_id ORDER BY cr.position, cr.route_id) FILTER (WHERE cr.route_id IS NOT NULL AND (r.status = 'published' OR r.created_by = $1)), ARRAY[]::uuid[]) AS route_ids
+FROM circuits c JOIN users u ON u.id = c.created_by
+LEFT JOIN circuit_routes cr ON cr.circuit_id = c.id
+LEFT JOIN routes r ON r.id = cr.route_id
+WHERE c.wall_id = $2 AND (c.is_shared OR c.created_by = $1)
+GROUP BY c.id, u.display_name
+ORDER BY (c.created_by = $1) DESC, c.is_shared DESC, c.name
+`
+
+type ListVisibleCircuitsByWallParams struct {
+	ViewerID pgtype.UUID `json:"viewer_id"`
+	WallID   pgtype.UUID `json:"wall_id"`
+}
+
+type ListVisibleCircuitsByWallRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	WallID      pgtype.UUID        `json:"wall_id"`
+	CreatedBy   pgtype.UUID        `json:"created_by"`
+	Name        string             `json:"name"`
+	IsShared    bool               `json:"is_shared"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	CreatorName string             `json:"creator_name"`
+	RouteIds    interface{}        `json:"route_ids"`
+}
+
+func (q *Queries) ListVisibleCircuitsByWall(ctx context.Context, arg ListVisibleCircuitsByWallParams) ([]ListVisibleCircuitsByWallRow, error) {
+	rows, err := q.db.Query(ctx, listVisibleCircuitsByWall, arg.ViewerID, arg.WallID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListVisibleCircuitsByWallRow
+	for rows.Next() {
+		var i ListVisibleCircuitsByWallRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WallID,
+			&i.CreatedBy,
+			&i.Name,
+			&i.IsShared,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CreatorName,
+			&i.RouteIds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const nextCircuitRoutePosition = `-- name: NextCircuitRoutePosition :one
+SELECT COALESCE(max(position)+1,0)::integer FROM circuit_routes WHERE circuit_id=$1
+`
+
+func (q *Queries) NextCircuitRoutePosition(ctx context.Context, circuitID pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, nextCircuitRoutePosition, circuitID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const removeCircuitRoute = `-- name: RemoveCircuitRoute :exec
+DELETE FROM circuit_routes WHERE circuit_id=$1 AND route_id=$2
+`
+
+type RemoveCircuitRouteParams struct {
+	CircuitID pgtype.UUID `json:"circuit_id"`
+	RouteID   pgtype.UUID `json:"route_id"`
+}
+
+func (q *Queries) RemoveCircuitRoute(ctx context.Context, arg RemoveCircuitRouteParams) error {
+	_, err := q.db.Exec(ctx, removeCircuitRoute, arg.CircuitID, arg.RouteID)
+	return err
 }
 
 const replaceCircuitRoutes = `-- name: ReplaceCircuitRoutes :exec
