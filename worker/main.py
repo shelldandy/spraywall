@@ -1,8 +1,8 @@
 """Spraywall detection worker - polls for pending jobs and runs inference."""
 import json
+import logging
 import os
 import time
-import logging
 
 import psycopg
 
