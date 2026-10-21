@@ -6,6 +6,7 @@ import type { Circuit, ClimbLog } from "../lib/api/types";
 import { formatCalendarDate } from "../lib/climbLogs";
 import ClimbLogForm from "../components/ClimbLogForm";
 import FilterDrawer from "../components/FilterDrawer";
+import CircuitForm, { CircuitBadge, type CircuitFormValues } from "../components/CircuitForm";
 import StarRating from "../components/StarRating";
 import { getGradeColorStyle } from "../lib/grades";
 import { parseRouteTags } from "../lib/routeTags";
@@ -20,27 +21,7 @@ import RouteList from "./RouteList";
 function CircuitToggle({ circuit, gymSlug, wallId, routeId }: { circuit: Circuit; gymSlug: string; wallId: string; routeId: string }) {
   const toggle = useToggleCircuitRoute(gymSlug, wallId, circuit.id);
   const included = circuit.route_ids.includes(routeId);
-  return <label style={{ display: "flex", gap: 8, padding: "10px 0" }}><input type="checkbox" checked={included} disabled={toggle.isPending} onChange={(event) => toggle.mutate({ route_id: routeId, included: event.target.checked })} />{circuit.name}</label>;
-}
-
-function QuickCircuit({ name, circuits, gymSlug, wallId, routeId, createCircuit, creating }: { name: string; circuits: Circuit[]; gymSlug: string; wallId: string; routeId: string; createCircuit: (input: { name: string; is_shared?: boolean; route_ids?: string[] }) => Promise<Circuit>; creating: boolean }) {
-  const existing = circuits.find((circuit) => circuit.is_owner && circuit.name.toLowerCase() === name.toLowerCase());
-  const toggle = useToggleCircuitRoute(gymSlug, wallId, existing?.id ?? "");
-  const creatingRef = useRef(false);
-  const create = async () => {
-    if (existing) {
-      if (!existing.route_ids.includes(routeId)) toggle.mutate({ route_id: routeId, included: true });
-      return;
-    }
-    if (creating || creatingRef.current) return;
-    creatingRef.current = true;
-    try {
-      await createCircuit({ name, is_shared: false, route_ids: [routeId] });
-    } finally {
-      creatingRef.current = false;
-    }
-  };
-  return <button type="button" className="btn btn-ghost" disabled={toggle.isPending || creating} onClick={() => { void create().catch(() => undefined); }}>{existing?.route_ids.includes(routeId) ? `✓ ${name}` : `+ ${name}`}</button>;
+  return <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0" }}><input type="checkbox" checked={included} disabled={toggle.isPending} onChange={(event) => toggle.mutate({ route_id: routeId, included: event.target.checked })} /><CircuitBadge circuit={circuit} /></label>;
 }
 
 export default function RouteDetailPage() {
@@ -62,7 +43,7 @@ export default function RouteDetailPage() {
   const [logDrawerOpen, setLogDrawerOpen] = useState(false);
   const [ratingDrawerOpen, setRatingDrawerOpen] = useState(false);
   const [circuitDrawerOpen, setCircuitDrawerOpen] = useState(false);
-  const [newCircuitName, setNewCircuitName] = useState("");
+  const [creatingCircuit, setCreatingCircuit] = useState(false);
   const logTriggerRef = useRef<HTMLButtonElement>(null);
   const ratingTriggerRef = useRef<HTMLButtonElement>(null);
   const circuitTriggerRef = useRef<HTMLButtonElement>(null);
@@ -98,6 +79,26 @@ export default function RouteDetailPage() {
   const routes = routesQuery.data ?? [];
   const circuits = circuitsQuery.data ?? [];
   const createCircuit = useCreateCircuit(gymSlug, wallId);
+  const returnToCircuitList = () => {
+    createCircuit.reset();
+    setCreatingCircuit(false);
+  };
+  const openCircuitCreate = () => {
+    createCircuit.reset();
+    setCreatingCircuit(true);
+  };
+  const closeCircuitDrawer = () => {
+    returnToCircuitList();
+    setCircuitDrawerOpen(false);
+  };
+  const submitCircuit = async (values: CircuitFormValues) => {
+    try {
+      await createCircuit.mutateAsync({ ...values, is_shared: false, route_ids: [routeId] });
+      returnToCircuitList();
+    } catch {
+      // The mutation error is rendered in the drawer.
+    }
+  };
   const allRouteHolds = allHolds ?? [];
   const imageUrl = wall?.image?.image_url ?? null;
 
@@ -232,6 +233,7 @@ export default function RouteDetailPage() {
               </div>
               {selectedCircuit && currentCircuitIndex >= 0 && <nav aria-label={`${selectedCircuit.name} circuit navigation`} className={styles.metaActions}>
                 <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === 0} onClick={() => moveCircuit(-1)}>‹ Prev</button>
+                <CircuitBadge circuit={selectedCircuit} />
                 <span>· {currentCircuitIndex + 1} of {circuitRouteIds.length} ·</span>
                 <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === circuitRouteIds.length - 1} onClick={() => moveCircuit(1)}>Next ›</button>
               </nav>}
@@ -261,19 +263,20 @@ export default function RouteDetailPage() {
                 {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""}
               </p>
 
-              <FilterDrawer open={circuitDrawerOpen} title="Circuits" onClose={() => setCircuitDrawerOpen(false)} triggerRef={circuitTriggerRef} showFooter={false}>
-                <section className={styles.drawerSection} aria-label="Add route to a circuit">
-                  {circuits.filter((circuit) => circuit.is_owner).map((circuit) => <CircuitToggle key={circuit.id} circuit={circuit} gymSlug={gymSlug} wallId={wallId} routeId={routeId} />)}
-                  <form onSubmit={(event) => { event.preventDefault(); const clean = newCircuitName.trim(); if (!clean) return; void createCircuit.mutateAsync({ name: clean, is_shared: false, route_ids: [routeId] }).then(() => setNewCircuitName("")).catch(() => undefined); }}>
-                    <label htmlFor="new-circuit-name">New circuit</label>
-                    <input id="new-circuit-name" value={newCircuitName} onChange={(event) => setNewCircuitName(event.target.value)} placeholder="Circuit name" maxLength={60} />
-                    <button type="submit" className="btn btn-primary" disabled={!newCircuitName.trim() || createCircuit.isPending}>Create</button>
-                  </form>
-                  <QuickCircuit name="Warmups" circuits={circuits} gymSlug={gymSlug} wallId={wallId} routeId={routeId} createCircuit={createCircuit.mutateAsync} creating={createCircuit.isPending} />
-                  <QuickCircuit name="Projects" circuits={circuits} gymSlug={gymSlug} wallId={wallId} routeId={routeId} createCircuit={createCircuit.mutateAsync} creating={createCircuit.isPending} />
-                  <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
-                  {createCircuit.error && <p className="error-text" role="alert">{createCircuit.error.message}</p>}
-                </section>
+              <FilterDrawer open={circuitDrawerOpen} title={creatingCircuit ? "New circuit" : "Circuits"} onBack={creatingCircuit ? returnToCircuitList : undefined} onClose={closeCircuitDrawer} triggerRef={circuitTriggerRef} showFooter={false}>
+                {creatingCircuit ? (
+                  <section className={styles.drawerSection} aria-label="Create a circuit">
+                    <CircuitForm submitLabel="Create" pending={createCircuit.isPending} onSubmit={submitCircuit} onCancel={returnToCircuitList} />
+                    {createCircuit.error && <p className="error-text" role="alert">{createCircuit.error.message}</p>}
+                  </section>
+                ) : (
+                  <section className={styles.drawerSection} aria-label="Add route to a circuit">
+                    {circuits.filter((circuit) => circuit.is_owner).map((circuit) => <CircuitToggle key={circuit.id} circuit={circuit} gymSlug={gymSlug} wallId={wallId} routeId={routeId} />)}
+                    <button type="button" className="btn btn-primary" onClick={openCircuitCreate}>+ New circuit</button>
+                    <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
+                    {createCircuit.error && <p className="error-text" role="alert">{createCircuit.error.message}</p>}
+                  </section>
+                )}
               </FilterDrawer>
 
               <FilterDrawer

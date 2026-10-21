@@ -24,6 +24,8 @@ type circuit struct {
 	CreatedBy   string    `json:"created_by"`
 	CreatorName string    `json:"creator_name"`
 	Name        string    `json:"name"`
+	Color       string    `json:"color"`
+	Emoji       string    `json:"emoji"`
 	IsShared    bool      `json:"is_shared"`
 	IsOwner     bool      `json:"is_owner"`
 	RouteIDs    []string  `json:"route_ids"`
@@ -32,9 +34,9 @@ type circuit struct {
 }
 
 type circuitRow struct {
-	id, wall, creator, creatorName, name string
-	shared                               bool
-	created, updated                     time.Time
+	id, wall, creator, creatorName, name, color, emoji string
+	shared                                             bool
+	created, updated                                   time.Time
 }
 
 type circuitRouteEntry struct {
@@ -78,11 +80,11 @@ func (h *Handler) loadCircuit(r *http.Request, id uuid.UUID) (circuitRow, error)
 	return circuitRow{
 		id: uuid.UUID(row.ID.Bytes).String(), wall: uuid.UUID(row.WallID.Bytes).String(),
 		creator: uuid.UUID(row.CreatedBy.Bytes).String(), creatorName: row.CreatorName,
-		name: row.Name, shared: row.IsShared, created: row.CreatedAt.Time, updated: row.UpdatedAt.Time,
+		name: row.Name, color: row.Color, emoji: row.Emoji, shared: row.IsShared, created: row.CreatedAt.Time, updated: row.UpdatedAt.Time,
 	}, nil
 }
 func (h *Handler) circuitJSON(r *http.Request, c circuitRow, owner bool) (circuit, error) {
-	out := circuit{ID: c.id, WallID: c.wall, CreatedBy: c.creator, CreatorName: c.creatorName, Name: c.name, IsShared: c.shared, IsOwner: owner, RouteIDs: []string{}, CreatedAt: c.created, UpdatedAt: c.updated}
+	out := circuit{ID: c.id, WallID: c.wall, CreatedBy: c.creator, CreatorName: c.creatorName, Name: c.name, Color: c.color, Emoji: c.emoji, IsShared: c.shared, IsOwner: owner, RouteIDs: []string{}, CreatedAt: c.created, UpdatedAt: c.updated}
 	rows, err := h.db.Query(r.Context(), `SELECT cr.route_id::text FROM circuit_routes cr JOIN routes rt ON rt.id=cr.route_id WHERE cr.circuit_id=$1 AND (rt.status='published' OR rt.created_by=$2) ORDER BY cr.position, cr.route_id`, mustUUID(c.id), shared.PgUUID(user.GetUserID(r.Context())))
 	if err != nil {
 		return out, err
@@ -143,7 +145,7 @@ func (h *Handler) ListCircuits(w http.ResponseWriter, r *http.Request) {
 		out = append(out, circuit{
 			ID: uuid.UUID(row.ID.Bytes).String(), WallID: uuid.UUID(row.WallID.Bytes).String(),
 			CreatedBy: uuid.UUID(row.CreatedBy.Bytes).String(), CreatorName: row.CreatorName,
-			Name: row.Name, IsShared: row.IsShared, IsOwner: row.CreatedBy == shared.PgUUID(viewerID),
+			Name: row.Name, Color: row.Color, Emoji: row.Emoji, IsShared: row.IsShared, IsOwner: row.CreatedBy == shared.PgUUID(viewerID),
 			RouteIDs: row.RouteIds, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 		})
 	}
@@ -154,6 +156,31 @@ func validateCircuitName(name string) (string, bool) {
 	return name, utf8.RuneCountInString(name) >= 1 && utf8.RuneCountInString(name) <= 60
 }
 
+const defaultCircuitColor = "violet"
+const defaultCircuitEmoji = "🧗"
+
+// Keep these presets in sync with web/src/lib/circuitStyle.ts.
+var circuitColors = map[string]struct{}{
+	"violet": {}, "orange": {}, "green": {}, "blue": {}, "pink": {},
+	"teal": {}, "amber": {}, "red": {}, "slate": {}, "ink": {},
+}
+var circuitEmoji = map[string]struct{}{
+	"🔥": {}, "💪": {}, "🎯": {}, "⭐": {}, "🧗": {}, "🪨": {},
+	"🏆": {}, "⚡": {}, "🧠": {}, "🦶": {}, "🌀": {}, "🐢": {},
+}
+
+func validateCircuitStyle(color, emoji string) (string, string, bool) {
+	if color == "" {
+		color = defaultCircuitColor
+	}
+	if emoji == "" {
+		emoji = defaultCircuitEmoji
+	}
+	_, validColor := circuitColors[color]
+	_, validEmoji := circuitEmoji[emoji]
+	return color, emoji, validColor && validEmoji
+}
+
 func (h *Handler) CreateCircuit(w http.ResponseWriter, r *http.Request) {
 	_, wall, _, ok := h.circuitWall(w, r)
 	if !ok {
@@ -161,6 +188,8 @@ func (h *Handler) CreateCircuit(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Name     string   `json:"name"`
+		Color    string   `json:"color"`
+		Emoji    string   `json:"emoji"`
 		Shared   bool     `json:"is_shared"`
 		RouteIDs []string `json:"route_ids"`
 	}
@@ -171,6 +200,11 @@ func (h *Handler) CreateCircuit(w http.ResponseWriter, r *http.Request) {
 	in.Name, ok = validateCircuitName(in.Name)
 	if !ok {
 		writeError(w, 400, "name must be 1-60 characters")
+		return
+	}
+	in.Color, in.Emoji, ok = validateCircuitStyle(in.Color, in.Emoji)
+	if !ok {
+		writeError(w, 400, "invalid circuit color or emoji")
 		return
 	}
 	ids, valid := parseCircuitRouteIDs(in.RouteIDs)
@@ -208,7 +242,7 @@ func (h *Handler) CreateCircuit(w http.ResponseWriter, r *http.Request) {
 	}
 	txQueries := h.queries.WithTx(tx)
 	createdCircuit, err := txQueries.CreateCircuit(r.Context(), generated.CreateCircuitParams{
-		WallID: wall, CreatedBy: uid, Name: in.Name, IsShared: in.Shared,
+		WallID: wall, CreatedBy: uid, Name: in.Name, Color: in.Color, Emoji: in.Emoji, IsShared: in.Shared,
 	})
 	if err != nil {
 		writeError(w, 500, "database error")
@@ -279,6 +313,8 @@ func (h *Handler) PatchCircuit(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Name   *string `json:"name"`
+		Color  *string `json:"color"`
+		Emoji  *string `json:"emoji"`
 		Shared *bool   `json:"is_shared"`
 	}
 	if json.NewDecoder(r.Body).Decode(&in) != nil {
@@ -289,6 +325,18 @@ func (h *Handler) PatchCircuit(w http.ResponseWriter, r *http.Request) {
 	if in.Name != nil {
 		name, _ = validateCircuitName(*in.Name)
 	}
+	color, emoji := c.color, c.emoji
+	if in.Color != nil {
+		color = *in.Color
+	}
+	if in.Emoji != nil {
+		emoji = *in.Emoji
+	}
+	color, emoji, styleValid := validateCircuitStyle(color, emoji)
+	if !styleValid {
+		writeError(w, 400, "invalid circuit color or emoji")
+		return
+	}
 	sh := c.shared
 	if in.Shared != nil {
 		sh = *in.Shared
@@ -298,7 +346,7 @@ func (h *Handler) PatchCircuit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err := h.queries.UpdateCircuit(r.Context(), generated.UpdateCircuitParams{
-		ID: mustUUID(c.id), Name: name, IsShared: sh,
+		ID: mustUUID(c.id), Name: name, Color: color, Emoji: emoji, IsShared: sh,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "circuit not found")

@@ -498,6 +498,8 @@ paths:
               required: [name]
               properties:
                 name: {type: string, minLength: 1, maxLength: 60}
+                color: {type: string, enum: [violet, orange, green, blue, pink, teal, amber, red, slate, ink], default: violet}
+                emoji: {type: string, enum: [🔥, 💪, 🎯, ⭐, 🧗, 🪨, 🏆, ⚡, 🧠, 🦶, 🌀, 🐢], default: "🧗"}
                 is_shared: {type: boolean, default: false}
                 route_ids: {type: array, maxItems: 100, uniqueItems: true, items: {type: string, format: uuid}}
       responses:
@@ -524,7 +526,7 @@ paths:
     patch:
       operationId: updateCircuit
       summary: Update an owned circuit
-      description: Only the circuit owner may rename it or change its sharing setting. Names are trimmed and limited to 1–60 characters.
+      description: Only the circuit owner may edit it. Names are trimmed and limited to 1–60 characters; color and emoji must use the supported presets.
       security: [{BearerAuth: []}]
       parameters:
         - $ref: "#/components/parameters/gymSlug"
@@ -538,6 +540,8 @@ paths:
               type: object
               properties:
                 name: {type: string, minLength: 1, maxLength: 60}
+                color: {type: string, enum: [violet, orange, green, blue, pink, teal, amber, red, slate, ink]}
+                emoji: {type: string, enum: [🔥, 💪, 🎯, ⭐, 🧗, 🪨, 🏆, ⚡, 🧠, 🦶, 🌀, 🐢]}
                 is_shared: {type: boolean}
       responses:
         "200":
@@ -1095,13 +1099,15 @@ components:
   schemas:
     Circuit:
       type: object
-      required: [id, wall_id, created_by, creator_name, name, is_shared, is_owner, route_ids, created_at, updated_at]
+      required: [id, wall_id, created_by, creator_name, name, color, emoji, is_shared, is_owner, route_ids, created_at, updated_at]
       properties:
         id: {type: string, format: uuid}
         wall_id: {type: string, format: uuid}
         created_by: {type: string, format: uuid}
         creator_name: {type: string}
         name: {type: string, minLength: 1, maxLength: 60}
+        color: {type: string, enum: [violet, orange, green, blue, pink, teal, amber, red, slate, ink]}
+        emoji: {type: string, enum: [🔥, 💪, 🎯, ⭐, 🧗, 🪨, 🏆, ⚡, 🧠, 🦶, 🌀, 🐢]}
         is_shared: {type: boolean}
         is_owner: {type: boolean}
         route_ids: {type: array, items: {type: string, format: uuid}}

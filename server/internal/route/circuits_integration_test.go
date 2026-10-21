@@ -23,6 +23,8 @@ type circuitHTTP struct {
 	CreatedBy   string   `json:"created_by"`
 	CreatorName string   `json:"creator_name"`
 	Name        string   `json:"name"`
+	Color       string   `json:"color"`
+	Emoji       string   `json:"emoji"`
 	IsShared    bool     `json:"is_shared"`
 	IsOwner     bool     `json:"is_owner"`
 	RouteIDs    []string `json:"route_ids"`
@@ -55,6 +57,61 @@ func circuitCreate(t *testing.T, e *routeTestEnv, token, name string, shared boo
 	}
 	return got
 }
+func TestCircuitStyleCreatePatchAndValidation(t *testing.T) {
+	e := newRouteTestEnv(t)
+	defaults := circuitCreate(t, e, e.token, "Defaults", false, nil)
+	if defaults.Color != "violet" || defaults.Emoji != "🧗" {
+		t.Fatalf("default style: color=%q emoji=%q", defaults.Color, defaults.Emoji)
+	}
+	route := e.create(t, "", "published")
+	create := circuitRequest(e, http.MethodPost, "", e.token, fmt.Sprintf(`{"name":"Styled","color":"teal","emoji":"⚡","is_shared":true,"route_ids":[%q]}`, route.ID))
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create styled circuit: %d %s", create.Code, create.Body)
+	}
+	var got circuitHTTP
+	if err := json.Unmarshal(create.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Color != "teal" || got.Emoji != "⚡" {
+		t.Fatalf("created style: color=%q emoji=%q", got.Color, got.Emoji)
+	}
+	sharedView := circuitRequest(e, http.MethodGet, got.ID, e.other, "")
+	var sharedCircuit circuitHTTP
+	if sharedView.Code != http.StatusOK || json.Unmarshal(sharedView.Body.Bytes(), &sharedCircuit) != nil || sharedCircuit.Color != got.Color || sharedCircuit.Emoji != got.Emoji {
+		t.Fatalf("shared circuit style not visible: %d %s", sharedView.Code, sharedView.Body)
+	}
+	list := circuitRequest(e, http.MethodGet, "", e.other, "")
+	var listed []circuitHTTP
+	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &listed) != nil {
+		t.Fatalf("list shared circuits: %d %s", list.Code, list.Body)
+	}
+	foundStyle := false
+	for _, circuit := range listed {
+		if circuit.ID == got.ID && circuit.Color == got.Color && circuit.Emoji == got.Emoji {
+			foundStyle = true
+		}
+	}
+	if !foundStyle {
+		t.Fatalf("shared list lost circuit style: %#v", listed)
+	}
+	patched := circuitRequest(e, http.MethodPatch, got.ID, e.token, `{"color":"pink","emoji":"🏆"}`)
+	if patched.Code != http.StatusOK || json.Unmarshal(patched.Body.Bytes(), &got) != nil {
+		t.Fatalf("patch style: %d %s", patched.Code, patched.Body)
+	}
+	if got.Color != "pink" || got.Emoji != "🏆" {
+		t.Fatalf("patched style: color=%q emoji=%q", got.Color, got.Emoji)
+	}
+	if r := circuitRequest(e, http.MethodPost, "", e.token, `{"name":"Bad color","color":"purple"}`); r.Code != http.StatusBadRequest {
+		t.Fatalf("invalid create color status %d: %s", r.Code, r.Body)
+	}
+	if r := circuitRequest(e, http.MethodPost, "", e.token, `{"name":"Bad emoji","emoji":"😀"}`); r.Code != http.StatusBadRequest {
+		t.Fatalf("invalid create emoji status %d: %s", r.Code, r.Body)
+	}
+	if r := circuitRequest(e, http.MethodPatch, got.ID, e.token, `{"color":"purple"}`); r.Code != http.StatusBadRequest {
+		t.Fatalf("invalid patch style status %d: %s", r.Code, r.Body)
+	}
+}
+
 func TestCircuitPrivacyVisibilityAndOrdering(t *testing.T) {
 	e := newRouteTestEnv(t)
 	route := e.create(t, "", "published")

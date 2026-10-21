@@ -36,13 +36,15 @@ func (q *Queries) AppendCircuitRoute(ctx context.Context, arg AppendCircuitRoute
 }
 
 const createCircuit = `-- name: CreateCircuit :one
-INSERT INTO circuits (wall_id, created_by, name, is_shared) VALUES ($1, $2, $3, $4) RETURNING id, wall_id, created_by, name, is_shared, created_at, updated_at
+INSERT INTO circuits (wall_id, created_by, name, color, emoji, is_shared) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, wall_id, created_by, name, is_shared, created_at, updated_at, color, emoji
 `
 
 type CreateCircuitParams struct {
 	WallID    pgtype.UUID `json:"wall_id"`
 	CreatedBy pgtype.UUID `json:"created_by"`
 	Name      string      `json:"name"`
+	Color     string      `json:"color"`
+	Emoji     string      `json:"emoji"`
 	IsShared  bool        `json:"is_shared"`
 }
 
@@ -51,6 +53,8 @@ func (q *Queries) CreateCircuit(ctx context.Context, arg CreateCircuitParams) (C
 		arg.WallID,
 		arg.CreatedBy,
 		arg.Name,
+		arg.Color,
+		arg.Emoji,
 		arg.IsShared,
 	)
 	var i Circuit
@@ -62,6 +66,8 @@ func (q *Queries) CreateCircuit(ctx context.Context, arg CreateCircuitParams) (C
 		&i.IsShared,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Color,
+		&i.Emoji,
 	)
 	return i, err
 }
@@ -94,7 +100,7 @@ func (q *Queries) DeleteVisibleCircuitRoutes(ctx context.Context, arg DeleteVisi
 }
 
 const getCircuitByID = `-- name: GetCircuitByID :one
-SELECT c.id, c.wall_id, c.created_by, c.name, c.is_shared, c.created_at, c.updated_at, u.display_name AS creator_name FROM circuits c JOIN users u ON u.id=c.created_by WHERE c.id=$1
+SELECT c.id, c.wall_id, c.created_by, c.name, c.is_shared, c.created_at, c.updated_at, c.color, c.emoji, u.display_name AS creator_name FROM circuits c JOIN users u ON u.id=c.created_by WHERE c.id=$1
 `
 
 type GetCircuitByIDRow struct {
@@ -105,6 +111,8 @@ type GetCircuitByIDRow struct {
 	IsShared    bool               `json:"is_shared"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Color       string             `json:"color"`
+	Emoji       string             `json:"emoji"`
 	CreatorName string             `json:"creator_name"`
 }
 
@@ -119,6 +127,8 @@ func (q *Queries) GetCircuitByID(ctx context.Context, id pgtype.UUID) (GetCircui
 		&i.IsShared,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Color,
+		&i.Emoji,
 		&i.CreatorName,
 	)
 	return i, err
@@ -178,7 +188,7 @@ func (q *Queries) ListCircuitRoutesForReplacement(ctx context.Context, arg ListC
 }
 
 const listVisibleCircuitsByWall = `-- name: ListVisibleCircuitsByWall :many
-SELECT c.id, c.wall_id, c.created_by, c.name, c.is_shared, c.created_at, c.updated_at, u.display_name AS creator_name,
+SELECT c.id, c.wall_id, c.created_by, c.name, c.is_shared, c.created_at, c.updated_at, c.color, c.emoji, u.display_name AS creator_name,
        ARRAY(
          SELECT cr.route_id::text FROM circuit_routes cr
          JOIN routes r ON r.id = cr.route_id
@@ -203,6 +213,8 @@ type ListVisibleCircuitsByWallRow struct {
 	IsShared    bool               `json:"is_shared"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Color       string             `json:"color"`
+	Emoji       string             `json:"emoji"`
 	CreatorName string             `json:"creator_name"`
 	RouteIds    []string           `json:"route_ids"`
 }
@@ -224,6 +236,8 @@ func (q *Queries) ListVisibleCircuitsByWall(ctx context.Context, arg ListVisible
 			&i.IsShared,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Color,
+			&i.Emoji,
 			&i.CreatorName,
 			&i.RouteIds,
 		); err != nil {
@@ -267,17 +281,25 @@ func (q *Queries) ShiftCircuitRoutePositions(ctx context.Context, arg ShiftCircu
 }
 
 const updateCircuit = `-- name: UpdateCircuit :one
-UPDATE circuits SET name = $2, is_shared = $3, updated_at = now() WHERE id = $1 RETURNING id, wall_id, created_by, name, is_shared, created_at, updated_at
+UPDATE circuits SET name = $2, color = $3, emoji = $4, is_shared = $5, updated_at = now() WHERE id = $1 RETURNING id, wall_id, created_by, name, is_shared, created_at, updated_at, color, emoji
 `
 
 type UpdateCircuitParams struct {
 	ID       pgtype.UUID `json:"id"`
 	Name     string      `json:"name"`
+	Color    string      `json:"color"`
+	Emoji    string      `json:"emoji"`
 	IsShared bool        `json:"is_shared"`
 }
 
 func (q *Queries) UpdateCircuit(ctx context.Context, arg UpdateCircuitParams) (Circuit, error) {
-	row := q.db.QueryRow(ctx, updateCircuit, arg.ID, arg.Name, arg.IsShared)
+	row := q.db.QueryRow(ctx, updateCircuit,
+		arg.ID,
+		arg.Name,
+		arg.Color,
+		arg.Emoji,
+		arg.IsShared,
+	)
 	var i Circuit
 	err := row.Scan(
 		&i.ID,
@@ -287,6 +309,8 @@ func (q *Queries) UpdateCircuit(ctx context.Context, arg UpdateCircuitParams) (C
 		&i.IsShared,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Color,
+		&i.Emoji,
 	)
 	return i, err
 }

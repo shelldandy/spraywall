@@ -66,6 +66,8 @@ export interface Circuit {
   created_by: string;
   creator_name: string;
   name: string;
+  color: string;
+  emoji: string;
   is_shared: boolean;
   is_owner: boolean;
   route_ids: string[];

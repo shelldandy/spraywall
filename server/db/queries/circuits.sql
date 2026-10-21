@@ -1,5 +1,5 @@
 -- name: CreateCircuit :one
-INSERT INTO circuits (wall_id, created_by, name, is_shared) VALUES ($1, $2, $3, $4) RETURNING *;
+INSERT INTO circuits (wall_id, created_by, name, color, emoji, is_shared) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *;
 
 -- name: ListVisibleCircuitsByWall :many
 SELECT c.*, u.display_name AS creator_name,
@@ -17,7 +17,7 @@ ORDER BY (c.created_by = sqlc.arg(viewer_id)) DESC, c.name;
 SELECT c.*, u.display_name AS creator_name FROM circuits c JOIN users u ON u.id=c.created_by WHERE c.id=$1;
 
 -- name: UpdateCircuit :one
-UPDATE circuits SET name = $2, is_shared = $3, updated_at = now() WHERE id = $1 RETURNING *;
+UPDATE circuits SET name = $2, color = $3, emoji = $4, is_shared = $5, updated_at = now() WHERE id = $1 RETURNING *;
 
 -- name: DeleteCircuit :exec
 DELETE FROM circuits WHERE id = $1;

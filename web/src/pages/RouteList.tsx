@@ -3,9 +3,11 @@ import { Link, useSearchParams } from "react-router";
 import HoldOverlay from "../components/HoldOverlay";
 import RouteTagPicker from "../components/RouteTagPicker";
 import FilterDrawer from "../components/FilterDrawer";
+import { CircuitBadge } from "../components/CircuitForm";
 import RouteTags from "../components/RouteTags";
 import type { Circuit, Hold, Route } from "../lib/api/types";
 import { getGradeColorStyle, getVGradeRank, uniqueVGrades } from "../lib/grades";
+import { circuitColor } from "../lib/circuitStyle";
 import { applyCircuit, parseRouteFilters, writeRouteFilters, matchesRouteFilters, hasRouteFilters, type ProgressFilter } from "../lib/routeFilters";
 import type { RouteTagId } from "../lib/routeTags";
 import styles from "./RouteList.module.css";
@@ -159,7 +161,7 @@ export default function RouteList({
         <button ref={starsTriggerRef} type="button" className={`${styles.gradeToggle} ${minStars !== null ? styles.gradeToggleActive : ""}`} aria-expanded={starsPickerOpen} onClick={() => setStarsPickerOpen(true)}>
           {minStars !== null && <span aria-hidden="true">✓</span>}Community: {starsLabel}
         </button>
-        <button ref={circuitTriggerRef} type="button" className={`${styles.gradeToggle} ${activeCircuit ? styles.gradeToggleActive : ""}`} onClick={() => setCircuitPickerOpen(true)}>Circuit: {activeCircuit?.name ?? "Any"}</button>
+        <button ref={circuitTriggerRef} type="button" className={`${styles.gradeToggle} ${activeCircuit ? styles.gradeToggleActive : ""}`} style={activeCircuit ? { borderColor: circuitColor(activeCircuit.color), backgroundColor: `color-mix(in srgb, ${circuitColor(activeCircuit.color)} 20%, var(--bg-muted))` } : undefined} onClick={() => setCircuitPickerOpen(true)}>Circuit: {activeCircuit ? `${activeCircuit.emoji} ${activeCircuit.name}` : "Any"}</button>
         {hasActiveFilters && <button type="button" className={`${styles.gradeToggle} ${styles.clearAllToggle}`} onClick={clearFilters}>Clear all</button>}
       </div>
       <FilterDrawer open={gradePickerOpen} title="Grade" onClose={() => setGradePickerOpen(false)} onClear={() => updateFilters({ minGrade: null, maxGrade: null })} matchingCount={matchingRoutes.length} triggerRef={gradeTriggerRef}>
@@ -186,8 +188,8 @@ export default function RouteList({
       <FilterDrawer open={circuitPickerOpen} title="Circuit" onClose={() => setCircuitPickerOpen(false)} onClear={() => updateCircuit(null)} matchingCount={matchingRoutes.length} triggerRef={circuitTriggerRef}>
         <div className={styles.circuitChoices} role="group" aria-label="Filter by circuit">
           <button type="button" className={`${styles.gradeOption} ${!activeCircuit ? styles.gradeOptionAnySelected : ""}`} onClick={() => updateCircuit(null)}>Any</button>
-          {circuits.some((circuit) => circuit.is_owner) && <><h3 className={styles.circuitGroup}>Yours</h3>{circuits.filter((circuit) => circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} onClick={() => updateCircuit(circuit.id)}>{circuit.name}</button>)}</>}
-          {circuits.some((circuit) => !circuit.is_owner) && <><h3 className={styles.circuitGroup}>Shared</h3>{circuits.filter((circuit) => !circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} onClick={() => updateCircuit(circuit.id)}>{circuit.name}</button>)}</>}
+          {circuits.some((circuit) => circuit.is_owner) && <><h3 className={styles.circuitGroup}>Yours</h3>{circuits.filter((circuit) => circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} style={{ borderColor: circuit.id === activeCircuit?.id ? circuitColor(circuit.color) : undefined }} aria-pressed={circuit.id === activeCircuit?.id} onClick={() => updateCircuit(circuit.id)}><CircuitBadge circuit={circuit} /></button>)}</>}
+          {circuits.some((circuit) => !circuit.is_owner) && <><h3 className={styles.circuitGroup}>Shared</h3>{circuits.filter((circuit) => !circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} style={{ borderColor: circuit.id === activeCircuit?.id ? circuitColor(circuit.color) : undefined }} aria-pressed={circuit.id === activeCircuit?.id} onClick={() => updateCircuit(circuit.id)}><CircuitBadge circuit={circuit} /></button>)}</>}
         </div>
         <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
       </FilterDrawer>

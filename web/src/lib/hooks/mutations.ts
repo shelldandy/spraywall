@@ -141,7 +141,7 @@ export function useUpdateRoute(gymSlug: string, wallId: string, routeId: string)
 
 export function useCreateCircuit(gymSlug: string, wallId: string) {
   const queryClient = useQueryClient();
-  return useMutation<Circuit, Error, { name: string; is_shared?: boolean; route_ids?: string[] }>({
+  return useMutation<Circuit, Error, { name: string; color?: string; emoji?: string; is_shared?: boolean; route_ids?: string[] }>({
     mutationFn: async (input) => {
       const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits`, { method: "POST", body: JSON.stringify(input) });
       await ensureOkJson(res, "Failed to create circuit");
@@ -154,7 +154,7 @@ export function useCreateCircuit(gymSlug: string, wallId: string) {
 
 export function useUpdateCircuit(gymSlug: string, wallId: string, circuitId: string) {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, { name?: string; is_shared?: boolean }>({
+  return useMutation<void, Error, { name?: string; color?: string; emoji?: string; is_shared?: boolean }>({
     mutationFn: async (input) => {
       const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits/${circuitId}`, { method: "PATCH", body: JSON.stringify(input) });
       await ensureOkJson(res, "Failed to update circuit");

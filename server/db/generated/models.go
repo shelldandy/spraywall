@@ -62,6 +62,8 @@ type Circuit struct {
 	IsShared  bool               `json:"is_shared"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	Color     string             `json:"color"`
+	Emoji     string             `json:"emoji"`
 }
 
 type CircuitRoute struct {
