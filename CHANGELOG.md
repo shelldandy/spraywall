@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.1](https://github.com/shelldandy/spraywall/compare/v1.1.0...v1.1.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* omit empty image build args ([9e95823](https://github.com/shelldandy/spraywall/commit/9e95823652bb804bed975c89d25a5a3dbef41cbf))
+* show actual app version in Settings ([5d043fe](https://github.com/shelldandy/spraywall/commit/5d043fe3eb1c8da8bd1db2159411b33e4724fb4a))
+* show app version in settings ([8c7b5bc](https://github.com/shelldandy/spraywall/commit/8c7b5bc1c9a20c95ab7d23a69886cf424edadc79))
+
 ## [1.1.0](https://github.com/shelldandy/spraywall/compare/v1.0.0...v1.1.0) (2026-10-21)
 
 
