@@ -1,10 +1,11 @@
 """MinIO/S3 storage client for downloading images."""
 import os
 import tempfile
+
 import boto3
+import pillow_heif
 from botocore.client import Config
 from PIL import Image, ImageOps
-import pillow_heif
 
 pillow_heif.register_heif_opener()
 

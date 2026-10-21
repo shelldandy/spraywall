@@ -1,6 +1,7 @@
 """Hold detection inference using YOLOv8."""
 import logging
 import os
+
 from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)

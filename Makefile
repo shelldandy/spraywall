@@ -22,6 +22,7 @@ lint:
 
 test:
 	cd server && go test ./...
+	cd web && npm test
 	cd worker && (python -c "import pytest" 2>/dev/null && python -m pytest -q || echo "pytest not available, skipping worker tests")
 
 clean:
