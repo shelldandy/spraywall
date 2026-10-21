@@ -4,10 +4,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 import pkg from './package.json' with { type: 'json' }
 
 const API_TARGET = process.env.API_TARGET ?? 'http://localhost:8080'
+const GIT_SHA = process.env.GIT_SHA?.slice(0, 7)
 
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(`v${pkg.version}${GIT_SHA ? `+${GIT_SHA}` : ''}`),
   },
   plugins: [
     react(),

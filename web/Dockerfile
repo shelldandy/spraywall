@@ -3,6 +3,7 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+ARG GIT_SHA
 RUN npm run build
 
 FROM nginx:alpine
