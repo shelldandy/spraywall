@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.1.0](https://github.com/shelldandy/spraywall/compare/v1.0.0...v1.1.0) (2026-10-21)
+
+
+### Features
+
+* add climb logging, ratings, and filters ([9915a3a](https://github.com/shelldandy/spraywall/commit/9915a3af6cb6265b6480da52c0b8463b6cc994b9))
+* add climb logging, ratings, and filters ([07e1ee4](https://github.com/shelldandy/spraywall/commit/07e1ee4980b2201a756b98a0dbf87cc4fcf37c32))
+* add route style tags and filters ([88c0907](https://github.com/shelldandy/spraywall/commit/88c0907cd21046e121a3993b10eae2cd204815d7))
+* **circuits:** add color and emoji styles ([d884785](https://github.com/shelldandy/spraywall/commit/d884785f5f96358cacc375de7bef0be52ec81943))
+* **web:** add route circuits ([09abf2a](https://github.com/shelldandy/spraywall/commit/09abf2a13ab172c2334b2fd98ac008faf78b6ca6))
+* **web:** color grade picker and logbook labels ([4e35d42](https://github.com/shelldandy/spraywall/commit/4e35d42bb11350f0ef1afa63198a9f39b5784034))
+* **web:** filter routes by grade range ([a681119](https://github.com/shelldandy/spraywall/commit/a681119fd0912fdc07aa77b1f92b0f7b6121462b))
+* **web:** random route name generator on create route ([63592aa](https://github.com/shelldandy/spraywall/commit/63592aa231a7b116e958ec2986d9e7e99512420e))
+* **web:** refine route detail and grade colors ([f309716](https://github.com/shelldandy/spraywall/commit/f3097162b14bdf59ad3a365c7ffb805a193d382f))
+* **web:** refine route detail and grade colors ([3e0be47](https://github.com/shelldandy/spraywall/commit/3e0be47748c8b68013f9e86856d3c76d0da68a5b))
+
+
+### Bug Fixes
+
+* **circuits:** address review findings ([ea06203](https://github.com/shelldandy/spraywall/commit/ea062030145914bf09cc6e083f56e5ec7702966e))
+* **circuits:** preserve hidden routes on reorder ([b8a11df](https://github.com/shelldandy/spraywall/commit/b8a11df4cee685441dc1cbc40d6d5d0a4188032e))
+* **web:** complete circuit workflows ([e71154c](https://github.com/shelldandy/spraywall/commit/e71154cddbfb977b52f9ed9f36814f5748310902))
+
 ## 1.0.0 (2026-10-16)
 
 
