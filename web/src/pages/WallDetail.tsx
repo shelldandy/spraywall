@@ -1,8 +1,8 @@
 import { useCallback, useRef, useState, type ChangeEvent } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
-import { useHolds, useRoutes } from "../lib/hooks/queries";
+import { useCircuits, useHolds, useRoutes } from "../lib/hooks/queries";
 import { toast, toastError } from "../lib/toast";
 import { prepareImageForUpload } from "../lib/image";
 import type { Hold, HoldRoles, WallDetail } from "../lib/api/types";
@@ -96,6 +96,7 @@ export default function WallDetailPage() {
 
   const holdsQuery = useHolds(wallId, wallQuery.data?.detection_status === "done", gymSlug);
   const routesQuery = useRoutes(wallId, gymSlug);
+  const circuitsQuery = useCircuits(wallId, gymSlug);
 
   const handleToggle = useCallback((holdId: string) => {
     setHoldSelections((prev) => {
@@ -624,6 +625,7 @@ export default function WallDetailPage() {
           {wallQuery.isError && !wall && <p className="error-text">{wallQuery.error.message}</p>}
           <div className={styles.browseHeading}>
             <h2>Climbs</h2>
+            <Link className={`btn btn-ghost ${styles.manageWallButton}`} to={`/circuits?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`}>Circuits</Link>
             {routesQuery.data && routesQuery.data.length > 0 && (
               <span className="muted">{routesQuery.data.length}</span>
             )}
@@ -648,6 +650,8 @@ export default function WallDetailPage() {
               routes={routesQuery.data}
               holds={holds}
               imageUrl={wall?.image?.image_url ?? null}
+              circuits={circuitsQuery.data ?? []}
+              circuitsLoaded={circuitsQuery.isSuccess}
               wallId={wallId}
               gymSlug={gymSlug ?? ""}
             />

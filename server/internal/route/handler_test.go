@@ -27,13 +27,14 @@ import (
 const routeTestJWTSecret = "route-test-secret"
 
 type routeTestEnv struct {
-	pool    *pgxpool.Pool
-	q       *generated.Queries
-	router  chi.Router
-	token   string
-	other   string
-	wallID  uuid.UUID
-	holdIDs []uuid.UUID
+	pool      *pgxpool.Pool
+	q         *generated.Queries
+	router    chi.Router
+	token     string
+	other     string
+	wallID    uuid.UUID
+	creatorID uuid.UUID
+	holdIDs   []uuid.UUID
 }
 
 type routeTestResponse struct {
@@ -100,6 +101,19 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 	})
 	r.Route("/gyms/{gymSlug}", func(r chi.Router) {
 		r.Use(auth.Authenticate)
+		r.Route("/walls/{wallId}/circuits", func(r chi.Router) {
+			h := routehandler.NewHandler(q, pool)
+			r.Get("/", h.ListCircuits)
+			r.Post("/", h.CreateCircuit)
+			r.Route("/{circuitId}", func(r chi.Router) {
+				r.Get("/", h.GetCircuit)
+				r.Patch("/", h.PatchCircuit)
+				r.Delete("/", h.DeleteCircuit)
+				r.Put("/routes", h.ReplaceCircuitRoutes)
+				r.Post("/routes", h.AppendCircuitRoute)
+				r.Delete("/routes/{routeId}", h.DeleteCircuitRoute)
+			})
+		})
 		r.Route("/walls/{wallId}/routes", func(r chi.Router) {
 			h := routehandler.NewHandler(q, pool)
 			r.Post("/", h.CreateRoute)
@@ -120,7 +134,7 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 			})
 		})
 	})
-	return &routeTestEnv{pool: pool, q: q, router: r, token: creatorToken.AccessToken, other: otherToken.AccessToken, wallID: uuid.UUID(wall.ID.Bytes), holdIDs: holdIDs}
+	return &routeTestEnv{pool: pool, q: q, router: r, token: creatorToken.AccessToken, other: otherToken.AccessToken, wallID: uuid.UUID(wall.ID.Bytes), creatorID: uuid.UUID(creator.ID.Bytes), holdIDs: holdIDs}
 }
 
 func (e *routeTestEnv) path(routeID string) string {

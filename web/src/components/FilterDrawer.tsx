@@ -5,6 +5,7 @@ interface FilterDrawerProps {
   open: boolean;
   title: string;
   onClose: () => void;
+  onBack?: () => void;
   onClear?: () => void;
   matchingCount?: number;
   countLabel?: string;
@@ -14,7 +15,7 @@ interface FilterDrawerProps {
 }
 
 /** Shared accessible native-dialog shell for route filters and detail panels. */
-export default function FilterDrawer({ open, title, onClose, onClear, matchingCount, countLabel, showFooter = true, triggerRef, children }: FilterDrawerProps) {
+export default function FilterDrawer({ open, title, onClose, onBack, onClear, matchingCount, countLabel, showFooter = true, triggerRef, children }: FilterDrawerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = `filter-title-${useId().replaceAll(":", "")}`;
 
@@ -35,6 +36,7 @@ export default function FilterDrawer({ open, title, onClose, onClear, matchingCo
     >
       <section className={styles.sheet}>
         <header className={styles.header}>
+          {onBack && <button type="button" className="btn btn-ghost" onClick={onBack} aria-label="Back">‹</button>}
           <h2 id={titleId} className={styles.title}>{title}</h2>
           <button type="button" autoFocus className="btn btn-ghost" onClick={onClose}>Done</button>
         </header>

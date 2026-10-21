@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../api/fetch";
-import type { HoldRoles, Me } from "../api/types";
+import type { Circuit, HoldRoles, Me } from "../api/types";
 import type { RouteTagId } from "../routeTags";
 import { useAuthStore } from "../store/auth";
 import { toastError } from "../toast";
@@ -133,6 +133,72 @@ export function useUpdateRoute(gymSlug: string, wallId: string, routeId: string)
       queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
       queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
     },
+    onError: toastError,
+  });
+}
+
+// --- Circuits ---
+
+export function useCreateCircuit(gymSlug: string, wallId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<Circuit, Error, { name: string; color?: string; emoji?: string; is_shared?: boolean; route_ids?: string[] }>({
+    mutationFn: async (input) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits`, { method: "POST", body: JSON.stringify(input) });
+      await ensureOkJson(res, "Failed to create circuit");
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["circuits", wallId] }),
+    onError: toastError,
+  });
+}
+
+export function useUpdateCircuit(gymSlug: string, wallId: string, circuitId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, { name?: string; color?: string; emoji?: string; is_shared?: boolean }>({
+    mutationFn: async (input) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits/${circuitId}`, { method: "PATCH", body: JSON.stringify(input) });
+      await ensureOkJson(res, "Failed to update circuit");
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["circuits", wallId] }),
+    onError: toastError,
+  });
+}
+
+export function useDeleteCircuit(gymSlug: string, wallId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (circuitId) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits/${circuitId}`, { method: "DELETE" });
+      await ensureOkJson(res, "Failed to delete circuit");
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["circuits", wallId] }),
+    onError: toastError,
+  });
+}
+
+export function useSetCircuitRoutes(gymSlug: string, wallId: string, circuitId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string[]>({
+    mutationFn: async (route_ids) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits/${circuitId}/routes`, { method: "PUT", body: JSON.stringify({ route_ids }) });
+      await ensureOkJson(res, "Failed to save circuit routes");
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["circuits", wallId] }),
+    onError: toastError,
+  });
+}
+
+export function useToggleCircuitRoute(gymSlug: string, wallId: string, circuitId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, { route_id: string; included: boolean }>({
+    mutationFn: async ({ route_id, included }) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits/${circuitId}/routes${included ? "" : `/${route_id}`}`, {
+        method: included ? "POST" : "DELETE",
+        ...(included ? { body: JSON.stringify({ route_id }) } : {}),
+      });
+      await ensureOkJson(res, "Failed to update circuit route");
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["circuits", wallId] }),
     onError: toastError,
   });
 }

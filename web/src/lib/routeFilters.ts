@@ -9,6 +9,7 @@ export interface RouteFilters {
   maxGrade: string | null;
   progress: ProgressFilter | null;
   minStars: number | null;
+  circuit: string | null;
 }
 
 const validGrades = new Set(uniqueVGrades().map(({ v }) => v));
@@ -30,7 +31,8 @@ export function parseRouteFilters(params: URLSearchParams): RouteFilters {
   const progress = rawProgress.find((value): value is ProgressFilter => progressValues.has(value as ProgressFilter)) ?? null;
   const rawStars = params.getAll("minStars");
   const parsedStars = rawStars.map(Number).find((value) => Number.isInteger(value) && value >= 1 && value <= 5);
-  return { tags: parseRouteTags(params.getAll("tag")), minGrade, maxGrade, progress, minStars: parsedStars ?? null };
+  const circuit = params.getAll("circuit").find((value) => value.trim().length > 0)?.trim() ?? null;
+  return { tags: parseRouteTags(params.getAll("tag")), minGrade, maxGrade, progress, minStars: parsedStars ?? null, circuit };
 }
 
 /** Replace only route filter keys and preserve unrelated navigation parameters. */
@@ -45,6 +47,8 @@ export function writeRouteFilters(params: URLSearchParams, filters: RouteFilters
   if (filters.progress) params.set("progress", filters.progress);
   params.delete("minStars");
   if (filters.minStars !== null && filters.minStars >= 1 && filters.minStars <= 5) params.set("minStars", String(filters.minStars));
+  params.delete("circuit");
+  if (filters.circuit) params.set("circuit", filters.circuit);
   return params;
 }
 
@@ -62,5 +66,14 @@ export function matchesRouteFilters(route: Route, filters: RouteFilters): boolea
 
 export function hasRouteFilters(filters: RouteFilters): boolean {
   return filters.tags.length > 0 || filters.minGrade !== null || filters.maxGrade !== null
-    || filters.progress !== null || filters.minStars !== null;
+    || filters.progress !== null || filters.minStars !== null || filters.circuit !== null;
+}
+
+/** Keeps circuit order while dropping routes not present in the current wall route set. */
+export function applyCircuit<T extends { id: string }>(routes: readonly T[], routeIds: readonly string[]): T[] {
+  const byId = new Map(routes.map((route) => [route.id, route]));
+  return routeIds.flatMap((id) => {
+    const route = byId.get(id);
+    return route ? [route] : [];
+  });
 }

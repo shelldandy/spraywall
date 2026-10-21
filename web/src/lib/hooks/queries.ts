@@ -10,6 +10,7 @@ import type {
   LogbookEntry,
   ClimbLog,
   Me,
+  Circuit,
 } from "../api/types";
 import { useAuthStore } from "../store/auth";
 
@@ -86,6 +87,20 @@ export function useRoutes(wallId: string, gymSlug?: string) {
       if (!res.ok) throw new Error("Failed to fetch routes");
       return res.json();
     },
+  });
+}
+
+export function useCircuits(wallId: string, gymSlug?: string) {
+  const userId = useAuthStore((s) => s.userId);
+  return useQuery<Circuit[]>({
+    queryKey: ["circuits", wallId, userId],
+    queryFn: async () => {
+      if (!gymSlug) return [];
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits`);
+      if (!res.ok) throw new Error("Failed to fetch circuits");
+      return res.json();
+    },
+    enabled: Boolean(wallId && gymSlug),
   });
 }
 

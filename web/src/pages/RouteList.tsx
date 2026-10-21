@@ -3,10 +3,12 @@ import { Link, useSearchParams } from "react-router";
 import HoldOverlay from "../components/HoldOverlay";
 import RouteTagPicker from "../components/RouteTagPicker";
 import FilterDrawer from "../components/FilterDrawer";
+import { CircuitBadge } from "../components/CircuitForm";
 import RouteTags from "../components/RouteTags";
-import type { Hold, Route } from "../lib/api/types";
+import type { Circuit, Hold, Route } from "../lib/api/types";
 import { getGradeColorStyle, getVGradeRank, uniqueVGrades } from "../lib/grades";
-import { parseRouteFilters, writeRouteFilters, matchesRouteFilters, hasRouteFilters, type ProgressFilter } from "../lib/routeFilters";
+import { circuitColor } from "../lib/circuitStyle";
+import { applyCircuit, parseRouteFilters, writeRouteFilters, matchesRouteFilters, hasRouteFilters, type ProgressFilter } from "../lib/routeFilters";
 import type { RouteTagId } from "../lib/routeTags";
 import styles from "./RouteList.module.css";
 
@@ -24,6 +26,8 @@ interface RouteListProps {
   wallId: string;
   gymSlug: string;
   selectedRouteId?: string;
+  circuits?: Circuit[];
+  circuitsLoaded?: boolean;
 }
 
 function RouteThumbnail({ route, holds, imageUrl }: { route: Route; holds: Hold[]; imageUrl: string | null }) {
@@ -61,14 +65,18 @@ export default function RouteList({
   wallId,
   gymSlug,
   selectedRouteId,
+  circuits = [],
+  circuitsLoaded = true,
 }: RouteListProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [gradePickerOpen, setGradePickerOpen] = useState(false);
   const [progressPickerOpen, setProgressPickerOpen] = useState(false);
   const [starsPickerOpen, setStarsPickerOpen] = useState(false);
+  const [circuitPickerOpen, setCircuitPickerOpen] = useState(false);
   const gradeTriggerRef = useRef<HTMLButtonElement>(null);
   const progressTriggerRef = useRef<HTMLButtonElement>(null);
   const starsTriggerRef = useRef<HTMLButtonElement>(null);
+  const circuitTriggerRef = useRef<HTMLButtonElement>(null);
   const filters = parseRouteFilters(searchParams);
   const { tags: selectedTags, minGrade, maxGrade, progress, minStars } = filters;
   const minRank = minGrade === null ? null : getVGradeRank(minGrade);
@@ -81,14 +89,28 @@ export default function RouteList({
     if (canonical.toString() !== searchParams.toString()) setSearchParams(canonical, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const matchingRoutes = routes.filter((route) => matchesRouteFilters(route, filters));
+  const activeCircuit = circuits.find((circuit) => circuit.id === filters.circuit) ?? null;
+  const updateCircuit = (circuit: string | null) => {
+    const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, circuit });
+    setSearchParams(nextParams, { replace: true });
+  };
+  useEffect(() => {
+    if (!circuitsLoaded || !filters.circuit || activeCircuit) return;
+    const canonical = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, circuit: null });
+    setSearchParams(canonical, { replace: true });
+  }, [circuitsLoaded, filters, activeCircuit, searchParams, setSearchParams]);
+  const circuitRoutes = activeCircuit ? applyCircuit(routes, activeCircuit.route_ids) : routes;
+  const matchingRoutes = circuitRoutes.filter((route) => matchesRouteFilters(route, filters));
   const hasActiveFilters = hasRouteFilters(filters);
   const updateFilters = (next: Partial<typeof filters>) => {
     const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, ...next });
     setSearchParams(nextParams, { replace: true });
   };
   const updateTags = (tags: readonly RouteTagId[]) => updateFilters({ tags: [...tags] });
-  const clearFilters = () => updateFilters({ tags: [], minGrade: null, maxGrade: null, progress: null, minStars: null });
+  const clearFilters = () => {
+    const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, tags: [], minGrade: null, maxGrade: null, progress: null, minStars: null, circuit: null });
+    setSearchParams(nextParams, { replace: true });
+  };
   const selectGrade = (grade: string) => {
     const rank = getVGradeRank(grade)!;
     if (minGrade === null && maxGrade === null) { updateFilters({ minGrade: grade, maxGrade: grade }); return; }
@@ -139,6 +161,7 @@ export default function RouteList({
         <button ref={starsTriggerRef} type="button" className={`${styles.gradeToggle} ${minStars !== null ? styles.gradeToggleActive : ""}`} aria-expanded={starsPickerOpen} onClick={() => setStarsPickerOpen(true)}>
           {minStars !== null && <span aria-hidden="true">✓</span>}Community: {starsLabel}
         </button>
+        <button ref={circuitTriggerRef} type="button" className={`${styles.gradeToggle} ${activeCircuit ? styles.gradeToggleActive : ""}`} style={activeCircuit ? { borderColor: circuitColor(activeCircuit.color), backgroundColor: `color-mix(in srgb, ${circuitColor(activeCircuit.color)} 20%, var(--bg-muted))` } : undefined} onClick={() => setCircuitPickerOpen(true)}>Circuit: {activeCircuit ? `${activeCircuit.emoji} ${activeCircuit.name}` : "Any"}</button>
         {hasActiveFilters && <button type="button" className={`${styles.gradeToggle} ${styles.clearAllToggle}`} onClick={clearFilters}>Clear all</button>}
       </div>
       <FilterDrawer open={gradePickerOpen} title="Grade" onClose={() => setGradePickerOpen(false)} onClear={() => updateFilters({ minGrade: null, maxGrade: null })} matchingCount={matchingRoutes.length} triggerRef={gradeTriggerRef}>
@@ -161,6 +184,14 @@ export default function RouteList({
           <button type="button" className={`${styles.gradeOption} ${progress === null ? styles.gradeOptionAnySelected : ""}`} aria-pressed={progress === null} onClick={() => updateFilters({ progress: null })}>All</button>
           {progressChoices.map(({ value, label }) => <button key={value} type="button" className={`${styles.gradeOption} ${progress === value ? styles.gradeOptionSelected : ""}`} aria-pressed={progress === value} onClick={() => updateFilters({ progress: value })}>{label}</button>)}
         </div>
+      </FilterDrawer>
+      <FilterDrawer open={circuitPickerOpen} title="Circuit" onClose={() => setCircuitPickerOpen(false)} onClear={() => updateCircuit(null)} matchingCount={matchingRoutes.length} triggerRef={circuitTriggerRef}>
+        <div className={styles.circuitChoices} role="group" aria-label="Filter by circuit">
+          <button type="button" className={`${styles.gradeOption} ${!activeCircuit ? styles.gradeOptionAnySelected : ""}`} onClick={() => updateCircuit(null)}>Any</button>
+          {circuits.some((circuit) => circuit.is_owner) && <><h3 className={styles.circuitGroup}>Yours</h3>{circuits.filter((circuit) => circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} style={{ borderColor: circuit.id === activeCircuit?.id ? circuitColor(circuit.color) : undefined }} aria-pressed={circuit.id === activeCircuit?.id} onClick={() => updateCircuit(circuit.id)}><CircuitBadge circuit={circuit} /></button>)}</>}
+          {circuits.some((circuit) => !circuit.is_owner) && <><h3 className={styles.circuitGroup}>Shared</h3>{circuits.filter((circuit) => !circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} style={{ borderColor: circuit.id === activeCircuit?.id ? circuitColor(circuit.color) : undefined }} aria-pressed={circuit.id === activeCircuit?.id} onClick={() => updateCircuit(circuit.id)}><CircuitBadge circuit={circuit} /></button>)}</>}
+        </div>
+        <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
       </FilterDrawer>
       <FilterDrawer open={starsPickerOpen} title="Community ratings" onClose={() => setStarsPickerOpen(false)} onClear={() => updateFilters({ minStars: null })} matchingCount={matchingRoutes.length} triggerRef={starsTriggerRef}>
         <p className={styles.gradeHelper}>Minimum unrounded community average. Unrated climbs appear under Any.</p>
@@ -190,7 +221,7 @@ export default function RouteList({
                 >
                   <RouteThumbnail route={route} holds={holds} imageUrl={imageUrl} />
                   <div className={styles.routeInfo}>
-                    <div className={styles.routeName}>{route.name}</div>
+                    <div className={styles.routeName}>{activeCircuit ? `${activeCircuit.route_ids.indexOf(route.id) + 1}. ` : ""}{route.name}</div>
                     <div className={styles.routeMeta}>
                       {route.send_count} send{route.send_count !== 1 ? "s" : ""}
                       <span className={styles.metaSeparator}> · </span>

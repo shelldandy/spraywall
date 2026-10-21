@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
-import { useHolds, useRouteDetail, useRouteLogs, useRoutes, useWallDetail } from "../lib/hooks/queries";
-import { useCreateClimbLog, useDeleteClimbLog, useDeleteRouteRating, useSetRouteRating, useUpdateClimbLog } from "../lib/hooks/mutations";
-import type { ClimbLog } from "../lib/api/types";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { useCircuits, useHolds, useRouteDetail, useRouteLogs, useRoutes, useWallDetail } from "../lib/hooks/queries";
+import { useCreateCircuit, useCreateClimbLog, useDeleteClimbLog, useDeleteRouteRating, useSetRouteRating, useToggleCircuitRoute, useUpdateClimbLog } from "../lib/hooks/mutations";
+import type { Circuit, ClimbLog } from "../lib/api/types";
 import { formatCalendarDate } from "../lib/climbLogs";
 import ClimbLogForm from "../components/ClimbLogForm";
 import FilterDrawer from "../components/FilterDrawer";
+import CircuitForm, { CircuitBadge, type CircuitFormValues } from "../components/CircuitForm";
 import StarRating from "../components/StarRating";
 import { getGradeColorStyle } from "../lib/grades";
 import { parseRouteTags } from "../lib/routeTags";
@@ -17,6 +18,12 @@ import styles from "./RouteDetail.module.css";
 import { useGoBack } from "../lib/nav";
 import RouteList from "./RouteList";
 
+function CircuitToggle({ circuit, gymSlug, wallId, routeId }: { circuit: Circuit; gymSlug: string; wallId: string; routeId: string }) {
+  const toggle = useToggleCircuitRoute(gymSlug, wallId, circuit.id);
+  const included = circuit.route_ids.includes(routeId);
+  return <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0" }}><input type="checkbox" checked={included} disabled={toggle.isPending} onChange={(event) => toggle.mutate({ route_id: routeId, included: event.target.checked })} /><CircuitBadge circuit={circuit} /></label>;
+}
+
 export default function RouteDetailPage() {
   const { routeId = "" } = useParams();
   const [params] = useSearchParams();
@@ -27,6 +34,7 @@ export default function RouteDetailPage() {
 
   const routeQuery = useRouteDetail(routeId, gymSlug, wallId);
   const routesQuery = useRoutes(wallId, gymSlug);
+  const circuitsQuery = useCircuits(wallId, gymSlug);
   const wallQuery = useWallDetail(wallId, gymSlug);
   const holdsQuery = useHolds(wallId, wallQuery.data?.detection_status === "done", gymSlug);
   const logsQuery = useRouteLogs(routeId, gymSlug, wallId);
@@ -34,8 +42,11 @@ export default function RouteDetailPage() {
   const [editingLog, setEditingLog] = useState<ClimbLog | null>(null);
   const [logDrawerOpen, setLogDrawerOpen] = useState(false);
   const [ratingDrawerOpen, setRatingDrawerOpen] = useState(false);
+  const [circuitDrawerOpen, setCircuitDrawerOpen] = useState(false);
+  const [creatingCircuit, setCreatingCircuit] = useState(false);
   const logTriggerRef = useRef<HTMLButtonElement>(null);
   const ratingTriggerRef = useRef<HTMLButtonElement>(null);
+  const circuitTriggerRef = useRef<HTMLButtonElement>(null);
 
   const routeData = routeQuery.data;
   const wall = wallQuery.data;
@@ -66,6 +77,28 @@ export default function RouteDetailPage() {
 
   const isLoading = routeQuery.isLoading || wallQuery.isLoading || holdsQuery.isLoading;
   const routes = routesQuery.data ?? [];
+  const circuits = circuitsQuery.data ?? [];
+  const createCircuit = useCreateCircuit(gymSlug, wallId);
+  const returnToCircuitList = () => {
+    createCircuit.reset();
+    setCreatingCircuit(false);
+  };
+  const openCircuitCreate = () => {
+    createCircuit.reset();
+    setCreatingCircuit(true);
+  };
+  const closeCircuitDrawer = () => {
+    returnToCircuitList();
+    setCircuitDrawerOpen(false);
+  };
+  const submitCircuit = async (values: CircuitFormValues) => {
+    try {
+      await createCircuit.mutateAsync({ ...values, is_shared: false, route_ids: [routeId] });
+      returnToCircuitList();
+    } catch {
+      // The mutation error is rendered in the drawer.
+    }
+  };
   const allRouteHolds = allHolds ?? [];
   const imageUrl = wall?.image?.image_url ?? null;
 
@@ -90,6 +123,14 @@ export default function RouteDetailPage() {
     navigate(`/walls/${wallId}?${search}`);
   };
 
+  const selectedCircuit = circuits.find((circuit) => circuit.id === params.get("circuit"));
+  const circuitRouteIds = selectedCircuit?.route_ids ?? [];
+  const currentCircuitIndex = circuitRouteIds.indexOf(routeId);
+  const circuitParams = new URLSearchParams(params);
+  const moveCircuit = (offset: number) => {
+    const nextId = circuitRouteIds[currentCircuitIndex + offset];
+    if (nextId) navigate(`/routes/${nextId}?${circuitParams}`);
+  };
   const sendCount = routeData?.send_count ?? 0;
   const isAuthor = routeData?.created_by === userId;
 
@@ -135,6 +176,8 @@ export default function RouteDetailPage() {
               wallId={wallId}
               gymSlug={gymSlug}
               selectedRouteId={routeId}
+              circuits={circuits}
+              circuitsLoaded={circuitsQuery.isSuccess}
             />
           )}
         </aside>
@@ -174,6 +217,7 @@ export default function RouteDetailPage() {
                   >
                     {resetRoute ? "Your history" : "Log climb"}
                   </button>
+                  {routeData?.status === "published" && <button ref={circuitTriggerRef} type="button" className={`btn btn-ghost ${styles.metaAction}`} onClick={() => setCircuitDrawerOpen(true)}>Circuits</button>}
                   {routeData?.status === "published" && (
                     <button
                       ref={ratingTriggerRef}
@@ -187,6 +231,12 @@ export default function RouteDetailPage() {
                   )}
                 </div>
               </div>
+              {selectedCircuit && currentCircuitIndex >= 0 && <nav aria-label={`${selectedCircuit.name} circuit navigation`} className={styles.metaActions}>
+                <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === 0} onClick={() => moveCircuit(-1)}>‹ Prev</button>
+                <CircuitBadge circuit={selectedCircuit} />
+                <span>· {currentCircuitIndex + 1} of {circuitRouteIds.length} ·</span>
+                <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === circuitRouteIds.length - 1} onClick={() => moveCircuit(1)}>Next ›</button>
+              </nav>}
               <RouteTags tags={routeData?.tags} />
 
               {routeData?.description && <p className={styles.description}>{routeData.description}</p>}
@@ -212,6 +262,22 @@ export default function RouteDetailPage() {
               <p className={styles.holdCount}>
                 {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""}
               </p>
+
+              <FilterDrawer open={circuitDrawerOpen} title={creatingCircuit ? "New circuit" : "Circuits"} onBack={creatingCircuit ? returnToCircuitList : undefined} onClose={closeCircuitDrawer} triggerRef={circuitTriggerRef} showFooter={false}>
+                {creatingCircuit ? (
+                  <section className={styles.drawerSection} aria-label="Create a circuit">
+                    <CircuitForm submitLabel="Create" pending={createCircuit.isPending} onSubmit={submitCircuit} onCancel={returnToCircuitList} />
+                    {createCircuit.error && <p className="error-text" role="alert">{createCircuit.error.message}</p>}
+                  </section>
+                ) : (
+                  <section className={styles.drawerSection} aria-label="Add route to a circuit">
+                    {circuits.filter((circuit) => circuit.is_owner).map((circuit) => <CircuitToggle key={circuit.id} circuit={circuit} gymSlug={gymSlug} wallId={wallId} routeId={routeId} />)}
+                    <button type="button" className="btn btn-primary" onClick={openCircuitCreate}>+ New circuit</button>
+                    <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
+                    {createCircuit.error && <p className="error-text" role="alert">{createCircuit.error.message}</p>}
+                  </section>
+                )}
+              </FilterDrawer>
 
               <FilterDrawer
                 open={ratingDrawerOpen}

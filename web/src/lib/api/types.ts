@@ -60,6 +60,21 @@ export interface HoldRoles {
   foot?: string[];
 }
 
+export interface Circuit {
+  id: string;
+  wall_id: string;
+  created_by: string;
+  creator_name: string;
+  name: string;
+  color: string;
+  emoji: string;
+  is_shared: boolean;
+  is_owner: boolean;
+  route_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Route {
   id: string;
   wall_id: string;

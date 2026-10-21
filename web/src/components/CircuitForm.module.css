@@ -1,0 +1,117 @@
+.form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.label {
+  margin: 0 0 6px;
+  padding: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.nameRow {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nameInput { flex: 1; min-width: 0; }
+.nameInput::placeholder { color: var(--text-faint); }
+
+.diceButton {
+  flex: none;
+  min-width: 46px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-muted);
+  font-size: 20px;
+}
+
+.fieldset {
+  min-width: 0;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.fieldset legend { margin-bottom: 8px; }
+
+.colorChoices,
+.emojiChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.colorChoice {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 3px solid transparent;
+  border-radius: 50%;
+  background: var(--swatch-color);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.colorChoice[aria-pressed="true"] {
+  border-color: var(--bg);
+  outline: 2px solid var(--swatch-color);
+  outline-offset: 1px;
+}
+
+.emojiChoice {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--bg-muted);
+  font-size: 22px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.emojiChoice[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 5px 10px 5px 6px;
+  border: 1px solid color-mix(in srgb, var(--badge-color) 38%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--badge-color) 18%, var(--bg-muted));
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.badgeEmoji {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--badge-color) 28%, var(--bg));
+  font-size: 15px;
+}
