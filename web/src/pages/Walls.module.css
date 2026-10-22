@@ -4,6 +4,21 @@
   margin: 0 auto;
 }
 
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.wordmark {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .headerActions {
   display: flex;
   align-items: center;
@@ -12,6 +27,14 @@
 
 .headerActions :global(.btn) {
   padding: 6px 8px;
+}
+
+/* Keep the wordmark and actions on one line on narrow phones. */
+@media (max-width: 480px) {
+  .headerActions :global(.btn) {
+    padding: 6px 4px;
+    font-size: 14px;
+  }
 }
 
 .logout {

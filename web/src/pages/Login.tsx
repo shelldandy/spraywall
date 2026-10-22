@@ -72,6 +72,14 @@ export default function LoginPage() {
 
   return (
     <main className="center">
+      <img
+        src="/logo-128.png"
+        srcSet="/logo-256.png 2x"
+        alt=""
+        width={96}
+        height={96}
+        className={styles.logo}
+      />
       <h1 className={styles.title}>Spraywall</h1>
       <p className={styles.subtitle}>Log In</p>
       {oidc && (

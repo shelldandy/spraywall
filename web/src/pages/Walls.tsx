@@ -169,7 +169,18 @@ export default function WallsPage() {
   return (
     <div className={`screen ${styles.page}`}>
       <header className="header">
-        <h1>Spraywall</h1>
+        <h1>
+          <span className={styles.brand}>
+            <img
+              src="/logo-128.png"
+              srcSet="/logo-256.png 2x"
+              alt=""
+              width={28}
+              height={28}
+            />
+            <span className={styles.wordmark}>Spraywall</span>
+          </span>
+        </h1>
         <nav className={styles.headerActions}>
           <Link to="/logbook" className="btn btn-ghost">
             Logbook

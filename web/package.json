@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "icons": "bash scripts/generate-icons.sh",
     "lint": "oxlint",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "preview": "vite preview"
