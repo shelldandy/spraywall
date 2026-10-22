@@ -2,7 +2,7 @@
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(16px + var(--safe-bottom));
+  bottom: calc(var(--nav-height) + 16px + var(--safe-bottom));
   z-index: 100;
   display: flex;
   flex-direction: column;

@@ -2,14 +2,22 @@ import { Navigate, Outlet, useLocation } from "react-router";
 import { useAuthStore } from "../lib/store/auth";
 import AppChrome from "./AppChrome";
 import Toaster from "./Toaster";
+import BottomNav from "./BottomNav";
 
 export function RootLayout() {
+  const { pathname, search } = useLocation();
+  const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
+  const params = new URLSearchParams(search);
+  const wallDetail = /^\/walls\/[^/]+$/.test(normalizedPathname);
+  const wallImmersive = wallDetail && (params.get("mode") === "create" || params.has("editRouteId"));
+  const navVisible = ["/walls", "/logbook", "/circuits", "/profile"].includes(normalizedPathname) || (wallDetail && !wallImmersive);
+
   return (
-    <>
+    <div className={`app-layout${navVisible ? " nav-visible" : ""}`}>
       <AppChrome />
       <Outlet />
       <Toaster />
-    </>
+    </div>
   );
 }
 
@@ -20,7 +28,7 @@ export function RequireAuth() {
   if (!accessToken) {
     return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
-  return <Outlet />;
+  return <><Outlet /><BottomNav /></>;
 }
 
 export function HomeRedirect() {

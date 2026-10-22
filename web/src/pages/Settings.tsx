@@ -1,12 +1,15 @@
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
+import { logout } from "../lib/queryClient";
 import styles from "./Settings.module.css";
-import { useGoBack } from "../lib/nav";
 
 const APP_VERSION = __APP_VERSION__;
 
 export default function SettingsPage() {
-
-  const goBack = useGoBack("/walls");
+  const navigate = useNavigate();
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login", { replace: true });
+  };
 
   return (
     <div className={`screen ${styles.page}`}>
@@ -28,9 +31,7 @@ export default function SettingsPage() {
           <p className={styles.value}>{APP_VERSION}</p>
         </section>
 
-        <button type="button" className={`btn btn-primary ${styles.back}`} onClick={goBack}>
-          Back
-        </button>
+        <button type="button" className="btn btn-danger" onClick={handleLogout}>Logout</button>
       </main>
     </div>
   );

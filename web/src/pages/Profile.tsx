@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import type { AuthConfig, Me } from "../lib/api/types";
 import { useAuthConfig, useMe } from "../lib/hooks/queries";
 import {
@@ -11,7 +11,6 @@ import {
   useUploadAvatar,
 } from "../lib/hooks/mutations";
 import { prepareImageForUpload } from "../lib/image";
-import { useGoBack } from "../lib/nav";
 import { oidcErrorMessage } from "../lib/oidc";
 import { toast } from "../lib/toast";
 import styles from "./Profile.module.css";
@@ -30,7 +29,6 @@ function initials(name: string) {
 }
 
 export default function ProfilePage() {
-  const goBack = useGoBack("/settings");
   const meQuery = useMe();
   const configQuery = useAuthConfig();
   useLinkResultToast();
@@ -60,9 +58,7 @@ export default function ProfilePage() {
           </>
         )}
 
-        <button type="button" className={`btn btn-primary ${styles.back}`} onClick={goBack}>
-          Back
-        </button>
+        <Link to="/settings" className={`btn btn-primary ${styles.back}`}>Settings</Link>
       </main>
     </div>
   );
