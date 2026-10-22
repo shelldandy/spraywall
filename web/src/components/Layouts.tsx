@@ -16,7 +16,6 @@ export function RootLayout() {
     <div className={`app-layout${navVisible ? " nav-visible" : ""}`}>
       <AppChrome />
       <Outlet />
-      <BottomNav />
       <Toaster />
     </div>
   );
@@ -29,7 +28,7 @@ export function RequireAuth() {
   if (!accessToken) {
     return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
-  return <Outlet />;
+  return <><Outlet /><BottomNav /></>;
 }
 
 export function HomeRedirect() {
