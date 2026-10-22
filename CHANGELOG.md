@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.2.0](https://github.com/shelldandy/spraywall/compare/v1.1.1...v1.2.0) (2026-10-22)
+
+
+### Features
+
+* **web:** add bottom action navigation ([6c7e112](https://github.com/shelldandy/spraywall/commit/6c7e112da4200fc787adb6be9601b707d273f66a))
+* **web:** use new app artwork for icons and branding ([cd88ef4](https://github.com/shelldandy/spraywall/commit/cd88ef4fc9e56e747b85b9c2ea612be7ae42faea))
+* **web:** use new app artwork for icons and branding ([0eeeffc](https://github.com/shelldandy/spraywall/commit/0eeeffce771f32755f7079fe5a24e249fca204e8))
+
+
+### Bug Fixes
+
+* **web:** keep action navigation inside auth routes ([0e4c6b6](https://github.com/shelldandy/spraywall/commit/0e4c6b637a29a679f2bfc17bbc42d07e87f5b97f))
+* **web:** keep profile in the action tab bar ([8a032b7](https://github.com/shelldandy/spraywall/commit/8a032b7c5c70437bbf08d7b49bfb70282302fe8d))
+* **web:** make iOS home-screen icon full bleed ([b804254](https://github.com/shelldandy/spraywall/commit/b804254cd7e38791bf457985029e2ccf7fe79650))
+* **web:** make iOS home-screen icon full bleed ([2eb38b2](https://github.com/shelldandy/spraywall/commit/2eb38b22f18f35a563e0f15227c7ee9c8d82c65a))
+* **web:** match flattened icons to the dark app background ([18fa283](https://github.com/shelldandy/spraywall/commit/18fa2834183e1e871f0358993a052fdb6ddd5fa2))
+* **web:** scope action nav spacing to visible routes ([80b77e4](https://github.com/shelldandy/spraywall/commit/80b77e4a5e63576fd2b6dacf28954ec800ba9213))
+* **web:** update circuits after visiting a wall ([d5ed95b](https://github.com/shelldandy/spraywall/commit/d5ed95bf829ca6fa2d1a3253bb08598150d8cc77))
+
 ## [1.1.1](https://github.com/shelldandy/spraywall/compare/v1.1.0...v1.1.1) (2026-10-21)
 
 
