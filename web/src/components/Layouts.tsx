@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from "react-router";
 import { useAuthStore } from "../lib/store/auth";
 import AppChrome from "./AppChrome";
 import Toaster from "./Toaster";
+import PrimaryNav from "./PrimaryNav";
 
 export function RootLayout() {
   return (
@@ -14,6 +15,10 @@ export function RootLayout() {
 }
 
 /** Guards logged-in screens. Remembers where the user was headed (e.g. an invite link). */
+export function AuthenticatedLayout() {
+  return <><Outlet /><PrimaryNav /></>;
+}
+
 export function RequireAuth() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const location = useLocation();

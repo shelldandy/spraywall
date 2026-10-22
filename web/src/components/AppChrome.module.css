@@ -10,9 +10,9 @@
 .update {
   position: fixed;
   left: 50%;
-  bottom: calc(16px + var(--safe-bottom));
+  bottom: calc(var(--nav-height) + var(--safe-bottom) + 12px);
   transform: translateX(-50%);
-  z-index: 101;
+  z-index: 94;
   display: flex;
   align-items: center;
   gap: 8px;

@@ -1,5 +1,5 @@
 import { createBrowserRouter } from "react-router";
-import { RootLayout, RequireAuth, HomeRedirect } from "./components/Layouts";
+import { RootLayout, RequireAuth, HomeRedirect, AuthenticatedLayout } from "./components/Layouts";
 import LoginPage from "./pages/Login";
 import RegisterPage from "./pages/Register";
 import WallsPage from "./pages/Walls";
@@ -25,6 +25,7 @@ export const router = createBrowserRouter([
       {
         element: <RequireAuth />,
         children: [
+          { element: <AuthenticatedLayout />, children: [
           { path: "/walls", element: <WallsPage /> },
           { path: "/walls/:wallId", element: <WallDetailPage /> },
           { path: "/routes", element: <RoutesPage /> },
@@ -35,6 +36,7 @@ export const router = createBrowserRouter([
           { path: "/settings", element: <SettingsPage /> },
           { path: "/profile", element: <ProfilePage /> },
           { path: "/invite/:token", element: <InvitePage /> },
+          ] },
         ],
       },
       { path: "*", element: <HomeRedirect /> },

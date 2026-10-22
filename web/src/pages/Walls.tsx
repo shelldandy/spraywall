@@ -1,15 +1,13 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
 import type { Gym, Wall } from "../lib/api/types";
 import { useGymsWithWalls, type GymWithWalls } from "../lib/hooks/queries";
-import { logout } from "../lib/queryClient";
 import { toast } from "../lib/toast";
 import styles from "./Walls.module.css";
 
 export default function WallsPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [showGymForm, setShowGymForm] = useState(false);
@@ -62,11 +60,6 @@ export default function WallsPage() {
     },
     onError: (err) => toast(err.message, "error"),
   });
-
-  const handleLogout = async () => {
-    await logout();
-    navigate("/login", { replace: true });
-  };
 
   const handleInvite = async (gym: GymWithWalls) => {
     let message: string;
@@ -182,15 +175,7 @@ export default function WallsPage() {
           </span>
         </h1>
         <nav className={styles.headerActions}>
-          <Link to="/logbook" className="btn btn-ghost">
-            Logbook
-          </Link>
-          <Link to="/settings" className="btn btn-ghost">
-            Settings
-          </Link>
-          <button type="button" className={`btn btn-ghost ${styles.logout}`} onClick={handleLogout}>
-            Logout
-          </button>
+
         </nav>
       </header>
 

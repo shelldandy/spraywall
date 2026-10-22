@@ -451,9 +451,6 @@ export default function WallDetailPage() {
   return (
     <div className="screen">
       <header className={`header ${styles.header}`}>
-        <button type="button" className="btn btn-ghost" onClick={() => navigate("/walls")}>
-          {"< Back"}
-        </button>
         <h1 className={styles.title}>{wall?.wall.name ?? "Wall"}</h1>
         {isEditingHolds || isManagingWall ? (
           <button

@@ -5,7 +5,6 @@ import { formatCalendarDate } from "../lib/climbLogs";
 import { getGradeColorStyle } from "../lib/grades";
 import { useLogbook } from "../lib/hooks/queries";
 import styles from "./Logbook.module.css";
-import { useGoBack } from "../lib/nav";
 
 interface LogbookSection {
   wallId: string;
@@ -26,14 +25,9 @@ export default function LogbookPage() {
     return Array.from(grouped.entries()).map(([wallId, section]) => ({ wallId, ...section }));
   }, [logbookQuery.data]);
 
-  const goBack = useGoBack("/walls");
-
   return (
     <div className={`screen ${styles.page}`}>
       <header className="header">
-        <button type="button" className={`btn btn-ghost ${styles.side}`} onClick={goBack}>
-          {"< Back"}
-        </button>
         <h1 className={styles.title}>Logbook</h1>
         <div className={styles.side} />
       </header>
