@@ -10,6 +10,7 @@ function lastWall(): { wallId: string; gymSlug: string; name: string } | null {
 
 export default function BottomNav() {
   const location = useLocation();
+  const pathname = location.pathname.replace(/\/+$/, "") || "/";
   const profile = useMe();
   const [showActions, setShowActions] = useState(false);
   const [wallImmersive, setWallImmersive] = useState(() => document.body.classList.contains("wall-immersive"));
@@ -19,11 +20,11 @@ export default function BottomNav() {
     return () => observer.disconnect();
   }, []);
   const wall = lastWall();
-  const hide = location.pathname === "/settings" || location.pathname === "/profile" ||
-    location.pathname.startsWith("/routes/") || location.pathname === "/routes" ||
-    location.pathname === "/invite" || location.pathname.startsWith("/invite/") ||
-    (location.pathname.startsWith("/walls/") && new URLSearchParams(location.search).get("mode") === "create") ||
-    (location.pathname.startsWith("/walls/") && new URLSearchParams(location.search).has("editRouteId"));
+  const hide = pathname === "/settings" || pathname === "/profile" ||
+    pathname.startsWith("/routes/") || pathname === "/routes" ||
+    pathname === "/invite" || pathname.startsWith("/invite/") ||
+    (pathname.startsWith("/walls/") && new URLSearchParams(location.search).get("mode") === "create") ||
+    (pathname.startsWith("/walls/") && new URLSearchParams(location.search).has("editRouteId"));
   if (hide || wallImmersive) return null;
   const routeForWall = `/walls/${wall?.wallId ?? ""}?gymSlug=${encodeURIComponent(wall?.gymSlug ?? "")}`;
   const avatar = profile.data?.avatar_url;
