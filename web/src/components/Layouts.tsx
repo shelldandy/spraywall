@@ -10,7 +10,7 @@ export function RootLayout() {
   const params = new URLSearchParams(search);
   const wallDetail = /^\/walls\/[^/]+$/.test(normalizedPathname);
   const wallImmersive = wallDetail && (params.get("mode") === "create" || params.has("editRouteId"));
-  const navVisible = ["/walls", "/logbook", "/circuits"].includes(normalizedPathname) || (wallDetail && !wallImmersive);
+  const navVisible = ["/walls", "/logbook", "/circuits", "/profile"].includes(normalizedPathname) || (wallDetail && !wallImmersive);
 
   return (
     <div className={`app-layout${navVisible ? " nav-visible" : ""}`}>

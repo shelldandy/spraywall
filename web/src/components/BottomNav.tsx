@@ -29,7 +29,7 @@ export default function BottomNav() {
       window.removeEventListener("spraywall:last-visited-wall", syncLastWall);
     };
   }, []);
-  const hide = pathname === "/settings" || pathname === "/profile" ||
+  const hide = pathname === "/settings" ||
     pathname.startsWith("/routes/") || pathname === "/routes" ||
     pathname === "/invite" || pathname.startsWith("/invite/") ||
     (pathname.startsWith("/walls/") && new URLSearchParams(location.search).get("mode") === "create") ||
@@ -38,7 +38,7 @@ export default function BottomNav() {
   const routeForWall = `/walls/${wall?.wallId ?? ""}?gymSlug=${encodeURIComponent(wall?.gymSlug ?? "")}`;
   const avatar = profile.data?.avatar_url;
   return <>
-    <nav className={styles.nav} aria-label="Primary navigation">
+    <nav className={styles.nav} aria-label="Primary">
       <NavLink to="/walls" className={({ isActive }) => `${styles.item} ${isActive ? styles.active : ""}`}><Icon type="wall"/><span>Walls</span></NavLink>
       <NavLink to="/logbook" className={({ isActive }) => `${styles.item} ${isActive ? styles.active : ""}`}><Icon type="book"/><span>Logbook</span></NavLink>
       <button type="button" className={styles.add} aria-label="Create" onClick={() => setShowActions(true)}><Icon type="plus"/></button>
