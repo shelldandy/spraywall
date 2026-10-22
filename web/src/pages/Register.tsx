@@ -73,6 +73,14 @@ export default function RegisterPage() {
 
   return (
     <main className="center">
+      <img
+        src="/logo-128.png"
+        srcSet="/logo-256.png 2x"
+        alt=""
+        width={96}
+        height={96}
+        className={styles.logo}
+      />
       <h1 className={styles.title}>Spraywall</h1>
       <p className={styles.subtitle}>Create Account</p>
       <form className={styles.form} onSubmit={handleRegister} noValidate>
