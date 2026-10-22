@@ -13,13 +13,22 @@ export default function BottomNav() {
   const pathname = location.pathname.replace(/\/+$/, "") || "/";
   const profile = useMe();
   const [showActions, setShowActions] = useState(false);
+  const [wall, setWall] = useState(lastWall);
   const [wallImmersive, setWallImmersive] = useState(() => document.body.classList.contains("wall-immersive"));
   useEffect(() => {
     const observer = new MutationObserver(() => setWallImmersive(document.body.classList.contains("wall-immersive")));
     observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
     return () => observer.disconnect();
   }, []);
-  const wall = lastWall();
+  useEffect(() => {
+    const syncLastWall = () => setWall(lastWall());
+    window.addEventListener("storage", syncLastWall);
+    window.addEventListener("spraywall:last-visited-wall", syncLastWall);
+    return () => {
+      window.removeEventListener("storage", syncLastWall);
+      window.removeEventListener("spraywall:last-visited-wall", syncLastWall);
+    };
+  }, []);
   const hide = pathname === "/settings" || pathname === "/profile" ||
     pathname.startsWith("/routes/") || pathname === "/routes" ||
     pathname === "/invite" || pathname.startsWith("/invite/") ||

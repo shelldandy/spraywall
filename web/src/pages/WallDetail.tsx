@@ -254,6 +254,7 @@ export default function WallDetailPage() {
     if (!wall || !gymSlug) return;
     try {
       localStorage.setItem("spraywall:last-visited-wall", JSON.stringify({ wallId, gymSlug, name: wall.wall.name }));
+      window.dispatchEvent(new Event("spraywall:last-visited-wall"));
     } catch { /* Storage may be unavailable; navigation remains usable. */ }
   }, [gymSlug, wall, wallId]);
   const holds = holdsQuery.data ?? [];
