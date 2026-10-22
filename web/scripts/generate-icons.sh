@@ -36,9 +36,17 @@ resize() {
     -define png:compression-level=9 -strip "$OUT/$dest"
 }
 
+# Crop inside the artwork's opaque bounds so iOS's own mask hides its corners.
+fullbleed() {
+  local size=$1 dest=$2
+  magick "$SRC" -gravity center -crop 1080x1080+0+0 +repage \
+    -filter Lanczos -resize "${size}x${size}" \
+    -background "$BG" -alpha remove -alpha off \
+    -define png:compression-level=9 -strip "$OUT/$dest"
+}
+
 # Flatten onto the app background and centre the art at `pct` of the canvas.
-# iOS renders transparent pixels black, and Android crops maskable icons to a
-# shape, so neither can keep an alpha channel.
+# Android crops maskable icons to a shape, so they cannot keep an alpha channel.
 flatten() {
   local size=$1 pct=$2 dest=$3
   local art=$(( size * pct / 100 ))
@@ -58,8 +66,8 @@ magick "$SRC" -filter Lanczos -define icon:auto-resize=48,32,16 \
 resize 192 pwa-192x192.png
 resize 512 pwa-512x512.png
 
-# iOS masks the corners itself, so leave a margin and no transparency.
-flatten 180 90 apple-touch-icon.png
+# iOS masks corners itself; fill the tile edge-to-edge.
+fullbleed 180 apple-touch-icon.png
 
 # Android adaptive icons crop to a circle/squircle; keep the art inside the
 # central 80% safe zone.
