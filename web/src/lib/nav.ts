@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
-export function useNavVisibility() {
-  const [visible, setVisible] = useState(true);
+export function useNavVisibility(routeKey: string) {
+  const [state, setState] = useState({ routeKey, visible: true });
   useEffect(() => {
     let previous = window.scrollY;
     const onScroll = () => {
       const current = window.scrollY;
-      if (Math.abs(current - previous) > 4) setVisible(current < 40 || current < previous);
+      if (Math.abs(current - previous) > 4) {
+        setState({ routeKey, visible: current < 40 || current < previous });
+      }
       previous = current;
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-  return visible;
+  }, [routeKey]);
+  return state.routeKey !== routeKey || state.visible;
 }
 
 /** True when there's an in-app page to go back to (react-router keeps the index in history.state). */

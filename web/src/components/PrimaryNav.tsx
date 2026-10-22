@@ -21,7 +21,7 @@ export default function PrimaryNav() {
   const gymSlug = params.get("gymSlug") ?? "";
   const hiddenMode = pathname === "/routes/create" ||
     (pathname.startsWith("/walls/") && (params.get("mode") === "create" || params.has("editRouteId")));
-  const visible = useNavVisibility();
+  const visible = useNavVisibility(`${pathname}${location.search}`);
   if (hiddenMode || pathname === "/profile" || pathname.startsWith("/routes/") || pathname.startsWith("/invite/")) return null;
   const contextual = !!wallId && (wallDetail !== null || pathname === "/routes" || pathname === "/circuits");
   const suffix = `?${new URLSearchParams({ wallId: wallId ?? "", gymSlug })}`;
