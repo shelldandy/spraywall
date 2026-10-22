@@ -6,7 +6,8 @@ import BottomNavigation from "./BottomNavigation";
 
 export function RootLayout() {
   const { pathname } = useLocation();
-  const hasBottomNavigation = ["/walls", "/logbook", "/settings"].includes(pathname);
+  const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
+  const hasBottomNavigation = ["/walls", "/logbook", "/settings"].includes(normalizedPathname);
 
   return (
     <div className={`app-layout${hasBottomNavigation ? " tab-navigation-active" : ""}`}>
