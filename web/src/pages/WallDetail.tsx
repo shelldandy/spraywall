@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
@@ -79,6 +79,13 @@ export default function WallDetailPage() {
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const layout = document.querySelector(".app-layout");
+    if (!layout) return;
+    layout.classList.toggle("nav-hidden", isEditingHolds || isManagingWall);
+    return () => layout.classList.remove("nav-hidden");
+  }, [isEditingHolds, isManagingWall]);
 
   // Same key and fetcher as useWallDetail, plus polling while detection runs
   // (the native app relied on its background sync engine for this).

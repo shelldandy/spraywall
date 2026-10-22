@@ -5,12 +5,19 @@ import Toaster from "./Toaster";
 import PrimaryNav from "./PrimaryNav";
 
 export function RootLayout() {
+  const { pathname, search } = useLocation();
+  const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
+  const params = new URLSearchParams(search);
+  const wallDetail = /^\/walls\/[^/]+$/.test(normalizedPathname);
+  const wallImmersive = wallDetail && (params.get("mode") === "create" || params.has("editRouteId"));
+  const navVisible = ["/walls", "/logbook", "/settings", "/routes", "/circuits"].includes(normalizedPathname) || (wallDetail && !wallImmersive);
+
   return (
-    <>
+    <div className={`app-layout${navVisible ? " nav-visible" : ""}`}>
       <AppChrome />
       <Outlet />
       <Toaster />
-    </>
+    </div>
   );
 }
 

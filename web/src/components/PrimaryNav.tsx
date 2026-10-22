@@ -14,15 +14,16 @@ const icons: Record<string, React.ReactNode> = {
 
 export default function PrimaryNav() {
   const location = useLocation();
+  const pathname = location.pathname.replace(/\/+$/, "") || "/";
   const [params] = useSearchParams();
-  const wallDetail = location.pathname.match(/^\/walls\/([^/]+)$/);
+  const wallDetail = pathname.match(/^\/walls\/([^/]+)$/);
   const wallId = wallDetail?.[1] ?? params.get("wallId");
   const gymSlug = params.get("gymSlug") ?? "";
-  const hiddenMode = location.pathname === "/routes/create" ||
-    (location.pathname.startsWith("/walls/") && (params.get("mode") === "create" || params.has("editRouteId")));
+  const hiddenMode = pathname === "/routes/create" ||
+    (pathname.startsWith("/walls/") && (params.get("mode") === "create" || params.has("editRouteId")));
   const visible = useNavVisibility();
-  if (hiddenMode || location.pathname === "/profile" || location.pathname.startsWith("/routes/")) return null;
-  const contextual = !!wallId && (wallDetail !== null || location.pathname === "/routes" || location.pathname === "/circuits");
+  if (hiddenMode || pathname === "/profile" || pathname.startsWith("/routes/") || pathname.startsWith("/invite/")) return null;
+  const contextual = !!wallId && (wallDetail !== null || pathname === "/routes" || pathname === "/circuits");
   const suffix = `?${new URLSearchParams({ wallId: wallId ?? "", gymSlug })}`;
   const links = contextual ? [
     { to: "/walls", label: "Walls", icon: "back", end: true },
@@ -34,7 +35,7 @@ export default function PrimaryNav() {
     { to: "/logbook", label: "Logbook", icon: "logbook", end: true },
     { to: "/settings", label: "Settings", icon: "settings", end: true },
   ];
-  return <nav className={`${styles.dock} ${visible ? "" : styles.hidden}`} aria-label="Primary" style={{ "--active-index": Math.max(0, links.findIndex((link) => location.pathname === link.to.split("?")[0])) } as React.CSSProperties}>
+  return <nav className={`${styles.dock} primary-nav-dock ${visible ? "" : styles.hidden}`} aria-label="Primary" style={{ "--active-index": Math.max(0, links.findIndex((link) => pathname === link.to.split("?")[0])) } as React.CSSProperties}>
     <span className={styles.activePill} />
     {links.map((link) => <NavLink key={link.label} to={link.to} end={link.end} aria-label={link.label} className={({ isActive }) => `${styles.link} ${isActive ? styles.active : ""}`}>
       {icons[link.icon]}<span>{link.label}</span>
