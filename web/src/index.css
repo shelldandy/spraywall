@@ -23,6 +23,7 @@
   --radius: 8px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nav-height: 64px;
 
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
@@ -67,7 +68,7 @@ a {
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  padding-bottom: var(--safe-bottom);
+  padding-bottom: calc(var(--nav-height) + var(--safe-bottom));
   background: var(--bg);
   color: var(--text);
 }

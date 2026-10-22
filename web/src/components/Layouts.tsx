@@ -2,12 +2,14 @@ import { Navigate, Outlet, useLocation } from "react-router";
 import { useAuthStore } from "../lib/store/auth";
 import AppChrome from "./AppChrome";
 import Toaster from "./Toaster";
+import BottomNav from "./BottomNav";
 
 export function RootLayout() {
   return (
     <>
       <AppChrome />
       <Outlet />
+      <BottomNav />
       <Toaster />
     </>
   );

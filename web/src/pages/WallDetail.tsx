@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
@@ -244,7 +244,18 @@ export default function WallDetailPage() {
     setHoldDeleteError(null);
   };
 
+  useEffect(() => {
+    document.body.classList.toggle("wall-immersive", isCreateMode || isEditingHolds || isManagingWall);
+    return () => document.body.classList.remove("wall-immersive");
+  }, [isCreateMode, isEditingHolds, isManagingWall]);
+
   const wall = wallQuery.data;
+  useEffect(() => {
+    if (!wall || !gymSlug) return;
+    try {
+      localStorage.setItem("spraywall:last-visited-wall", JSON.stringify({ wallId, gymSlug, name: wall.wall.name }));
+    } catch { /* Storage may be unavailable; navigation remains usable. */ }
+  }, [gymSlug, wall, wallId]);
   const holds = holdsQuery.data ?? [];
   const filteredHolds = holds.filter((h) => h.confidence >= confidenceThreshold);
   const selectedIds = new Set(holdSelections.keys());
