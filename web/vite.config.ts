@@ -20,7 +20,7 @@ export default defineConfig({
         short_name: 'Spraywall',
         description: 'Spray wall route setting and logbook',
         theme_color: '#007AFF',
-        background_color: '#ffffff',
+        background_color: '#21182f',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',

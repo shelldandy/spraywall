@@ -13,6 +13,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEB_DIR="$(dirname "$SCRIPT_DIR")"
 SRC="${1:-$WEB_DIR/../icon.png}"
 OUT="$WEB_DIR/public"
+# Matches --bg in src/index.css. The web app is dark-only, so flattened icons
+# blend with it instead of showing a white ring on the home screen.
+BG='#21182f'
 
 if ! command -v magick >/dev/null 2>&1; then
   echo "error: ImageMagick ('magick') is required" >&2
@@ -33,13 +36,14 @@ resize() {
     -define png:compression-level=9 -strip "$OUT/$dest"
 }
 
-# Flatten onto white and centre the art at `pct` of the canvas. iOS renders
-# transparent pixels black, and Android crops maskable icons to a shape.
+# Flatten onto the app background and centre the art at `pct` of the canvas.
+# iOS renders transparent pixels black, and Android crops maskable icons to a
+# shape, so neither can keep an alpha channel.
 flatten() {
   local size=$1 pct=$2 dest=$3
   local art=$(( size * pct / 100 ))
   magick "$SRC" -filter Lanczos -resize "${art}x${art}" \
-    -background white -gravity center -extent "${size}x${size}" \
+    -background "$BG" -gravity center -extent "${size}x${size}" \
     -alpha remove -alpha off -define png:compression-level=9 -strip "$OUT/$dest"
 }
 
