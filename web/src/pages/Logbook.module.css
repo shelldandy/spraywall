@@ -4,12 +4,6 @@
   margin: 0 auto;
 }
 
-/* Fixed-width slots either side keep the title centred. */
-.side {
-  min-width: 72px;
-  justify-content: flex-start;
-}
-
 :global(.header) .title {
   text-align: center;
   font-size: 18px;

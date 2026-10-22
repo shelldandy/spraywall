@@ -2,18 +2,31 @@ import { Navigate, Outlet, useLocation } from "react-router";
 import { useAuthStore } from "../lib/store/auth";
 import AppChrome from "./AppChrome";
 import Toaster from "./Toaster";
+import BottomNavigation from "./BottomNavigation";
 
 export function RootLayout() {
+  const { pathname } = useLocation();
+  const hasBottomNavigation = ["/walls", "/logbook", "/settings"].includes(pathname);
+
   return (
-    <>
+    <div className={`app-layout${hasBottomNavigation ? " tab-navigation-active" : ""}`}>
       <AppChrome />
       <Outlet />
       <Toaster />
-    </>
+    </div>
   );
 }
 
 /** Guards logged-in screens. Remembers where the user was headed (e.g. an invite link). */
+export function TabNavigationLayout() {
+  return (
+    <>
+      <Outlet />
+      <BottomNavigation />
+    </>
+  );
+}
+
 export function RequireAuth() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const location = useLocation();

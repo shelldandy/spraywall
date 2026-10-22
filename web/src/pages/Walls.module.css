@@ -19,28 +19,6 @@
   white-space: nowrap;
 }
 
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.headerActions :global(.btn) {
-  padding: 6px 8px;
-}
-
-/* Keep the wordmark and actions on one line on narrow phones. */
-@media (max-width: 480px) {
-  .headerActions :global(.btn) {
-    padding: 6px 4px;
-    font-size: 14px;
-  }
-}
-
-.logout {
-  color: var(--danger);
-}
-
 .loader {
   display: flex;
   justify-content: center;
