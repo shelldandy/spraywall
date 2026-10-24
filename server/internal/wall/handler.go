@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"os/exec"
@@ -81,16 +82,15 @@ func (h *Handler) clearPendingResetImages(ctx context.Context, wallID pgtype.UUI
 	if err != nil {
 		return fmt.Errorf("delete pending reset records: %w", err)
 	}
-	var cleanupErr error
 	for _, key := range storageKeys {
 		if h.storage == nil {
 			continue
 		}
 		if err := h.storage.Delete(ctx, key); err != nil {
-			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("delete pending reset image %q: %w", key, err))
+			log.Printf("wall: delete pending reset image %q for wall %s: %v", key, wallID, err)
 		}
 	}
-	return cleanupErr
+	return nil
 }
 
 const (

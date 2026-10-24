@@ -3,6 +3,7 @@ package wall
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -31,7 +32,8 @@ func TestIsValidWallImageMode(t *testing.T) {
 }
 
 type uploadTestStorage struct {
-	deleted []string
+	deleted   []string
+	deleteErr error
 }
 
 func (s *uploadTestStorage) Upload(_ context.Context, _ string, reader io.Reader, _ int64, _ string) error {
@@ -45,7 +47,7 @@ func (s *uploadTestStorage) Download(context.Context, string) (io.ReadCloser, st
 
 func (s *uploadTestStorage) Delete(_ context.Context, key string) error {
 	s.deleted = append(s.deleted, key)
-	return nil
+	return s.deleteErr
 }
 
 func TestFullUploadClearsPendingPartialReset(t *testing.T) {
@@ -85,7 +87,7 @@ func TestFullUploadClearsPendingPartialReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	storage := &uploadTestStorage{}
+	storage := &uploadTestStorage{deleteErr: errors.New("object store unavailable")}
 	auth := user.NewHandler(queries, "upload-test-secret", pool, user.Options{PasswordEnabled: true})
 	pair, err := auth.IssueTokens(ctx, queries, setter)
 	if err != nil {
