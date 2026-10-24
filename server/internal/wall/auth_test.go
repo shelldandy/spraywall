@@ -35,7 +35,7 @@ func newAuthEnv(t *testing.T, opts user.Options) *authEnv {
 	pool := testdb.New(t)
 	q := generated.New(pool)
 	authn := user.NewHandler(q, testJWTSecret, pool, opts)
-	walls := wall.NewHandler(q, nil)
+	walls := wall.NewHandler(q, nil, nil)
 	invites := invite.NewHandler(q, pool)
 
 	r := chi.NewRouter()

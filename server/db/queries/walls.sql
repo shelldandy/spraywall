@@ -29,6 +29,19 @@ INSERT INTO wall_images (wall_id, storage_key)
 VALUES ($1, $2)
 RETURNING *;
 
+-- name: CreatePendingResetImage :one
+INSERT INTO wall_images (wall_id, storage_key, is_active, parent_image_id, reset_kind, review_status)
+VALUES ($1, $2, false, $3, 'partial', 'pending')
+RETURNING *;
+
+-- name: GetPendingResetImage :one
+SELECT * FROM wall_images WHERE wall_id = $1 AND reset_kind = 'partial' AND review_status = 'pending' ORDER BY created_at DESC LIMIT 1;
+
+-- name: DeletePendingResetImagesByWall :many
+DELETE FROM wall_images
+WHERE wall_id = $1 AND reset_kind = 'partial' AND review_status = 'pending'
+RETURNING storage_key;
+
 -- name: GetActiveWallImage :one
 SELECT * FROM wall_images WHERE wall_id = $1 AND is_active = true ORDER BY created_at DESC LIMIT 1;
 

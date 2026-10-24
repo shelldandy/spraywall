@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
 import { useCircuits, useHolds, useRoutes } from "../lib/hooks/queries";
 import { toast, toastError } from "../lib/toast";
-import { prepareImageForUpload } from "../lib/image";
+import { uploadWallImage } from "../lib/hooks/mutations";
 import type { Hold, HoldRoles, WallDetail } from "../lib/api/types";
 import { parseRouteTags } from "../lib/routeTags";
 import HoldOverlay from "../components/HoldOverlay";
@@ -38,8 +38,8 @@ function initialSelections(editHoldIds: string | null, editHoldRoles: string | n
     const ids: string[] = JSON.parse(editHoldIds);
     const roles = editHoldRoles ? (JSON.parse(editHoldRoles) as HoldRoles) : null;
     for (const id of ids) {
-      if (roles?.start.includes(id)) map.set(id, "start");
-      else if (roles?.finish.includes(id)) map.set(id, "finish");
+      if (roles?.start?.includes(id)) map.set(id, "start");
+      else if (roles?.finish?.includes(id)) map.set(id, "finish");
       else if (roles?.foot?.includes(id)) map.set(id, "foot");
       else map.set(id, "hand");
     }
@@ -91,7 +91,7 @@ export default function WallDetailPage() {
       return res.json();
     },
     refetchInterval: (query) =>
-      isDetecting(query.state.data?.detection_status) ? POLL_INTERVAL_MS : false,
+      (isDetecting(query.state.data?.detection_status) || isDetecting(query.state.data?.pending_reset?.detection_status)) ? POLL_INTERVAL_MS : false,
   });
 
   const holdsQuery = useHolds(wallId, wallQuery.data?.detection_status === "done", gymSlug);
@@ -200,18 +200,7 @@ export default function WallDetailPage() {
 
     setUploading(true);
     try {
-      const image = await prepareImageForUpload(file);
-      const formData = new FormData();
-      formData.append(
-        "image",
-        image,
-        image === file ? file.name || "photo.jpg" : "photo.jpg",
-      );
-
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/images`, {
-        method: "POST",
-        body: formData,
-      });
+      const res = await uploadWallImage(gymSlug ?? "", wallId, file);
       if (!res.ok) {
         const err = await res.text();
         throw new Error(err || "Upload failed");
@@ -264,6 +253,32 @@ export default function WallDetailPage() {
   const visibleSelectedIds = new Set([...selectedIds].filter((id) => filteredIds.has(id)));
   const detectionStatus = wall?.detection_status;
   const canEdit = wall?.user_role === "setter" || wall?.user_role === "admin";
+
+  const openPartialReset = () => {
+    if (!wall?.image) return;
+    const cameraParams = new URLSearchParams({
+      gymSlug: gymSlug ?? "",
+      old: wall.image.image_url,
+    });
+    navigate(`/walls/${wallId}/camera?${cameraParams}`);
+  };
+
+  const openResetReview = () => {
+    const imageId = wall?.pending_reset?.image_id;
+    if (!imageId) return;
+    const resetParams = new URLSearchParams({ gymSlug: gymSlug ?? "" });
+    navigate(`/walls/${wallId}/reset/${imageId}?${resetParams}`);
+  };
+
+  const chooseFullResetImage = () => {
+    if (
+      wall?.image &&
+      !window.confirm("A full reset archives existing climbs. Continue with a new wall photo?")
+    ) {
+      return;
+    }
+    fileInputRef.current?.click();
+  };
 
   const visibleRoles = (): HoldRoles => ({
     start: [...holdSelections.entries()]
@@ -492,6 +507,18 @@ export default function WallDetailPage() {
         )}
       </header>
 
+      {canEdit && wall?.pending_reset && (
+        <button
+          type="button"
+          className="btn btn-block"
+          onClick={openResetReview}
+        >
+          {isDetecting(wall.pending_reset.detection_status)
+            ? "Partial reset: detecting holds…"
+            : "Review changes →"}
+        </button>
+      )}
+
       {wallQuery.isLoading ? (
         <div className={styles.loader}>
           <div className="spinner" />
@@ -527,6 +554,16 @@ export default function WallDetailPage() {
             </div>
           )}
 
+          {canEdit && wall?.image && isManagingWall && (
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              onClick={openPartialReset}
+              disabled={uploading}
+            >
+              Partial reset
+            </button>
+          )}
           {canEdit && (
             <>
               <input
@@ -538,11 +575,11 @@ export default function WallDetailPage() {
               />
               <button
                 type="button"
-                className="btn btn-primary btn-block"
-                onClick={() => fileInputRef.current?.click()}
+                className={`btn btn-block ${wall?.image && !isManagingWall ? "btn-primary" : "btn-ghost"}`}
+                onClick={chooseFullResetImage}
                 disabled={uploading}
               >
-                {uploading ? "Uploading..." : "Upload Photo"}
+                {uploading ? "Uploading..." : wall?.image ? "Full reset (new photo)" : "Upload Photo"}
               </button>
             </>
           )}

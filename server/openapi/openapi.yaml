@@ -726,6 +726,136 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /gyms/{gymSlug}/walls/{wallId}/images:
+    post:
+      operationId: uploadWallImage
+      summary: Upload a wall image (full reset by default; partial reset with mode=partial)
+      tags: [Wall]
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image: {type: string, format: binary}
+                mode: {type: string, enum: [full, partial], description: Omit or use full for a full reset}
+      responses:
+        "201": {description: Image and detection job created}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {description: Partial reset requires an active image}
+
+  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}:
+    parameters:
+      - $ref: "#/components/parameters/gymSlug"
+      - $ref: "#/components/parameters/wallId"
+      - name: imageId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getWallReset
+      summary: Get a pending reset diff (setters and admins only)
+      tags: [Wall]
+      security: [{BearerAuth: []}]
+      responses:
+        "200":
+          description: Pending reset diff
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WallResetDiff"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    delete:
+      operationId: discardWallReset
+      summary: Discard a pending reset
+      tags: [Wall]
+      security: [{BearerAuth: []}]
+      responses:
+        "204": {description: Pending reset discarded}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}/matches:
+    parameters:
+      - $ref: "#/components/parameters/gymSlug"
+      - $ref: "#/components/parameters/wallId"
+      - name: imageId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      operationId: updateWallResetMatch
+      summary: Replace a hold match (null new_hold_id removes it)
+      tags: [Wall]
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_hold_id]
+              properties:
+                old_hold_id: {type: string, format: uuid}
+                new_hold_id: {type: string, format: uuid, nullable: true}
+      responses:
+        "200": {description: Match updated}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}/restore:
+    post:
+      operationId: restoreWallResetHold
+      summary: Restore an old hold into a pending reset
+      tags: [Wall]
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - name: imageId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_hold_id]
+              properties:
+                old_hold_id: {type: string, format: uuid}
+      responses:
+        "201": {description: Hold restored and matched}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}/apply:
+    post:
+      operationId: applyWallReset
+      summary: Apply a completed pending reset
+      tags: [Wall]
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - name: imageId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200": {description: Reset applied, with kept and archived route counts}
+        "409": {description: Pending reset is stale or detection is incomplete}
+        "403": {$ref: "#/components/responses/Forbidden"}
+
   /gyms/{gymSlug}/walls/{wallId}/routes:
     get:
       operationId: listRoutes
@@ -1077,6 +1207,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Not authenticated
       content:
@@ -1294,6 +1430,51 @@ components:
           format: date-time
       required: [id, gym_id, name]
 
+    WallResetDiff:
+      type: object
+      required: [new_holds, removed_holds, alignment, affected_routes, kept_route_count, detection_status]
+      properties:
+        new_holds:
+          type: array
+          items:
+            type: object
+            required: [id, bbox, confidence, matched_old_hold_id]
+            properties:
+              id: {type: string, format: uuid}
+              bbox: {type: object}
+              polygon: {type: array, nullable: true, items: {type: array, items: {type: number}}}
+              confidence: {type: number}
+              matched_old_hold_id: {type: string, format: uuid, nullable: true}
+        removed_holds:
+          type: array
+          items:
+            type: object
+            required: [old_hold_id, bbox, confidence]
+            properties:
+              old_hold_id: {type: string, format: uuid}
+              bbox: {type: object}
+              polygon: {type: array, nullable: true, items: {type: array, items: {type: number}}}
+              confidence: {type: number}
+        alignment:
+          type: object
+          required: [ok, inliers]
+          properties:
+            ok: {type: boolean}
+            inliers: {type: integer}
+        affected_routes:
+          type: array
+          items:
+            type: object
+            required: [id, name, status, missing_hold_ids]
+            properties:
+              id: {type: string, format: uuid}
+              name: {type: string}
+              grade: {type: string, nullable: true}
+              status: {type: string}
+              missing_hold_ids: {type: array, items: {type: string, format: uuid}}
+        kept_route_count: {type: integer}
+        detection_status: {type: string}
+
     WallDetail:
       type: object
       properties:
@@ -1305,6 +1486,16 @@ components:
             - type: "null"
         detection_status:
           type: ["string", "null"]
+        pending_reset:
+          oneOf:
+            - type: object
+              required: [image_id, image_url, created_at]
+              properties:
+                image_id: {type: string, format: uuid}
+                image_url: {type: string}
+                detection_status: {type: string, nullable: true}
+                created_at: {type: string, format: date-time}
+            - type: "null"
       required: [wall]
 
     WallImage:
