@@ -744,7 +744,7 @@ paths:
               required: [image]
               properties:
                 image: {type: string, format: binary}
-                mode: {type: string, enum: [partial], description: Omit for a full reset}
+                mode: {type: string, enum: [full, partial], description: Omit or use full for a full reset}
       responses:
         "201": {description: Image and detection job created}
         "400": {$ref: "#/components/responses/BadRequest"}
@@ -772,6 +772,24 @@ paths:
               schema: {$ref: "#/components/schemas/WallResetDiff"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+    delete:
+      operationId: discardWallReset
+      summary: Discard a pending reset
+      tags: [Wall]
+      security: [{BearerAuth: []}]
+      responses:
+        "204": {description: Pending reset discarded}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}/matches:
+    parameters:
+      - $ref: "#/components/parameters/gymSlug"
+      - $ref: "#/components/parameters/wallId"
+      - name: imageId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
     put:
       operationId: updateWallResetMatch
       summary: Replace a hold match (null new_hold_id removes it)
@@ -790,15 +808,6 @@ paths:
       responses:
         "200": {description: Match updated}
         "400": {$ref: "#/components/responses/BadRequest"}
-        "403": {$ref: "#/components/responses/Forbidden"}
-        "404": {$ref: "#/components/responses/NotFound"}
-    delete:
-      operationId: discardWallReset
-      summary: Discard a pending reset
-      tags: [Wall]
-      security: [{BearerAuth: []}]
-      responses:
-        "204": {description: Pending reset discarded}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
 
