@@ -115,6 +115,14 @@ type Hold struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type HoldMatch struct {
+	NewHoldID   pgtype.UUID   `json:"new_hold_id"`
+	OldHoldID   pgtype.UUID   `json:"old_hold_id"`
+	Source      string        `json:"source"`
+	Iou         pgtype.Float4 `json:"iou"`
+	WallImageID pgtype.UUID   `json:"wall_image_id"`
+}
+
 type Invite struct {
 	ID        pgtype.UUID        `json:"id"`
 	GymID     pgtype.UUID        `json:"gym_id"`
@@ -189,9 +197,13 @@ type Wall struct {
 }
 
 type WallImage struct {
-	ID         pgtype.UUID        `json:"id"`
-	WallID     pgtype.UUID        `json:"wall_id"`
-	StorageKey string             `json:"storage_key"`
-	IsActive   bool               `json:"is_active"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	ID            pgtype.UUID        `json:"id"`
+	WallID        pgtype.UUID        `json:"wall_id"`
+	StorageKey    string             `json:"storage_key"`
+	IsActive      bool               `json:"is_active"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	ParentImageID pgtype.UUID        `json:"parent_image_id"`
+	ResetKind     string             `json:"reset_kind"`
+	ReviewStatus  pgtype.Text        `json:"review_status"`
+	Alignment     []byte             `json:"alignment"`
 }
