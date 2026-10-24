@@ -31,13 +31,17 @@ def test_matches_one_to_one_in_normalized_coordinates():
 
 
 def test_center_distance_breaks_equal_iou_ties_for_small_holds():
-    new_holds = [hold(0.2, w=0.01, h=0.01)]
-    old_holds = [hold(0.205, w=0.01, h=0.01), hold(0.195, w=0.01, h=0.01)]
+    new_holds = [hold(0.25, y=0.25, w=0.125, h=0.125)]
+    # Both candidates have exactly 1/3 IoU, but the first center is nearer.
+    old_holds = [
+        hold(0.3125, y=0.25, w=0.125, h=0.125),
+        hold(0.28125, y=0.25, w=0.25, h=0.125),
+    ]
 
     matches = match_holds(new_holds, old_holds, IDENTITY)
 
     assert len(matches) == 1
-    assert matches[0]["old_index"] == 1
+    assert matches[0]["old_index"] == 0
 
 
 def test_exact_candidate_ties_choose_lowest_old_index_deterministically():

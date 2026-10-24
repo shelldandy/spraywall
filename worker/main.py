@@ -6,9 +6,9 @@ import time
 
 import psycopg
 
-from detection.storage import download_image
 from detection.align import estimate_alignment
 from detection.match import match_holds
+from detection.storage import download_image
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,7 +51,10 @@ def process_job(conn, job_id: str, wall_image_id: str, storage_key: str,
                         cur.execute("SELECT storage_key FROM wall_images WHERE id = %s", (parent_image_id,))
                         parent_row = cur.fetchone()
                         if parent_row:
-                            cur.execute("SELECT id, bbox, polygon FROM holds WHERE wall_image_id = %s", (parent_image_id,))
+                            cur.execute(
+                                "SELECT id, bbox, polygon FROM holds WHERE wall_image_id = %s",
+                                (parent_image_id,),
+                            )
                             old_holds = [
                                 {"id": str(row[0]), "bbox": row[1], "polygon": row[2]}
                                 for row in cur.fetchall()
