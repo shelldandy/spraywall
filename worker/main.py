@@ -7,6 +7,8 @@ import time
 import psycopg
 
 from detection.storage import download_image
+from detection.align import estimate_alignment
+from detection.match import match_holds
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,7 +28,8 @@ else:
     raise SystemExit(f"Unknown INFERENCE_BACKEND: {INFERENCE_BACKEND!r} (expected 'local' or 'modal')")
 
 
-def process_job(conn, job_id: str, wall_image_id: str, storage_key: str):
+def process_job(conn, job_id: str, wall_image_id: str, storage_key: str,
+                reset_kind: str = None, parent_image_id: str = None):
     """Process a single detection job."""
     logger.info("Processing job %s for image %s", job_id, wall_image_id)
 
@@ -34,19 +37,47 @@ def process_job(conn, job_id: str, wall_image_id: str, storage_key: str):
     local_path = download_image(storage_key)
     logger.info("Downloaded image to %s", local_path)
 
+    parent_path = None
     try:
-        # Run inference
         holds = detect_holds(local_path)
         logger.info("Detected %d holds", len(holds))
+        alignment = {"homography": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "inliers": 0, "ok": False}
+        old_holds = []
+        matches = []
+        if reset_kind == "partial" and parent_image_id:
+            try:
+                with conn.transaction():
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT storage_key FROM wall_images WHERE id = %s", (parent_image_id,))
+                        parent_row = cur.fetchone()
+                        if parent_row:
+                            cur.execute("SELECT id, bbox, polygon FROM holds WHERE wall_image_id = %s", (parent_image_id,))
+                            old_holds = [
+                                {"id": str(row[0]), "bbox": row[1], "polygon": row[2]}
+                                for row in cur.fetchall()
+                            ]
+                if parent_row:
+                    parent_path = download_image(parent_row[0])
+                    alignment = estimate_alignment(local_path, parent_path)
+                    if not alignment["ok"]:
+                        logger.warning(
+                            "Alignment failed for partial image %s; attempting matches with identity alignment",
+                            wall_image_id,
+                        )
+                    matches = match_holds(holds, old_holds, alignment["homography"])
+            except Exception:
+                logger.exception("Partial reset alignment/matching failed for image %s", wall_image_id)
+                alignment = {"homography": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "inliers": 0, "ok": False}
+                matches = []
 
-        # Insert holds and update job status in a transaction
         with conn.transaction():
             with conn.cursor() as cur:
+                new_hold_ids = []
                 for hold in holds:
                     cur.execute(
                         """
                         INSERT INTO holds (wall_image_id, bbox, polygon, confidence)
-                        VALUES (%s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s) RETURNING id
                         """,
                         (
                             wall_image_id,
@@ -55,6 +86,20 @@ def process_job(conn, job_id: str, wall_image_id: str, storage_key: str):
                             hold["confidence"],
                         ),
                     )
+                    new_hold_ids.append(str(cur.fetchone()[0]))
+
+                if reset_kind == "partial":
+                    cur.execute("UPDATE wall_images SET alignment = %s WHERE id = %s",
+                                (json.dumps(alignment), wall_image_id))
+                    for match in matches:
+                        cur.execute(
+                            """
+                            INSERT INTO hold_matches (new_hold_id, old_hold_id, wall_image_id, source, iou)
+                            VALUES (%s, %s, %s, 'auto', %s)
+                            """,
+                            (new_hold_ids[match["new_index"]], old_holds[match["old_index"]]["id"],
+                             wall_image_id, match["iou"]),
+                        )
 
                 cur.execute(
                     """
@@ -68,6 +113,8 @@ def process_job(conn, job_id: str, wall_image_id: str, storage_key: str):
         logger.info("Job %s completed: %d holds inserted", job_id, len(holds))
     finally:
         os.unlink(local_path)
+        if parent_path:
+            os.unlink(parent_path)
 
 
 def poll_and_process(conn):
@@ -76,7 +123,7 @@ def poll_and_process(conn):
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT dj.id, dj.wall_image_id, wi.storage_key
+                SELECT dj.id, dj.wall_image_id, wi.storage_key, wi.reset_kind, wi.parent_image_id
                 FROM detection_jobs dj
                 JOIN wall_images wi ON dj.wall_image_id = wi.id
                 WHERE dj.status = 'pending'
@@ -92,6 +139,7 @@ def poll_and_process(conn):
                 return
 
             job_id, wall_image_id, storage_key = str(row[0]), str(row[1]), row[2]
+            reset_kind, parent_image_id = row[3], str(row[4]) if row[4] else None
 
             # Mark as processing
             cur.execute(
@@ -100,7 +148,7 @@ def poll_and_process(conn):
             )
 
     try:
-        process_job(conn, job_id, wall_image_id, storage_key)
+        process_job(conn, job_id, wall_image_id, storage_key, reset_kind, parent_image_id)
     except Exception as e:
         logger.exception("Job %s failed", job_id)
         with conn.cursor() as cur:
