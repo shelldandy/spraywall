@@ -1,0 +1,15 @@
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router";
+import { uploadWallImage } from "../lib/hooks/mutations";
+import { toast } from "../lib/toast";
+import styles from "./WallCamera.module.css";
+
+export default function WallCameraPage() {
+ const {wallId=""}=useParams(); const [params]=useSearchParams(); const gym=params.get("gymSlug")??""; const old=params.get("old")??"";
+ const video=useRef<HTMLVideoElement>(null); const stream=useRef<MediaStream|null>(null); const [ready,setReady]=useState(false); const [opacity,setOpacity]=useState(.4); const [busy,setBusy]=useState(false); const navigate=useNavigate();
+ useEffect(()=>{ let live=true; navigator.mediaDevices?.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:4096},height:{ideal:4096}},audio:false}).then(s=>{if(!live){s.getTracks().forEach(t=>t.stop());return;} stream.current=s; if(video.current) video.current.srcObject=s; setReady(true);}).catch(()=>setReady(false)); return ()=>{live=false;stream.current?.getTracks().forEach(t=>t.stop());};},[]);
+ const upload=async(blob:Blob)=>{setBusy(true);try{const res=await uploadWallImage(gym,wallId,blob,"partial");if(!res.ok)throw new Error(await res.text());navigate(`/walls/${wallId}?gymSlug=${gym}`);}catch(e){toast(e instanceof Error?e.message:"Upload failed","error");}finally{setBusy(false);}};
+ const capture=async()=>{if(!video.current)return;try{const track=stream.current?.getVideoTracks()[0];const Capture=(window as unknown as {ImageCapture?:new(t:MediaStreamTrack)=>{takePhoto:()=>Promise<Blob>}}).ImageCapture;if(track&&Capture){await upload(await new Capture(track).takePhoto());return;}}catch{/* Camera API can be unsupported despite construction. */}const v=video.current;const c=document.createElement("canvas");c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d")?.drawImage(v,0,0);c.toBlob(b=>b&&void upload(b),"image/jpeg",.9);};
+ const chooseFile=(event:ChangeEvent<HTMLInputElement>)=>{const file=event.currentTarget.files?.[0];event.currentTarget.value="";if(file)void upload(file);};
+ return <main className={styles.camera}><button className="btn btn-ghost" onClick={()=>navigate(-1)}>Cancel</button><div className={styles.stage}><video ref={video} autoPlay playsInline className={styles.video}/>{old&&<img src={old} className={styles.ghost} style={{opacity}} alt="Previous wall photo"/>}{!ready&&<div className={styles.fallback}>Camera unavailable — choose a photo</div>}</div>{old&&<label className={styles.opacity}>Ghost opacity <input type="range" min="0" max="0.8" step="0.05" value={opacity} onChange={e=>setOpacity(+e.target.value)}/></label>}<div className={styles.actions}><button className="btn" disabled={busy} onClick={()=>document.getElementById("wall-library")?.click()}>Library</button><input id="wall-library" type="file" accept="image/*" hidden onChange={chooseFile}/><button className="btn btn-primary" disabled={!ready||busy} onClick={()=>void capture()}>{busy?"Uploading…":"Capture"}</button></div></main>;
+}

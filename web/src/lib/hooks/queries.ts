@@ -11,6 +11,7 @@ import type {
   ClimbLog,
   Me,
   Circuit,
+  ResetDiff,
 } from "../api/types";
 import { useAuthStore } from "../store/auth";
 
@@ -62,6 +63,24 @@ export function useWallDetail(wallId: string, gymSlug?: string) {
     },
   });
   return query;
+}
+
+export const POLL_INTERVAL_MS = 4000;
+export function isDetecting(status: string | null | undefined) {
+  return status === "pending" || status === "processing";
+}
+
+export function useResetDiff(gymSlug?: string, wallId?: string, imageId?: string) {
+  return useQuery<ResetDiff>({
+    queryKey: ["reset-diff", wallId, imageId],
+    queryFn: async () => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/resets/${imageId}`);
+      if (!res.ok) throw new Error("Failed to fetch reset review");
+      return res.json();
+    },
+    enabled: Boolean(gymSlug && wallId && imageId),
+    refetchInterval: (query) => isDetecting(query.state.data?.detection_status) ? POLL_INTERVAL_MS : false,
+  });
 }
 
 export function useHolds(wallId: string, enabled = true, gymSlug?: string) {

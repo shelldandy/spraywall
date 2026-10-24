@@ -191,7 +191,7 @@ export default function RouteDetailPage() {
           ) : (
             <>
               {routeData?.is_legacy && (
-                <div className={styles.legacyBanner}>This route was reset when a new wall photo was uploaded</div>
+                <div className={styles.legacyBanner}>This climb was archived when the wall was reset</div>
               )}
 
               <div className={styles.metaRow}>

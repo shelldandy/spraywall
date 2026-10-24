@@ -1,9 +1,45 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../api/fetch";
+import { prepareImageForUpload } from "../image";
 import type { Circuit, HoldRoles, Me } from "../api/types";
 import type { RouteTagId } from "../routeTags";
 import { useAuthStore } from "../store/auth";
 import { toastError } from "../toast";
+
+export async function uploadWallImage(gymSlug: string, wallId: string, image: Blob, mode: "full" | "partial" = "full") {
+  const file = image instanceof File ? image : new File([image], "photo.jpg", { type: image.type || "image/jpeg" });
+  const prepared = await prepareImageForUpload(file);
+  const form = new FormData();
+  form.append("image", prepared, prepared instanceof File ? prepared.name : "photo.jpg");
+  form.append("mode", mode);
+  return apiFetch(`/gyms/${gymSlug}/walls/${wallId}/images`, { method: "POST", body: form });
+}
+
+function useResetMutation<T>(gymSlug: string, wallId: string, imageId: string, action: string, method: string, body?: unknown) {
+  const qc = useQueryClient();
+  return useMutation<T, Error, void | { old_hold_id: string; new_hold_id?: string | null }>({
+    mutationFn: async (variables) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/resets/${imageId}${action}`, {
+        method, ...(body ? { body: JSON.stringify(body) } : variables ? { body: JSON.stringify(variables) } : {}),
+      });
+      await ensureOkJson(res, "Reset request failed");
+      return method === "DELETE" ? undefined as T : res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reset-diff", wallId, imageId] });
+      qc.invalidateQueries({ queryKey: ["wall-detail", wallId] });
+      qc.invalidateQueries({ queryKey: ["holds", wallId] });
+      qc.invalidateQueries({ queryKey: ["routes", wallId] });
+      qc.invalidateQueries({ queryKey: ["circuits", wallId] });
+    },
+    onError: toastError,
+  });
+}
+
+export function useMatchResetHold(g: string, w: string, i: string) { return useResetMutation<void>(g, w, i, "/matches", "PUT"); }
+export function useRestoreResetHold(g: string, w: string, i: string) { return useResetMutation<void>(g, w, i, "/restore", "POST"); }
+export function useApplyReset(g: string, w: string, i: string) { return useResetMutation<{ kept: number; archived: number }>(g, w, i, "/apply", "POST"); }
+export function useDiscardReset(g: string, w: string, i: string) { return useResetMutation<void>(g, w, i, "", "DELETE"); }
 
 export interface RouteParams {
   name: string;

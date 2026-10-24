@@ -13,6 +13,8 @@ import InvitePage from "./pages/Invite";
 import OidcCallbackPage from "./pages/OidcCallback";
 import ProfilePage from "./pages/Profile";
 import CircuitsPage from "./pages/Circuits";
+import ResetReviewPage from "./pages/ResetReview";
+import WallCameraPage from "./pages/WallCamera";
 
 export const router = createBrowserRouter([
   {
@@ -27,6 +29,8 @@ export const router = createBrowserRouter([
         children: [
           { path: "/walls", element: <WallsPage /> },
           { path: "/walls/:wallId", element: <WallDetailPage /> },
+          { path: "/walls/:wallId/reset/:imageId", element: <ResetReviewPage /> },
+          { path: "/walls/:wallId/camera", element: <WallCameraPage /> },
           { path: "/routes", element: <RoutesPage /> },
           { path: "/circuits", element: <CircuitsPage /> },
           { path: "/routes/create", element: <RouteCreatePage /> },
