@@ -364,43 +364,6 @@ func (q *Queries) ListRoutesByWall(ctx context.Context, arg ListRoutesByWallPara
 	return items, nil
 }
 
-const listRoutesByWallImage = `-- name: ListRoutesByWallImage :many
-SELECT id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status, tags FROM routes WHERE wall_image_id = $1 ORDER BY id
-`
-
-func (q *Queries) ListRoutesByWallImage(ctx context.Context, wallImageID pgtype.UUID) ([]Route, error) {
-	rows, err := q.db.Query(ctx, listRoutesByWallImage, wallImageID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Route
-	for rows.Next() {
-		var i Route
-		if err := rows.Scan(
-			&i.ID,
-			&i.WallID,
-			&i.WallImageID,
-			&i.CreatedBy,
-			&i.Name,
-			&i.Grade,
-			&i.Description,
-			&i.HoldIds,
-			&i.CreatedAt,
-			&i.HoldRoles,
-			&i.Status,
-			&i.Tags,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listUserClimbLogs = `-- name: ListUserClimbLogs :many
 SELECT l.id, l.route_id, l.user_id, l.logged_at, l.climbed_on, l.outcome, l.attempts, l.notes,
        r.name AS route_name, r.grade AS route_grade, w.id AS wall_id, w.name AS wall_name, w.gym_id, g.slug AS gym_slug
@@ -535,27 +498,6 @@ func (q *Queries) UpdateRoute(ctx context.Context, arg UpdateRouteParams) (Route
 		&i.Tags,
 	)
 	return i, err
-}
-
-const updateRouteHolds = `-- name: UpdateRouteHolds :exec
-UPDATE routes SET wall_image_id = $2, hold_ids = $3, hold_roles = $4 WHERE id = $1
-`
-
-type UpdateRouteHoldsParams struct {
-	ID          pgtype.UUID   `json:"id"`
-	WallImageID pgtype.UUID   `json:"wall_image_id"`
-	HoldIds     []pgtype.UUID `json:"hold_ids"`
-	HoldRoles   []byte        `json:"hold_roles"`
-}
-
-func (q *Queries) UpdateRouteHolds(ctx context.Context, arg UpdateRouteHoldsParams) error {
-	_, err := q.db.Exec(ctx, updateRouteHolds,
-		arg.ID,
-		arg.WallImageID,
-		arg.HoldIds,
-		arg.HoldRoles,
-	)
-	return err
 }
 
 const updateRouteStatus = `-- name: UpdateRouteStatus :exec

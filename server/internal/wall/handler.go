@@ -24,24 +24,26 @@ import (
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
-	"github.com/bowlinedandy/spraywall/server/internal/storage"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
 )
+
+// WallImageStorage contains the object-store operations used by wall handlers.
+type WallImageStorage interface {
+	Upload(context.Context, string, io.Reader, int64, string) error
+	Download(context.Context, string) (io.ReadCloser, string, error)
+	Delete(context.Context, string) error
+}
 
 // Handler holds dependencies for gym/wall HTTP handlers.
 type Handler struct {
 	queries *generated.Queries
-	storage *storage.Client
+	storage WallImageStorage
 	pool    *pgxpool.Pool
 }
 
 // NewHandler creates a new Handler.
-func NewHandler(queries *generated.Queries, storageClient *storage.Client, pools ...*pgxpool.Pool) *Handler {
-	h := &Handler{queries: queries, storage: storageClient}
-	if len(pools) > 0 {
-		h.pool = pools[0]
-	}
-	return h
+func NewHandler(queries *generated.Queries, storageClient WallImageStorage, pool *pgxpool.Pool) *Handler {
+	return &Handler{queries: queries, storage: storageClient, pool: pool}
 }
 
 // ---------- helpers ----------
@@ -72,6 +74,23 @@ func isHEIC(filename, contentType string) bool {
 
 func isValidWallImageMode(mode string) bool {
 	return mode == "" || mode == "full" || mode == "partial"
+}
+
+func (h *Handler) clearPendingResetImages(ctx context.Context, wallID pgtype.UUID) error {
+	storageKeys, err := h.queries.DeletePendingResetImagesByWall(ctx, wallID)
+	if err != nil {
+		return fmt.Errorf("delete pending reset records: %w", err)
+	}
+	var cleanupErr error
+	for _, key := range storageKeys {
+		if h.storage == nil {
+			continue
+		}
+		if err := h.storage.Delete(ctx, key); err != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("delete pending reset image %q: %w", key, err))
+		}
+	}
+	return cleanupErr
 }
 
 const (
@@ -600,26 +619,19 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.clearPendingResetImages(r.Context(), pgWallID); err != nil {
+		_ = h.storage.Delete(r.Context(), storageKey)
+		writeError(w, http.StatusInternalServerError, "could not clear pending reset")
+		return
+	}
+
 	var wallImage generated.WallImage
 	if mode == "partial" {
-		if pending, pendingErr := h.queries.GetPendingResetImage(r.Context(), pgWallID); pendingErr == nil {
-			_, deleteErr := h.queries.DeletePendingResetImage(r.Context(), pending.ID)
-			if deleteErr != nil {
-				_ = h.storage.Delete(r.Context(), storageKey)
-				writeError(w, http.StatusInternalServerError, "could not replace pending reset")
-				return
-			}
-			_ = h.storage.Delete(r.Context(), pending.StorageKey)
-		} else if !errors.Is(pendingErr, pgx.ErrNoRows) {
-			_ = h.storage.Delete(r.Context(), storageKey)
-			writeError(w, http.StatusInternalServerError, "could not load pending reset")
-			return
-		}
 		wallImage, err = h.queries.CreatePendingResetImage(r.Context(), generated.CreatePendingResetImageParams{
 			WallID: pgWallID, StorageKey: storageKey, ParentImageID: activeImage.ID,
 		})
 	} else {
-		// Preserve existing full-reset behavior.
+		// Preserve existing full-reset behavior after clearing any pending partial reset.
 		if err := h.queries.DeactivateWallImages(r.Context(), pgWallID); err != nil {
 			writeError(w, http.StatusInternalServerError, "could not deactivate old images")
 			return

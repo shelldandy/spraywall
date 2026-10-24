@@ -6,12 +6,6 @@ RETURNING *;
 -- name: GetRouteByID :one
 SELECT * FROM routes WHERE id = $1;
 
--- name: ListRoutesByWallImage :many
-SELECT * FROM routes WHERE wall_image_id = $1 ORDER BY id;
-
--- name: UpdateRouteHolds :exec
-UPDATE routes SET wall_image_id = $2, hold_ids = $3, hold_roles = $4 WHERE id = $1;
-
 -- name: ListRoutesByWall :many
 SELECT * FROM routes WHERE wall_id = $1 AND (status = 'published' OR created_by = $2)
 ORDER BY created_at DESC;

@@ -11,15 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const applyPendingResetImage = `-- name: ApplyPendingResetImage :exec
-UPDATE wall_images SET is_active = true, review_status = 'applied' WHERE id = $1
-`
-
-func (q *Queries) ApplyPendingResetImage(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, applyPendingResetImage, id)
-	return err
-}
-
 const createDetectionJob = `-- name: CreateDetectionJob :one
 INSERT INTO detection_jobs (wall_image_id)
 VALUES ($1)
@@ -171,52 +162,30 @@ func (q *Queries) DeleteHold(ctx context.Context, arg DeleteHoldParams) (pgtype.
 	return id, err
 }
 
-const deletePendingResetImage = `-- name: DeletePendingResetImage :one
-DELETE FROM wall_images WHERE id = $1 AND reset_kind = 'partial' AND review_status = 'pending' RETURNING storage_key
+const deletePendingResetImagesByWall = `-- name: DeletePendingResetImagesByWall :many
+DELETE FROM wall_images
+WHERE wall_id = $1 AND reset_kind = 'partial' AND review_status = 'pending'
+RETURNING storage_key
 `
 
-func (q *Queries) DeletePendingResetImage(ctx context.Context, id pgtype.UUID) (string, error) {
-	row := q.db.QueryRow(ctx, deletePendingResetImage, id)
-	var storage_key string
-	err := row.Scan(&storage_key)
-	return storage_key, err
-}
-
-const deleteResetMatchByOldHold = `-- name: DeleteResetMatchByOldHold :exec
-DELETE FROM hold_matches WHERE wall_image_id = $1 AND old_hold_id = $2
-`
-
-type DeleteResetMatchByOldHoldParams struct {
-	WallImageID pgtype.UUID `json:"wall_image_id"`
-	OldHoldID   pgtype.UUID `json:"old_hold_id"`
-}
-
-func (q *Queries) DeleteResetMatchByOldHold(ctx context.Context, arg DeleteResetMatchByOldHoldParams) error {
-	_, err := q.db.Exec(ctx, deleteResetMatchByOldHold, arg.WallImageID, arg.OldHoldID)
-	return err
-}
-
-const deleteResetMatches = `-- name: DeleteResetMatches :exec
-DELETE FROM hold_matches WHERE wall_image_id = $1
-`
-
-func (q *Queries) DeleteResetMatches(ctx context.Context, wallImageID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteResetMatches, wallImageID)
-	return err
-}
-
-const deleteResetMatchesByNewHold = `-- name: DeleteResetMatchesByNewHold :exec
-DELETE FROM hold_matches WHERE wall_image_id = $1 AND new_hold_id = $2
-`
-
-type DeleteResetMatchesByNewHoldParams struct {
-	WallImageID pgtype.UUID `json:"wall_image_id"`
-	NewHoldID   pgtype.UUID `json:"new_hold_id"`
-}
-
-func (q *Queries) DeleteResetMatchesByNewHold(ctx context.Context, arg DeleteResetMatchesByNewHoldParams) error {
-	_, err := q.db.Exec(ctx, deleteResetMatchesByNewHold, arg.WallImageID, arg.NewHoldID)
-	return err
+func (q *Queries) DeletePendingResetImagesByWall(ctx context.Context, wallID pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, deletePendingResetImagesByWall, wallID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var storage_key string
+		if err := rows.Scan(&storage_key); err != nil {
+			return nil, err
+		}
+		items = append(items, storage_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const deleteWall = `-- name: DeleteWall :exec
@@ -324,35 +293,6 @@ func (q *Queries) GetPendingResetImage(ctx context.Context, wallID pgtype.UUID) 
 	return i, err
 }
 
-const getResetMatches = `-- name: GetResetMatches :many
-SELECT old_hold_id, new_hold_id FROM hold_matches WHERE wall_image_id = $1 ORDER BY old_hold_id
-`
-
-type GetResetMatchesRow struct {
-	OldHoldID pgtype.UUID `json:"old_hold_id"`
-	NewHoldID pgtype.UUID `json:"new_hold_id"`
-}
-
-func (q *Queries) GetResetMatches(ctx context.Context, wallImageID pgtype.UUID) ([]GetResetMatchesRow, error) {
-	rows, err := q.db.Query(ctx, getResetMatches, wallImageID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetResetMatchesRow
-	for rows.Next() {
-		var i GetResetMatchesRow
-		if err := rows.Scan(&i.OldHoldID, &i.NewHoldID); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getWallByID = `-- name: GetWallByID :one
 SELECT id, gym_id, name, created_at FROM walls WHERE id = $1
 `
@@ -420,70 +360,4 @@ func (q *Queries) ListWallsByGym(ctx context.Context, gymID pgtype.UUID) ([]List
 		return nil, err
 	}
 	return items, nil
-}
-
-const lockWallImagesForReset = `-- name: LockWallImagesForReset :many
-SELECT id, wall_id, is_active, parent_image_id, review_status FROM wall_images WHERE wall_id = $1 AND id = ANY($2::uuid[]) FOR UPDATE
-`
-
-type LockWallImagesForResetParams struct {
-	WallID  pgtype.UUID   `json:"wall_id"`
-	Column2 []pgtype.UUID `json:"column_2"`
-}
-
-type LockWallImagesForResetRow struct {
-	ID            pgtype.UUID `json:"id"`
-	WallID        pgtype.UUID `json:"wall_id"`
-	IsActive      bool        `json:"is_active"`
-	ParentImageID pgtype.UUID `json:"parent_image_id"`
-	ReviewStatus  pgtype.Text `json:"review_status"`
-}
-
-func (q *Queries) LockWallImagesForReset(ctx context.Context, arg LockWallImagesForResetParams) ([]LockWallImagesForResetRow, error) {
-	rows, err := q.db.Query(ctx, lockWallImagesForReset, arg.WallID, arg.Column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []LockWallImagesForResetRow
-	for rows.Next() {
-		var i LockWallImagesForResetRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.WallID,
-			&i.IsActive,
-			&i.ParentImageID,
-			&i.ReviewStatus,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const upsertResetMatch = `-- name: UpsertResetMatch :exec
-INSERT INTO hold_matches (wall_image_id, old_hold_id, new_hold_id, source, iou)
-VALUES ($1, $2, $3, $4, NULL)
-ON CONFLICT (new_hold_id) DO UPDATE SET old_hold_id = EXCLUDED.old_hold_id, source = EXCLUDED.source
-`
-
-type UpsertResetMatchParams struct {
-	WallImageID pgtype.UUID `json:"wall_image_id"`
-	OldHoldID   pgtype.UUID `json:"old_hold_id"`
-	NewHoldID   pgtype.UUID `json:"new_hold_id"`
-	Source      string      `json:"source"`
-}
-
-func (q *Queries) UpsertResetMatch(ctx context.Context, arg UpsertResetMatchParams) error {
-	_, err := q.db.Exec(ctx, upsertResetMatch,
-		arg.WallImageID,
-		arg.OldHoldID,
-		arg.NewHoldID,
-		arg.Source,
-	)
-	return err
 }

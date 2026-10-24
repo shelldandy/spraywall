@@ -42,9 +42,9 @@ function getHoldColor(
   if (selectedRole) return roleColors[selectedRole];
 
   if (holdRoles) {
-    if (holdRoles.start.includes(holdId))
+    if (holdRoles.start?.includes(holdId))
       return { fill: "rgba(0, 200, 0, 0.4)", stroke: "#00CC00" };
-    if (holdRoles.finish.includes(holdId))
+    if (holdRoles.finish?.includes(holdId))
       return { fill: "rgba(255, 50, 50, 0.4)", stroke: "#FF3333" };
     if (holdRoles.foot?.includes(holdId)) return roleColors.foot;
   }

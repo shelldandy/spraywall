@@ -25,6 +25,10 @@ func remapRouteHolds(ids []uuid.UUID, roles json.RawMessage, matches map[uuid.UU
 		return nil, nil, false, fmt.Errorf("decode route hold roles: %w", err)
 	}
 	for key, roleIDs := range roleMap {
+		if roleIDs == nil {
+			roleIDs = []uuid.UUID{}
+			roleMap[key] = roleIDs
+		}
 		for i, id := range roleIDs {
 			newID, ok := matches[id]
 			if !ok {

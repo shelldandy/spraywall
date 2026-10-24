@@ -163,29 +163,50 @@ func (h *Handler) GetReset(w http.ResponseWriter, r *http.Request) {
 	var reviewStatus *string
 	var alignmentRaw []byte
 	err := h.pool.QueryRow(r.Context(), `SELECT parent_image_id,review_status,alignment FROM wall_images WHERE id=$1 AND wall_id=$2 AND reset_kind='partial'`, shared.PgUUID(imageID), shared.PgUUID(wallID)).Scan(&parent, &reviewStatus, &alignmentRaw)
-	if err != nil || !parent.Valid || reviewStatus == nil || *reviewStatus != "pending" {
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "pending reset not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load pending reset")
+		return
+	}
+	if !parent.Valid || reviewStatus == nil || *reviewStatus != "pending" {
 		writeError(w, http.StatusNotFound, "pending reset not found")
 		return
 	}
 	var a resetAlignment
-	_ = json.Unmarshal(alignmentRaw, &a)
+	if len(alignmentRaw) > 0 {
+		if err := json.Unmarshal(alignmentRaw, &a); err != nil {
+			writeError(w, http.StatusInternalServerError, "invalid reset alignment")
+			return
+		}
+	}
 	inverse, hasInverse := inverseHomography(a.Homography)
 	matches := map[uuid.UUID]uuid.UUID{}
 	rows, err := h.pool.Query(r.Context(), `SELECT old_hold_id,new_hold_id FROM hold_matches WHERE wall_image_id=$1`, shared.PgUUID(imageID))
 	if err != nil {
-		writeError(w, 500, "could not load matches")
+		writeError(w, http.StatusInternalServerError, "could not load matches")
 		return
 	}
 	for rows.Next() {
 		var oldID, newID uuid.UUID
-		if rows.Scan(&oldID, &newID) == nil {
-			matches[oldID] = newID
+		if err := rows.Scan(&oldID, &newID); err != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, "could not load matches")
+			return
 		}
+		matches[oldID] = newID
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		writeError(w, http.StatusInternalServerError, "could not load matches")
+		return
 	}
 	rows.Close()
 	newRows, err := h.pool.Query(r.Context(), `SELECT id,bbox,polygon,confidence FROM holds WHERE wall_image_id=$1 ORDER BY confidence DESC`, shared.PgUUID(imageID))
 	if err != nil {
-		writeError(w, 500, "could not load holds")
+		writeError(w, http.StatusInternalServerError, "could not load holds")
 		return
 	}
 	newHolds := []resetHold{}
@@ -193,7 +214,7 @@ func (h *Handler) GetReset(w http.ResponseWriter, r *http.Request) {
 		var item resetHold
 		if err := newRows.Scan(&item.ID, &item.BBox, &item.Polygon, &item.Confidence); err != nil {
 			newRows.Close()
-			writeError(w, 500, "could not load holds")
+			writeError(w, http.StatusInternalServerError, "could not load holds")
 			return
 		}
 		for old, id := range matches {
@@ -205,10 +226,15 @@ func (h *Handler) GetReset(w http.ResponseWriter, r *http.Request) {
 		}
 		newHolds = append(newHolds, item)
 	}
+	if err := newRows.Err(); err != nil {
+		newRows.Close()
+		writeError(w, http.StatusInternalServerError, "could not load holds")
+		return
+	}
 	newRows.Close()
 	oldRows, err := h.pool.Query(r.Context(), `SELECT id,bbox,polygon,confidence FROM holds WHERE wall_image_id=$1 ORDER BY confidence DESC`, parent)
 	if err != nil {
-		writeError(w, 500, "could not load old holds")
+		writeError(w, http.StatusInternalServerError, "could not load old holds")
 		return
 	}
 	removed := []removedResetHold{}
@@ -216,8 +242,10 @@ func (h *Handler) GetReset(w http.ResponseWriter, r *http.Request) {
 		var id uuid.UUID
 		var bbox, polygon json.RawMessage
 		var confidence float32
-		if oldRows.Scan(&id, &bbox, &polygon, &confidence) != nil {
-			continue
+		if err := oldRows.Scan(&id, &bbox, &polygon, &confidence); err != nil {
+			oldRows.Close()
+			writeError(w, http.StatusInternalServerError, "could not load old holds")
+			return
 		}
 		if _, matched := matches[id]; matched {
 			continue
@@ -230,6 +258,11 @@ func (h *Handler) GetReset(w http.ResponseWriter, r *http.Request) {
 		}
 		removed = append(removed, removedResetHold{id, bbox, polygon, confidence})
 	}
+	if err := oldRows.Err(); err != nil {
+		oldRows.Close()
+		writeError(w, http.StatusInternalServerError, "could not load old holds")
+		return
+	}
 	oldRows.Close()
 	type affected struct {
 		ID      uuid.UUID   `json:"id"`
@@ -240,7 +273,7 @@ func (h *Handler) GetReset(w http.ResponseWriter, r *http.Request) {
 	}
 	routes, err := h.pool.Query(r.Context(), `SELECT id,name,grade,status,hold_ids FROM routes WHERE wall_image_id=$1 ORDER BY id`, parent)
 	if err != nil {
-		writeError(w, 500, "could not load routes")
+		writeError(w, http.StatusInternalServerError, "could not load routes")
 		return
 	}
 	affectedRoutes := []affected{}
@@ -248,8 +281,10 @@ func (h *Handler) GetReset(w http.ResponseWriter, r *http.Request) {
 	for routes.Next() {
 		var item affected
 		var ids []uuid.UUID
-		if routes.Scan(&item.ID, &item.Name, &item.Grade, &item.Status, &ids) != nil {
-			continue
+		if err := routes.Scan(&item.ID, &item.Name, &item.Grade, &item.Status, &ids); err != nil {
+			routes.Close()
+			writeError(w, http.StatusInternalServerError, "could not load routes")
+			return
 		}
 		for _, id := range ids {
 			if _, yes := matches[id]; !yes {
@@ -262,10 +297,18 @@ func (h *Handler) GetReset(w http.ResponseWriter, r *http.Request) {
 			affectedRoutes = append(affectedRoutes, item)
 		}
 	}
+	if err := routes.Err(); err != nil {
+		routes.Close()
+		writeError(w, http.StatusInternalServerError, "could not load routes")
+		return
+	}
 	routes.Close()
 	var detectionStatus string
-	_ = h.pool.QueryRow(r.Context(), `SELECT COALESCE((SELECT status FROM detection_jobs WHERE wall_image_id=$1 ORDER BY created_at DESC LIMIT 1), 'pending')`, shared.PgUUID(imageID)).Scan(&detectionStatus)
-	writeJSON(w, 200, map[string]any{"new_holds": newHolds, "removed_holds": removed, "alignment": map[string]any{"ok": a.OK, "inliers": a.Inliers}, "affected_routes": affectedRoutes, "kept_route_count": kept, "detection_status": detectionStatus})
+	if err := h.pool.QueryRow(r.Context(), `SELECT COALESCE((SELECT status FROM detection_jobs WHERE wall_image_id=$1 ORDER BY created_at DESC LIMIT 1), 'pending')`, shared.PgUUID(imageID)).Scan(&detectionStatus); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load detection status")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"new_holds": newHolds, "removed_holds": removed, "alignment": map[string]any{"ok": a.OK, "inliers": a.Inliers}, "affected_routes": affectedRoutes, "kept_route_count": kept, "detection_status": detectionStatus})
 }
 
 func (h *Handler) UpdateResetMatch(w http.ResponseWriter, r *http.Request) {
@@ -278,54 +321,74 @@ func (h *Handler) UpdateResetMatch(w http.ResponseWriter, r *http.Request) {
 		New *uuid.UUID `json:"new_hold_id"`
 	}
 	if json.NewDecoder(r.Body).Decode(&body) != nil || body.Old == uuid.Nil {
-		writeError(w, 400, "invalid match")
+		writeError(w, http.StatusBadRequest, "invalid match")
 		return
 	}
+
 	tx, err := h.pool.Begin(r.Context())
 	if err != nil {
-		writeError(w, 500, "database error")
+		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 	defer tx.Rollback(context.Background())
+
 	var parent pgtype.UUID
 	var reviewStatus *string
 	var active bool
-	err = tx.QueryRow(r.Context(), `SELECT wi.parent_image_id,wi.review_status,wi.is_active FROM wall_images wi WHERE wi.id=$1 AND wi.wall_id=$2 AND wi.reset_kind='partial' FOR UPDATE`, shared.PgUUID(imageID), shared.PgUUID(wallID)).Scan(&parent, &reviewStatus, &active)
-	if err != nil || !parent.Valid || reviewStatus == nil || *reviewStatus != "pending" || active {
-		writeError(w, 404, "pending reset not found")
+	err = tx.QueryRow(r.Context(), `SELECT parent_image_id,review_status,is_active FROM wall_images WHERE id=$1 AND wall_id=$2 AND reset_kind='partial' FOR UPDATE`, shared.PgUUID(imageID), shared.PgUUID(wallID)).Scan(&parent, &reviewStatus, &active)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "pending reset not found")
 		return
 	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load pending reset")
+		return
+	}
+	if !parent.Valid || reviewStatus == nil || *reviewStatus != "pending" || active {
+		writeError(w, http.StatusNotFound, "pending reset not found")
+		return
+	}
+
 	var exists bool
 	err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM holds WHERE id=$1 AND wall_image_id=$2)`, body.Old, parent).Scan(&exists)
-	if err != nil || !exists {
-		writeError(w, 400, "old hold does not belong to parent image")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not validate old hold")
 		return
 	}
+	if !exists {
+		writeError(w, http.StatusBadRequest, "old hold does not belong to parent image")
+		return
+	}
+
 	if body.New == nil {
 		_, err = tx.Exec(r.Context(), `DELETE FROM hold_matches WHERE wall_image_id=$1 AND old_hold_id=$2`, shared.PgUUID(imageID), body.Old)
 	} else {
 		err = upsertMatch(r.Context(), tx, imageID, body.Old, *body.New)
 	}
+	if errors.Is(err, errResetHoldNotFound) {
+		writeError(w, http.StatusBadRequest, "new hold does not belong to pending image")
+		return
+	}
 	if err != nil {
-		writeError(w, 400, "invalid hold match")
+		writeError(w, http.StatusInternalServerError, "could not update hold match")
 		return
 	}
-	if tx.Commit(r.Context()) != nil {
-		writeError(w, 500, "database error")
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+var errResetHoldNotFound = errors.New("reset hold not found")
+
 func upsertMatch(ctx context.Context, tx pgx.Tx, imageID, oldID, newID uuid.UUID) error {
-	var parent pgtype.UUID
-	var wallID uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT parent_image_id,wall_id FROM wall_images WHERE id=$1`, imageID).Scan(&parent, &wallID); err != nil {
+	var valid bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM holds WHERE id=$1 AND wall_image_id=$2)`, newID, imageID).Scan(&valid); err != nil {
 		return err
 	}
-	var valid bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM holds WHERE id=$1 AND wall_image_id=$2)`, newID, imageID).Scan(&valid); err != nil || !valid {
-		return errors.New("new hold does not belong to pending image")
+	if !valid {
+		return errResetHoldNotFound
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM hold_matches WHERE wall_image_id=$1 AND (old_hold_id=$2 OR new_hold_id=$3)`, imageID, oldID, newID); err != nil {
 		return err
@@ -343,42 +406,58 @@ func (h *Handler) RestoreResetHold(w http.ResponseWriter, r *http.Request) {
 		Old uuid.UUID `json:"old_hold_id"`
 	}
 	if json.NewDecoder(r.Body).Decode(&body) != nil || body.Old == uuid.Nil {
-		writeError(w, 400, "invalid old_hold_id")
+		writeError(w, http.StatusBadRequest, "invalid old_hold_id")
 		return
 	}
+
 	tx, err := h.pool.Begin(r.Context())
 	if err != nil {
-		writeError(w, 500, "database error")
+		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 	defer tx.Rollback(context.Background())
+
 	var parent pgtype.UUID
 	var reviewStatus *string
 	var active bool
 	err = tx.QueryRow(r.Context(), `SELECT parent_image_id,review_status,is_active FROM wall_images WHERE id=$1 AND wall_id=$2 AND reset_kind='partial' FOR UPDATE`, shared.PgUUID(imageID), shared.PgUUID(wallID)).Scan(&parent, &reviewStatus, &active)
-	if err != nil || !parent.Valid || reviewStatus == nil || *reviewStatus != "pending" || active {
-		writeError(w, 404, "pending reset not found")
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "pending reset not found")
 		return
 	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load pending reset")
+		return
+	}
+	if !parent.Valid || reviewStatus == nil || *reviewStatus != "pending" || active {
+		writeError(w, http.StatusNotFound, "pending reset not found")
+		return
+	}
+
 	var bbox, polygon []byte
 	err = tx.QueryRow(r.Context(), `SELECT bbox,polygon FROM holds WHERE id=$1 AND wall_image_id=$2`, body.Old, parent).Scan(&bbox, &polygon)
-	if err != nil {
-		writeError(w, 404, "old hold not found")
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "old hold not found")
 		return
 	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load old hold")
+		return
+	}
+
 	alignment, err := resetAlignmentFor(r.Context(), h.pool, imageID)
 	if err != nil {
-		writeError(w, 409, "alignment unavailable")
+		writeError(w, http.StatusConflict, "alignment unavailable")
 		return
 	}
 	inverse, valid := inverseHomography(alignment.Homography)
 	if !valid {
-		writeError(w, 409, "alignment unavailable")
+		writeError(w, http.StatusConflict, "alignment unavailable")
 		return
 	}
 	projected, valid := projectBBox(bbox, inverse)
 	if !valid {
-		writeError(w, 409, "could not project old hold")
+		writeError(w, http.StatusConflict, "could not project old hold")
 		return
 	}
 	projectedPolygon := projectPolygon(polygon, inverse)
@@ -391,14 +470,14 @@ func (h *Handler) RestoreResetHold(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.Exec(r.Context(), `INSERT INTO hold_matches(wall_image_id,old_hold_id,new_hold_id,source,iou) VALUES($1,$2,$3,'manual',NULL)`, shared.PgUUID(imageID), body.Old, newID)
 	}
 	if err != nil {
-		writeError(w, 500, "could not restore hold")
+		writeError(w, http.StatusInternalServerError, "could not restore hold")
 		return
 	}
-	if tx.Commit(r.Context()) != nil {
-		writeError(w, 500, "database error")
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	writeJSON(w, 201, map[string]any{"id": newID, "wall_image_id": imageID, "bbox": json.RawMessage(projected), "polygon": json.RawMessage(projectedPolygon), "confidence": 1.0})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": newID, "wall_image_id": imageID, "bbox": json.RawMessage(projected), "polygon": json.RawMessage(projectedPolygon), "confidence": 1.0})
 }
 
 func (h *Handler) ApplyReset(w http.ResponseWriter, r *http.Request) {
@@ -408,47 +487,73 @@ func (h *Handler) ApplyReset(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, err := h.pool.Begin(r.Context())
 	if err != nil {
-		writeError(w, 500, "database error")
+		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 	defer tx.Rollback(context.Background())
-	lockedImages, lockErr := tx.Query(r.Context(), `SELECT id FROM wall_images WHERE wall_id=$1 ORDER BY id FOR UPDATE`, shared.PgUUID(wallID))
-	if lockErr != nil {
-		writeError(w, 500, "could not lock wall images")
+
+	lockedImages, err := tx.Query(r.Context(), `SELECT id FROM wall_images WHERE wall_id=$1 ORDER BY id FOR UPDATE`, shared.PgUUID(wallID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not lock wall images")
 		return
 	}
 	for lockedImages.Next() {
 		var ignored uuid.UUID
 		if err := lockedImages.Scan(&ignored); err != nil {
 			lockedImages.Close()
-			writeError(w, 500, "could not lock wall images")
+			writeError(w, http.StatusInternalServerError, "could not lock wall images")
 			return
 		}
 	}
+	if err := lockedImages.Err(); err != nil {
+		lockedImages.Close()
+		writeError(w, http.StatusInternalServerError, "could not lock wall images")
+		return
+	}
 	lockedImages.Close()
+
 	var parent pgtype.UUID
 	var reviewStatus *string
 	var active bool
 	err = tx.QueryRow(r.Context(), `SELECT parent_image_id,review_status,is_active FROM wall_images WHERE id=$1 AND wall_id=$2 AND reset_kind='partial' FOR UPDATE`, shared.PgUUID(imageID), shared.PgUUID(wallID)).Scan(&parent, &reviewStatus, &active)
-	if err != nil || !parent.Valid || reviewStatus == nil || *reviewStatus != "pending" || active {
-		writeError(w, 409, "pending reset is stale")
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusConflict, "pending reset is stale")
 		return
 	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load pending reset")
+		return
+	}
+	if !parent.Valid || reviewStatus == nil || *reviewStatus != "pending" || active {
+		writeError(w, http.StatusConflict, "pending reset is stale")
+		return
+	}
+
 	var parentActive bool
 	err = tx.QueryRow(r.Context(), `SELECT is_active FROM wall_images WHERE id=$1 AND wall_id=$2 FOR UPDATE`, parent, shared.PgUUID(wallID)).Scan(&parentActive)
-	if err != nil || !parentActive {
-		writeError(w, 409, "pending reset parent is no longer active")
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !parentActive) {
+		writeError(w, http.StatusConflict, "pending reset parent is no longer active")
 		return
 	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load pending reset parent")
+		return
+	}
+
 	var status string
 	err = tx.QueryRow(r.Context(), `SELECT status FROM detection_jobs WHERE wall_image_id=$1 ORDER BY created_at DESC LIMIT 1`, shared.PgUUID(imageID)).Scan(&status)
-	if err != nil || status != "done" {
-		writeError(w, 409, "pending reset detection is not complete")
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && status != "done") {
+		writeError(w, http.StatusConflict, "pending reset detection is not complete")
 		return
 	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load reset detection status")
+		return
+	}
+
 	rows, err := tx.Query(r.Context(), `SELECT id,hold_ids,hold_roles FROM routes WHERE wall_image_id=$1 FOR UPDATE`, parent)
 	if err != nil {
-		writeError(w, 500, "could not lock routes")
+		writeError(w, http.StatusInternalServerError, "could not lock routes")
 		return
 	}
 	type routeData struct {
@@ -458,39 +563,54 @@ func (h *Handler) ApplyReset(w http.ResponseWriter, r *http.Request) {
 	}
 	all := []routeData{}
 	for rows.Next() {
-		var x routeData
-		if rows.Scan(&x.id, &x.ids, &x.roles) == nil {
-			all = append(all, x)
+		var route routeData
+		if err := rows.Scan(&route.id, &route.ids, &route.roles); err != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, "could not load routes")
+			return
 		}
+		all = append(all, route)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		writeError(w, http.StatusInternalServerError, "could not load routes")
+		return
 	}
 	rows.Close()
+
 	mapRows, err := tx.Query(r.Context(), `SELECT old_hold_id,new_hold_id FROM hold_matches WHERE wall_image_id=$1`, shared.PgUUID(imageID))
 	if err != nil {
-		writeError(w, 500, "could not load matches")
+		writeError(w, http.StatusInternalServerError, "could not load matches")
 		return
 	}
 	matches := map[uuid.UUID]uuid.UUID{}
 	for mapRows.Next() {
-		var a, b uuid.UUID
-		if mapRows.Scan(&a, &b) == nil {
-			matches[a] = b
+		var oldID, newID uuid.UUID
+		if err := mapRows.Scan(&oldID, &newID); err != nil {
+			mapRows.Close()
+			writeError(w, http.StatusInternalServerError, "could not load matches")
+			return
 		}
+		matches[oldID] = newID
+	}
+	if err := mapRows.Err(); err != nil {
+		mapRows.Close()
+		writeError(w, http.StatusInternalServerError, "could not load matches")
+		return
 	}
 	mapRows.Close()
+
 	kept := 0
 	for _, route := range all {
 		newIDs, newRoles, complete, mapErr := remapRouteHolds(route.ids, route.roles, matches)
 		if mapErr != nil {
-			writeError(w, 500, "invalid route roles")
+			writeError(w, http.StatusInternalServerError, "invalid route roles")
 			return
 		}
 		if complete {
 			roles := []byte(newRoles)
-			if len(roles) == 0 {
-				roles = []byte(`{}`)
-			}
 			if _, err := tx.Exec(r.Context(), `UPDATE routes SET wall_image_id=$2,hold_ids=$3,hold_roles=$4 WHERE id=$1`, route.id, shared.PgUUID(imageID), newIDs, roles); err != nil {
-				writeError(w, 500, "could not remap routes")
+				writeError(w, http.StatusInternalServerError, "could not remap routes")
 				return
 			}
 			kept++
@@ -500,14 +620,14 @@ func (h *Handler) ApplyReset(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.Exec(r.Context(), `UPDATE wall_images SET is_active=true,review_status='applied' WHERE id=$1`, shared.PgUUID(imageID))
 	}
 	if err != nil {
-		writeError(w, 500, "could not activate reset")
+		writeError(w, http.StatusInternalServerError, "could not activate reset")
 		return
 	}
-	if err = tx.Commit(r.Context()); err != nil {
-		writeError(w, 500, "could not commit reset")
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not commit reset")
 		return
 	}
-	writeJSON(w, 200, map[string]int{"kept": kept, "archived": len(all) - kept})
+	writeJSON(w, http.StatusOK, map[string]int{"kept": kept, "archived": len(all) - kept})
 }
 
 func (h *Handler) DiscardReset(w http.ResponseWriter, r *http.Request) {
@@ -517,13 +637,17 @@ func (h *Handler) DiscardReset(w http.ResponseWriter, r *http.Request) {
 	}
 	var key string
 	err := h.pool.QueryRow(r.Context(), `DELETE FROM wall_images WHERE id=$1 AND wall_id=$2 AND reset_kind='partial' AND review_status='pending' RETURNING storage_key`, shared.PgUUID(imageID), shared.PgUUID(wallID)).Scan(&key)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "pending reset not found")
+		return
+	}
 	if err != nil {
-		writeError(w, 404, "pending reset not found")
+		writeError(w, http.StatusInternalServerError, "could not discard pending reset")
 		return
 	}
 	if h.storage != nil {
 		if err := h.storage.Delete(r.Context(), key); err != nil {
-			writeError(w, 500, "reset removed but image storage cleanup failed")
+			writeError(w, http.StatusInternalServerError, "reset removed but image storage cleanup failed")
 			return
 		}
 	}

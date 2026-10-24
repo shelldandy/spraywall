@@ -1,7 +1,49 @@
-.camera { position: fixed; inset: 0; z-index: 20; background: #000; color: white; display: flex; flex-direction: column; }
-.stage { position: relative; flex: 1; min-height: 0; }
-.video { width: 100%; height: 100%; object-fit: contain; }
-.ghost { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-.fallback { position: absolute; inset: 0; display: grid; place-items: center; }
-.opacity { padding: 8px; }
-.actions { display: flex; justify-content: center; gap: 16px; padding: 16px; }
+.camera {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  color: #fff;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ghost {
+  position: absolute;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.opacity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px;
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+}

@@ -126,12 +126,19 @@ func TestResetDiffRestoreMatchApplyPreservesLegacyHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	var keptRoute, legacyRoute, circuit uuid.UUID
+	var keptRoute, legacyRoute, nullRolesRoute, nullArrayRoute, circuit uuid.UUID
 	roles := fmt.Sprintf(`{"start":[%q],"finish":[%q],"foot":[%q]}`, e.oldHold, e.oldHold, e.oldHold)
 	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT owner_id FROM gyms LIMIT 1),'kept',$3,$4,'published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{e.oldHold}, []byte(roles)).Scan(&keptRoute); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT owner_id FROM gyms LIMIT 1),'legacy',$3,'{}','published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{missingOld}).Scan(&legacyRoute); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT owner_id FROM gyms LIMIT 1),'null roles',$3,NULL,'published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{e.oldHold}).Scan(&nullRolesRoute); err != nil {
+		t.Fatal(err)
+	}
+	nullArrayRoles := fmt.Sprintf(`{"start":null,"finish":[%q]}`, e.oldHold)
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT owner_id FROM gyms LIMIT 1),'null role array',$3,$4,'published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{e.oldHold}, []byte(nullArrayRoles)).Scan(&nullArrayRoute); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.pool.QueryRow(context.Background(), `INSERT INTO circuits(wall_id,created_by,name) VALUES($1,(SELECT owner_id FROM gyms LIMIT 1),'Circuit') RETURNING id`, e.wallID).Scan(&circuit); err != nil {
@@ -190,7 +197,7 @@ func TestResetDiffRestoreMatchApplyPreservesLegacyHistory(t *testing.T) {
 	if _, ok := removedByID[missingOld]; !ok {
 		t.Fatalf("missing old hold not projected: %v", removedByID)
 	}
-	if got.KeptCount != 1 || len(got.Affected) != 1 || got.Affected[0].ID != legacyRoute || len(got.Affected[0].Missing) != 1 || got.Affected[0].Missing[0] != missingOld {
+	if got.KeptCount != 3 || len(got.Affected) != 1 || got.Affected[0].ID != legacyRoute || len(got.Affected[0].Missing) != 1 || got.Affected[0].Missing[0] != missingOld {
 		t.Fatalf("route diff %+v kept=%d", got.Affected, got.KeptCount)
 	}
 
@@ -231,7 +238,7 @@ func TestResetDiffRestoreMatchApplyPreservesLegacyHistory(t *testing.T) {
 	if err := json.Unmarshal(apply.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Kept != 1 || result.Archived != 1 {
+	if result.Kept != 3 || result.Archived != 1 {
 		t.Fatalf("counts %+v", result)
 	}
 	var image uuid.UUID
@@ -257,6 +264,21 @@ func TestResetDiffRestoreMatchApplyPreservesLegacyHistory(t *testing.T) {
 	}
 	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM climb_logs WHERE route_id=$1`, keptRoute).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("logs=%d err=%v", count, err)
+	}
+	var rolesAreNull bool
+	if err := e.pool.QueryRow(context.Background(), `SELECT hold_roles IS NULL FROM routes WHERE id=$1`, nullRolesRoute).Scan(&rolesAreNull); err != nil || !rolesAreNull {
+		t.Fatalf("hold_roles NULL=%v err=%v", rolesAreNull, err)
+	}
+	var nullArrayRaw []byte
+	if err := e.pool.QueryRow(context.Background(), `SELECT hold_roles FROM routes WHERE id=$1`, nullArrayRoute).Scan(&nullArrayRaw); err != nil {
+		t.Fatal(err)
+	}
+	var remappedNullArray map[string][]uuid.UUID
+	if err := json.Unmarshal(nullArrayRaw, &remappedNullArray); err != nil {
+		t.Fatal(err)
+	}
+	if remappedNullArray["start"] == nil || len(remappedNullArray["start"]) != 0 || len(remappedNullArray["finish"]) != 1 || remappedNullArray["finish"][0] != restored.ID {
+		t.Fatalf("null role array was not safely remapped: %s", nullArrayRaw)
 	}
 	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM circuit_routes WHERE circuit_id=$1 AND route_id=$2`, circuit, keptRoute).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("circuit route count=%d err=%v", count, err)
