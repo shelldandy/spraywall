@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { uploadWallImage } from "../lib/hooks/mutations";
+import { lensLabel } from "../lib/cameraLenses";
 import { toast } from "../lib/toast";
 import styles from "./WallCamera.module.css";
 
@@ -49,17 +50,6 @@ const LENS_KEY = "spraywall-camera-lens";
 const LENS_ORDER = ["0.5x", "1x", "Tele"];
 const VIDEO_SIZE = { width: { ideal: 4096 }, height: { ideal: 4096 } };
 
-function lensLabel(name: string): string | null {
-  const lower = name.toLowerCase();
-  // Front cameras can't shoot the wall, and iOS's virtual Dual/Triple cameras
-  // switch lenses on their own, which breaks alignment with the ghost image.
-  if (!name || lower.includes("front") || /dual|triple/.test(lower)) return null;
-  if (lower.includes("ultra wide")) return "0.5x";
-  if (lower.includes("telephoto")) return "Tele";
-  if (lower === "back camera") return "1x";
-  return name;
-}
-
 /** Back camera lenses; empty until camera permission has been granted (no labels before then). */
 async function listLenses(): Promise<Lens[]> {
   const devices = (await navigator.mediaDevices?.enumerateDevices()) ?? [];
@@ -67,12 +57,15 @@ async function listLenses(): Promise<Lens[]> {
     const index = LENS_ORDER.indexOf(label);
     return index === -1 ? LENS_ORDER.length : index;
   };
-  return devices
+  const candidates = devices
     .filter((device) => device.kind === "videoinput")
     .flatMap((device) => {
       const label = lensLabel(device.label);
       return label ? [{ deviceId: device.deviceId, name: device.label, label }] : [];
-    })
+    });
+  const plainWideCount = candidates.filter((lens) => lens.label === "1x").length;
+  return candidates
+    .filter((lens) => lens.label !== "1x" || plainWideCount === 1)
     .sort((a, b) => rank(a.label) - rank(b.label));
 }
 
@@ -90,11 +83,12 @@ function preferredLens(lenses: Lens[]): Lens | undefined {
   return lenses.find((lens) => lens.name === saved) ?? lenses.find((lens) => lens.label === "0.5x");
 }
 
-async function requestStream(deviceId?: string): Promise<MediaStream> {
+async function requestStream(deviceId?: string, includeVideoSize = true): Promise<MediaStream> {
   if (!navigator.mediaDevices) throw new Error("Camera unavailable");
+  const size = includeVideoSize ? VIDEO_SIZE : {};
   const video = deviceId
-    ? { deviceId: { exact: deviceId }, ...VIDEO_SIZE }
-    : { facingMode: { ideal: "environment" }, ...VIDEO_SIZE };
+    ? { deviceId: { exact: deviceId }, ...size }
+    : { facingMode: { ideal: "environment" }, ...size };
   return navigator.mediaDevices.getUserMedia({ video, audio: false });
 }
 
@@ -121,11 +115,11 @@ export default function WallCameraPage() {
   const [opacity, setOpacity] = useState(0.4);
   const [busy, setBusy] = useState(false);
   const [lenses, setLenses] = useState<Lens[]>([]);
-  const [activeLens, setActiveLens] = useState("");
+  const [activeLens, setActiveLens] = useState<{ deviceId?: string; name: string }>({ name: "" });
   const [switching, setSwitching] = useState(false);
 
   /** Replace the current stream; resolves null if superseded by a newer request or unmount. */
-  const openStream = async (deviceId?: string): Promise<MediaStream | null> => {
+  const openStream = async (deviceId?: string, fallback = true): Promise<MediaStream | null> => {
     const gen = ++streamGenRef.current;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -135,7 +129,8 @@ export default function WallCameraPage() {
       media = await requestStream(deviceId);
     } catch (error) {
       if (!deviceId) throw error;
-      media = await requestStream();
+      if (fallback) media = await requestStream();
+      else media = await requestStream(deviceId, false);
     }
     if (gen !== streamGenRef.current) {
       media.getTracks().forEach((track) => track.stop());
@@ -143,7 +138,8 @@ export default function WallCameraPage() {
     }
 
     streamRef.current = media;
-    setActiveLens(media.getVideoTracks()[0]?.label ?? "");
+    const track = media.getVideoTracks()[0];
+    setActiveLens({ deviceId: track?.getSettings().deviceId, name: track?.label ?? "" });
     const video = videoRef.current;
     if (video) {
       video.srcObject = media;
@@ -184,7 +180,12 @@ export default function WallCameraPage() {
         if (available.length === 0) {
           available = await listLenses();
           const preferred = preferredLens(available);
-          if (preferred && preferred.name !== media.getVideoTracks()[0]?.label) {
+          const track = media.getVideoTracks()[0];
+          const activeDeviceId = track?.getSettings().deviceId;
+          const preferredIsActive = activeDeviceId
+            ? preferred?.deviceId === activeDeviceId
+            : preferred?.name === track?.label;
+          if (preferred && !preferredIsActive) {
             if (!(await openStream(preferred.deviceId))) return;
           }
         }
@@ -213,12 +214,27 @@ export default function WallCameraPage() {
   }, []);
 
   const switchLens = async (lens: Lens) => {
-    saveLens(lens.name);
+    const previousTrack = streamRef.current?.getVideoTracks()[0];
+    const previousDeviceId = previousTrack?.getSettings().deviceId ||
+      lenses.find((availableLens) => availableLens.name === previousTrack?.label)?.deviceId;
     setSwitching(true);
     try {
-      if (await openStream(lens.deviceId)) setReady(true);
+      const media = await openStream(lens.deviceId, false);
+      if (media) {
+        saveLens(lens.name);
+        setReady(true);
+      }
     } catch {
-      setReady(false);
+      let restored = false;
+      try {
+        restored = Boolean(previousDeviceId
+          ? await openStream(previousDeviceId, false)
+          : await openStream());
+      } catch {
+        // If the previous camera can't be reopened, leave the camera in its unavailable state.
+      }
+      setReady(restored);
+      toast("Couldn't switch to that lens", "error");
     } finally {
       setSwitching(false);
     }
@@ -311,18 +327,23 @@ export default function WallCameraPage() {
         )}
         {lenses.length > 1 && (
           <div className={styles.lenses}>
-            {lenses.map((lens) => (
-              <button
-                key={lens.deviceId}
-                type="button"
-                className={`${styles.lens} ${lens.name === activeLens ? styles.lensActive : ""}`}
-                disabled={switching || busy}
-                aria-pressed={lens.name === activeLens}
-                onClick={() => void switchLens(lens)}
-              >
-                {lens.label}
-              </button>
-            ))}
+            {lenses.map((lens) => {
+              const isActive = activeLens.deviceId
+                ? lens.deviceId === activeLens.deviceId
+                : lens.name === activeLens.name;
+              return (
+                <button
+                  key={lens.deviceId}
+                  type="button"
+                  className={`${styles.lens} ${isActive ? styles.lensActive : ""}`}
+                  disabled={switching || busy}
+                  aria-pressed={isActive}
+                  onClick={() => void switchLens(lens)}
+                >
+                  {lens.label}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
