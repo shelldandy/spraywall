@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { uploadWallImage } from "../lib/hooks/mutations";
-import { lensLabel } from "../lib/cameraLenses";
+import { filterAmbiguousWideLenses, lensLabel } from "../lib/cameraLenses";
 import { toast } from "../lib/toast";
 import styles from "./WallCamera.module.css";
 
@@ -63,9 +63,7 @@ async function listLenses(): Promise<Lens[]> {
       const label = lensLabel(device.label);
       return label ? [{ deviceId: device.deviceId, name: device.label, label }] : [];
     });
-  const plainWideCount = candidates.filter((lens) => lens.label === "1x").length;
-  return candidates
-    .filter((lens) => lens.label !== "1x" || plainWideCount === 1)
+  return filterAmbiguousWideLenses(candidates)
     .sort((a, b) => rank(a.label) - rank(b.label));
 }
 
@@ -129,8 +127,12 @@ export default function WallCameraPage() {
       media = await requestStream(deviceId);
     } catch (error) {
       if (!deviceId) throw error;
-      if (fallback) media = await requestStream();
-      else media = await requestStream(deviceId, false);
+      try {
+        media = await requestStream(deviceId, false);
+      } catch (retryError) {
+        if (!fallback) throw retryError;
+        media = await requestStream();
+      }
     }
     if (gen !== streamGenRef.current) {
       media.getTracks().forEach((track) => track.stop());
@@ -215,7 +217,8 @@ export default function WallCameraPage() {
 
   const switchLens = async (lens: Lens) => {
     const previousTrack = streamRef.current?.getVideoTracks()[0];
-    const previousDeviceId = previousTrack?.getSettings().deviceId ||
+    const previousDeviceId =
+      previousTrack?.getSettings().deviceId ||
       lenses.find((availableLens) => availableLens.name === previousTrack?.label)?.deviceId;
     setSwitching(true);
     try {
