@@ -318,11 +318,6 @@ export default function WallDetailPage() {
     navigate(`/routes/create?${params}`);
   };
 
-  const openCreateMode = () => {
-    const params = new URLSearchParams({ gymSlug: gymSlug ?? "", mode: "create" });
-    navigate(`/walls/${wallId}?${params}`);
-  };
-
   const closeCreateMode = () => {
     if (isEditingRoute) {
       navigate(`/routes/${editRouteId}?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`);
@@ -495,15 +490,7 @@ export default function WallDetailPage() {
             Done
           </button>
         ) : (
-          <button
-            type="button"
-            className={`btn btn-ghost ${styles.createIcon}`}
-            onClick={openCreateMode}
-            aria-label="Create a climb"
-            title="Create a climb"
-          >
-            +
-          </button>
+          <span className={styles.headerRight} aria-hidden="true" />
         )}
       </header>
 
