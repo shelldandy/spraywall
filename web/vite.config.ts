@@ -55,6 +55,7 @@ export default defineConfig({
     }),
   ],
   server: {
+    allowedHosts: ['zendandy', '.ts.net'],
     proxy: {
       '/api': {
         target: API_TARGET,

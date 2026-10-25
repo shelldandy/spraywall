@@ -33,6 +33,39 @@
   place-items: center;
 }
 
+.lenses {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.lens {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lensActive {
+  background: rgba(255, 255, 255, 0.9);
+  color: #000;
+}
+
+.lens:disabled {
+  opacity: 0.6;
+}
+
 .opacity {
   display: flex;
   align-items: center;
