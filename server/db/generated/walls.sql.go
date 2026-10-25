@@ -57,6 +57,35 @@ func (q *Queries) CreateHold(ctx context.Context, arg CreateHoldParams) (Hold, e
 	return i, err
 }
 
+const createPendingResetImage = `-- name: CreatePendingResetImage :one
+INSERT INTO wall_images (wall_id, storage_key, is_active, parent_image_id, reset_kind, review_status)
+VALUES ($1, $2, false, $3, 'partial', 'pending')
+RETURNING id, wall_id, storage_key, is_active, created_at, parent_image_id, reset_kind, review_status, alignment
+`
+
+type CreatePendingResetImageParams struct {
+	WallID        pgtype.UUID `json:"wall_id"`
+	StorageKey    string      `json:"storage_key"`
+	ParentImageID pgtype.UUID `json:"parent_image_id"`
+}
+
+func (q *Queries) CreatePendingResetImage(ctx context.Context, arg CreatePendingResetImageParams) (WallImage, error) {
+	row := q.db.QueryRow(ctx, createPendingResetImage, arg.WallID, arg.StorageKey, arg.ParentImageID)
+	var i WallImage
+	err := row.Scan(
+		&i.ID,
+		&i.WallID,
+		&i.StorageKey,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.ParentImageID,
+		&i.ResetKind,
+		&i.ReviewStatus,
+		&i.Alignment,
+	)
+	return i, err
+}
+
 const createWall = `-- name: CreateWall :one
 INSERT INTO walls (gym_id, name)
 VALUES ($1, $2)
@@ -83,7 +112,7 @@ func (q *Queries) CreateWall(ctx context.Context, arg CreateWallParams) (Wall, e
 const createWallImage = `-- name: CreateWallImage :one
 INSERT INTO wall_images (wall_id, storage_key)
 VALUES ($1, $2)
-RETURNING id, wall_id, storage_key, is_active, created_at
+RETURNING id, wall_id, storage_key, is_active, created_at, parent_image_id, reset_kind, review_status, alignment
 `
 
 type CreateWallImageParams struct {
@@ -100,6 +129,10 @@ func (q *Queries) CreateWallImage(ctx context.Context, arg CreateWallImageParams
 		&i.StorageKey,
 		&i.IsActive,
 		&i.CreatedAt,
+		&i.ParentImageID,
+		&i.ResetKind,
+		&i.ReviewStatus,
+		&i.Alignment,
 	)
 	return i, err
 }
@@ -129,6 +162,32 @@ func (q *Queries) DeleteHold(ctx context.Context, arg DeleteHoldParams) (pgtype.
 	return id, err
 }
 
+const deletePendingResetImagesByWall = `-- name: DeletePendingResetImagesByWall :many
+DELETE FROM wall_images
+WHERE wall_id = $1 AND reset_kind = 'partial' AND review_status = 'pending'
+RETURNING storage_key
+`
+
+func (q *Queries) DeletePendingResetImagesByWall(ctx context.Context, wallID pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, deletePendingResetImagesByWall, wallID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var storage_key string
+		if err := rows.Scan(&storage_key); err != nil {
+			return nil, err
+		}
+		items = append(items, storage_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteWall = `-- name: DeleteWall :exec
 DELETE FROM walls WHERE id = $1 AND gym_id = $2
 `
@@ -144,7 +203,7 @@ func (q *Queries) DeleteWall(ctx context.Context, arg DeleteWallParams) error {
 }
 
 const getActiveWallImage = `-- name: GetActiveWallImage :one
-SELECT id, wall_id, storage_key, is_active, created_at FROM wall_images WHERE wall_id = $1 AND is_active = true ORDER BY created_at DESC LIMIT 1
+SELECT id, wall_id, storage_key, is_active, created_at, parent_image_id, reset_kind, review_status, alignment FROM wall_images WHERE wall_id = $1 AND is_active = true ORDER BY created_at DESC LIMIT 1
 `
 
 func (q *Queries) GetActiveWallImage(ctx context.Context, wallID pgtype.UUID) (WallImage, error) {
@@ -156,6 +215,10 @@ func (q *Queries) GetActiveWallImage(ctx context.Context, wallID pgtype.UUID) (W
 		&i.StorageKey,
 		&i.IsActive,
 		&i.CreatedAt,
+		&i.ParentImageID,
+		&i.ResetKind,
+		&i.ReviewStatus,
+		&i.Alignment,
 	)
 	return i, err
 }
@@ -207,6 +270,27 @@ func (q *Queries) GetHoldsByWallImage(ctx context.Context, wallImageID pgtype.UU
 		return nil, err
 	}
 	return items, nil
+}
+
+const getPendingResetImage = `-- name: GetPendingResetImage :one
+SELECT id, wall_id, storage_key, is_active, created_at, parent_image_id, reset_kind, review_status, alignment FROM wall_images WHERE wall_id = $1 AND reset_kind = 'partial' AND review_status = 'pending' ORDER BY created_at DESC LIMIT 1
+`
+
+func (q *Queries) GetPendingResetImage(ctx context.Context, wallID pgtype.UUID) (WallImage, error) {
+	row := q.db.QueryRow(ctx, getPendingResetImage, wallID)
+	var i WallImage
+	err := row.Scan(
+		&i.ID,
+		&i.WallID,
+		&i.StorageKey,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.ParentImageID,
+		&i.ResetKind,
+		&i.ReviewStatus,
+		&i.Alignment,
+	)
+	return i, err
 }
 
 const getWallByID = `-- name: GetWallByID :one

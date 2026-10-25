@@ -142,7 +142,7 @@ func main() {
 
 	// Handlers
 	routeHandler := route.NewHandler(queries, pool)
-	wallHandler := wall.NewHandler(queries, storageClient)
+	wallHandler := wall.NewHandler(queries, storageClient, pool)
 	inviteHandler := invite.NewHandler(queries, pool)
 
 	// Image proxy (no auth required, keys are unguessable UUIDs)
@@ -182,6 +182,14 @@ func main() {
 					r.Get("/", wallHandler.GetWall)
 					r.Delete("/", wallHandler.DeleteWall)
 					r.Post("/images", wallHandler.UploadImage)
+					r.Route("/resets/{imageId}", func(r chi.Router) {
+						r.Get("/", wallHandler.GetReset)
+						r.Put("/matches", wallHandler.UpdateResetMatch)
+						r.Delete("/holds/{holdId}", wallHandler.DeleteResetHold)
+						r.Post("/restore", wallHandler.RestoreResetHold)
+						r.Post("/apply", wallHandler.ApplyReset)
+						r.Delete("/", wallHandler.DiscardReset)
+					})
 					r.Get("/holds", wallHandler.GetHolds)
 					r.Post("/holds", wallHandler.CreateHold)
 					r.Route("/circuits", func(r chi.Router) {

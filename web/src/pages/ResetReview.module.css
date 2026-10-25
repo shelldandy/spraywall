@@ -1,0 +1,49 @@
+.review {
+  min-height: 100dvh;
+}
+
+.stage {
+  position: relative;
+  height: min(65vh, 680px);
+  min-height: 280px;
+  background: #111;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 24px;
+}
+
+.notice {
+  padding: 12px;
+}
+
+.selected {
+  border: 2px solid var(--accent, #00b0ff);
+  padding: 10px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+  border-radius: 4px;
+}

@@ -26,6 +26,26 @@ export interface WallImage {
   created_at: string;
 }
 
+export interface ResetHold extends Hold {
+  matched_old_hold_id: string | null;
+}
+
+export interface ResetRemovedHold {
+  old_hold_id: string;
+  bbox: Hold["bbox"];
+  polygon: Hold["polygon"];
+  confidence?: number;
+}
+
+export interface ResetDiff {
+  detection_status?: string;
+  new_holds: ResetHold[];
+  removed_holds: ResetRemovedHold[];
+  alignment: { ok: boolean; inliers: number };
+  affected_routes: { id: string; name: string; grade: string | null; status: string; missing_hold_ids: string[] }[];
+  kept_route_count: number;
+}
+
 export interface Hold {
   id: string;
   wall_image_id: string;
@@ -51,6 +71,7 @@ export interface WallDetail {
     created_at: string;
   } | null;
   detection_status: string | null;
+  pending_reset?: { image_id: string; image_url: string; detection_status: string; created_at: string } | null;
   user_role?: string;
 }
 

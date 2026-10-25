@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"os/exec"
@@ -20,25 +21,30 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
-	"github.com/bowlinedandy/spraywall/server/internal/storage"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
 )
+
+// WallImageStorage contains the object-store operations used by wall handlers.
+type WallImageStorage interface {
+	Upload(context.Context, string, io.Reader, int64, string) error
+	Download(context.Context, string) (io.ReadCloser, string, error)
+	Delete(context.Context, string) error
+}
 
 // Handler holds dependencies for gym/wall HTTP handlers.
 type Handler struct {
 	queries *generated.Queries
-	storage *storage.Client
+	storage WallImageStorage
+	pool    *pgxpool.Pool
 }
 
 // NewHandler creates a new Handler.
-func NewHandler(queries *generated.Queries, storageClient *storage.Client) *Handler {
-	return &Handler{
-		queries: queries,
-		storage: storageClient,
-	}
+func NewHandler(queries *generated.Queries, storageClient WallImageStorage, pool *pgxpool.Pool) *Handler {
+	return &Handler{queries: queries, storage: storageClient, pool: pool}
 }
 
 // ---------- helpers ----------
@@ -65,6 +71,26 @@ func isHEIC(filename, contentType string) bool {
 		strings.HasSuffix(filename, ".heif") ||
 		strings.Contains(contentType, "heic") ||
 		strings.Contains(contentType, "heif")
+}
+
+func isValidWallImageMode(mode string) bool {
+	return mode == "" || mode == "full" || mode == "partial"
+}
+
+func (h *Handler) clearPendingResetImages(ctx context.Context, wallID pgtype.UUID) error {
+	storageKeys, err := h.queries.DeletePendingResetImagesByWall(ctx, wallID)
+	if err != nil {
+		return fmt.Errorf("delete pending reset records: %w", err)
+	}
+	for _, key := range storageKeys {
+		if h.storage == nil {
+			continue
+		}
+		if err := h.storage.Delete(ctx, key); err != nil {
+			log.Printf("wall: delete pending reset image %q for wall %s: %v", key, wallID, err)
+		}
+	}
+	return nil
 }
 
 const (
@@ -439,11 +465,18 @@ func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
 		CreatedAt pgtype.Timestamptz `json:"created_at"`
 	}
 
+	type pendingResetInfo struct {
+		ImageID         string             `json:"image_id"`
+		ImageURL        string             `json:"image_url"`
+		DetectionStatus *string            `json:"detection_status"`
+		CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	}
 	type wallDetail struct {
-		Wall            generated.Wall `json:"wall"`
-		Image           *imageInfo     `json:"image"`
-		DetectionStatus *string        `json:"detection_status"`
-		UserRole        string         `json:"user_role"`
+		Wall            generated.Wall    `json:"wall"`
+		Image           *imageInfo        `json:"image"`
+		DetectionStatus *string           `json:"detection_status"`
+		PendingReset    *pendingResetInfo `json:"pending_reset,omitempty"`
+		UserRole        string            `json:"user_role"`
 	}
 
 	detail := wallDetail{Wall: wall, UserRole: string(member.Role)}
@@ -464,6 +497,22 @@ func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if member.Role == generated.UserRoleAdmin || member.Role == generated.UserRoleSetter {
+		pending, pendingErr := h.queries.GetPendingResetImage(r.Context(), wall.ID)
+		if pendingErr == nil {
+			pendingInfo := &pendingResetInfo{
+				ImageID: shared.UUIDFromPg(pending.ID).String(), ImageURL: "/images/" + pending.StorageKey,
+				CreatedAt: pending.CreatedAt,
+			}
+			if job, jobErr := h.queries.GetDetectionJobByWallImage(r.Context(), pending.ID); jobErr == nil {
+				pendingInfo.DetectionStatus = &job.Status
+			}
+			detail.PendingReset = pendingInfo
+		} else if !errors.Is(pendingErr, pgx.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, "could not load pending reset")
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, detail)
 }
 
@@ -525,6 +574,24 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	mode := r.FormValue("mode")
+	if !isValidWallImageMode(mode) {
+		writeError(w, http.StatusBadRequest, "invalid image upload mode")
+		return
+	}
+	var activeImage generated.WallImage
+	if mode == "partial" {
+		activeImage, err = h.queries.GetActiveWallImage(r.Context(), pgWallID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusConflict, "partial reset requires an active image")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not load active image")
+			return
+		}
+	}
+
 	// Build storage key.
 	imageUUID := uuid.New()
 	storageKey := fmt.Sprintf("walls/%s/%s.jpg", wallIDStr, imageUUID.String())
@@ -552,17 +619,25 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deactivate old images.
-	if err := h.queries.DeactivateWallImages(r.Context(), pgWallID); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not deactivate old images")
+	if err := h.clearPendingResetImages(r.Context(), pgWallID); err != nil {
+		_ = h.storage.Delete(r.Context(), storageKey)
+		writeError(w, http.StatusInternalServerError, "could not clear pending reset")
 		return
 	}
 
-	// Create wall_image record.
-	wallImage, err := h.queries.CreateWallImage(r.Context(), generated.CreateWallImageParams{
-		WallID:     pgWallID,
-		StorageKey: storageKey,
-	})
+	var wallImage generated.WallImage
+	if mode == "partial" {
+		wallImage, err = h.queries.CreatePendingResetImage(r.Context(), generated.CreatePendingResetImageParams{
+			WallID: pgWallID, StorageKey: storageKey, ParentImageID: activeImage.ID,
+		})
+	} else {
+		// Preserve existing full-reset behavior after clearing any pending partial reset.
+		if err := h.queries.DeactivateWallImages(r.Context(), pgWallID); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not deactivate old images")
+			return
+		}
+		wallImage, err = h.queries.CreateWallImage(r.Context(), generated.CreateWallImageParams{WallID: pgWallID, StorageKey: storageKey})
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not save image record")
 		return

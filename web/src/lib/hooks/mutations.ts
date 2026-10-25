@@ -1,9 +1,98 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../api/fetch";
+import { prepareImageForUpload } from "../image";
 import type { Circuit, HoldRoles, Me } from "../api/types";
 import type { RouteTagId } from "../routeTags";
 import { useAuthStore } from "../store/auth";
 import { toastError } from "../toast";
+
+export async function uploadWallImage(
+  gymSlug: string,
+  wallId: string,
+  image: Blob,
+  mode: "full" | "partial" = "full",
+) {
+  const file =
+    image instanceof File
+      ? image
+      : new File([image], "photo.jpg", { type: image.type || "image/jpeg" });
+  const prepared = await prepareImageForUpload(file);
+  const form = new FormData();
+  form.append("image", prepared, prepared instanceof File ? prepared.name : "photo.jpg");
+  form.append("mode", mode);
+  return apiFetch(`/gyms/${gymSlug}/walls/${wallId}/images`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+function invalidateResetQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  wallId: string,
+  imageId: string,
+) {
+  queryClient.invalidateQueries({ queryKey: ["reset-diff", wallId, imageId] });
+  queryClient.invalidateQueries({ queryKey: ["wall-detail", wallId] });
+  queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
+  queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+  queryClient.invalidateQueries({ queryKey: ["circuits", wallId] });
+}
+
+function useResetMutation<T>(
+  gymSlug: string,
+  wallId: string,
+  imageId: string,
+  action: string,
+  method: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<T, Error, void | { old_hold_id: string; new_hold_id?: string | null }>({
+    mutationFn: async (variables) => {
+      const request: RequestInit = { method };
+      if (variables) request.body = JSON.stringify(variables);
+
+      const response = await apiFetch(
+        `/gyms/${gymSlug}/walls/${wallId}/resets/${imageId}${action}`,
+        request,
+      );
+      await ensureOkJson(response, "Reset request failed");
+      return method === "DELETE" ? (undefined as T) : response.json();
+    },
+    onSuccess: () => invalidateResetQueries(queryClient, wallId, imageId),
+    onError: toastError,
+  });
+}
+
+export function useMatchResetHold(gymSlug: string, wallId: string, imageId: string) {
+  return useResetMutation<void>(gymSlug, wallId, imageId, "/matches", "PUT");
+}
+
+export function useDeleteResetHold(gymSlug: string, wallId: string, imageId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (holdId) => {
+      const response = await apiFetch(
+        `/gyms/${gymSlug}/walls/${wallId}/resets/${imageId}/holds/${holdId}`,
+        { method: "DELETE" },
+      );
+      await ensureOkJson(response, "Could not delete hold");
+    },
+    onSuccess: () => invalidateResetQueries(queryClient, wallId, imageId),
+    onError: toastError,
+  });
+}
+
+export function useRestoreResetHold(gymSlug: string, wallId: string, imageId: string) {
+  return useResetMutation<void>(gymSlug, wallId, imageId, "/restore", "POST");
+}
+
+export function useApplyReset(gymSlug: string, wallId: string, imageId: string) {
+  return useResetMutation<{ kept: number; archived: number }>(gymSlug, wallId, imageId, "/apply", "POST");
+}
+
+export function useDiscardReset(gymSlug: string, wallId: string, imageId: string) {
+  return useResetMutation<void>(gymSlug, wallId, imageId, "", "DELETE");
+}
 
 export interface RouteParams {
   name: string;
