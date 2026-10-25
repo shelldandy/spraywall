@@ -6,8 +6,7 @@ server/server
 server/tmp/
 
 # Python
-worker/__pycache__/
-worker/detection/__pycache__/
+__pycache__/
 worker/.venv/
 worker/models/*.pt
 worker/models/*.pth

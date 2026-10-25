@@ -1,4 +1,4 @@
-.PHONY: dev prod migrate sqlc web lint test clean
+.PHONY: dev prod migrate sqlc web web-tailscale lint test clean
 
 dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
@@ -13,7 +13,13 @@ sqlc:
 	docker run --rm -v ./server:/src -w /src sqlc/sqlc:latest generate
 
 web:
-	cd web && npm run dev
+	cd web && npm run dev -- --host
+
+# Expose the dev server over HTTPS on the tailnet (camera needs a secure context).
+# Disable with: tailscale serve --https=443 off
+web-tailscale:
+	tailscale serve --bg 5173
+	@tailscale serve status
 
 lint:
 	cd server && golangci-lint run ./...
