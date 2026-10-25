@@ -1,14 +1,13 @@
 import type { MouseEvent } from "react";
 import type { ResetDiff } from "../lib/api/types";
 import styles from "./ResetDiffOverlay.module.css";
+import { resetHoldColors, type HoldColor } from "./resetHoldColors";
 
 interface ResetDiffOverlayProps {
   diff: ResetDiff;
   aspectRatio: number;
-  selectedOldHoldId: string | null;
-  onRemovedSelect: (oldHoldId: string) => void;
-  onNewSelect: (newHoldId: string) => void;
-  onChanged: (oldHoldId: string) => void;
+  selected: { kind: HoldColor; id: string } | null;
+  onSelect: (kind: HoldColor, holdId: string, oldHoldId?: string) => void;
 }
 
 type HoldShape = {
@@ -17,40 +16,23 @@ type HoldShape = {
   polygon: number[][] | null;
 };
 
-type HoldColor = "kept" | "new" | "removed";
-
-const colors: Record<HoldColor, { fill: string; stroke: string }> = {
-  kept: { fill: "rgba(0, 200, 83, 0.3)", stroke: "#00c853" },
-  new: { fill: "rgba(0, 176, 255, 0.3)", stroke: "#00b0ff" },
-  removed: { fill: "rgba(255, 23, 68, 0.3)", stroke: "#ff1744" },
-};
-
 /** Diff marks share HoldOverlay's normalized image coordinates and letterboxed viewBox. */
-export default function ResetDiffOverlay({
-  diff,
-  aspectRatio,
-  selectedOldHoldId,
-  onRemovedSelect,
-  onNewSelect,
-  onChanged,
-}: ResetDiffOverlayProps) {
+export default function ResetDiffOverlay({ diff, aspectRatio, selected, onSelect }: ResetDiffOverlayProps) {
   const width = aspectRatio > 0 ? aspectRatio : 1;
 
-  const renderHold = (
-    hold: HoldShape,
-    color: HoldColor,
-    onClick: (event: MouseEvent<SVGElement>) => void,
-    selected = false,
-  ) => {
-    const colorStyle = colors[color];
+  const renderHold = (hold: HoldShape, color: HoldColor, oldHoldId?: string) => {
+    const colorStyle = resetHoldColors[color];
     const shapeProps = {
       fill: colorStyle.fill,
-      stroke: selected ? "#fff" : colorStyle.stroke,
+      stroke: selected?.kind === color && selected.id === hold.id ? "#fff" : colorStyle.stroke,
       strokeWidth: 2,
       ...(color === "removed" ? { strokeDasharray: "6 4" } : {}),
       vectorEffect: "non-scaling-stroke" as const,
       style: { cursor: "pointer" },
-      onClick,
+      onClick: (event: MouseEvent<SVGElement>) => {
+        event.stopPropagation();
+        onSelect(color, hold.id, oldHoldId);
+      },
     };
 
     if (hold.polygon?.length) {
@@ -72,29 +54,15 @@ export default function ResetDiffOverlay({
 
   return (
     <svg viewBox={`0 0 ${width} 1`} preserveAspectRatio="xMidYMid meet" className={styles.overlay}>
+      {/* Removed holds go underneath so the new hold they overlap stays tappable. */}
+      {diff.removed_holds.map((hold) =>
+        renderHold({ ...hold, id: hold.old_hold_id }, "removed"),
+      )}
       {diff.new_holds.map((hold) =>
         renderHold(
           hold,
           hold.matched_old_hold_id ? "kept" : "new",
-          (event) => {
-            event.stopPropagation();
-            if (selectedOldHoldId) {
-              onNewSelect(hold.id);
-            } else if (hold.matched_old_hold_id) {
-              onChanged(hold.matched_old_hold_id);
-            }
-          },
-        ),
-      )}
-      {diff.removed_holds.map((hold) =>
-        renderHold(
-          { ...hold, id: hold.old_hold_id },
-          "removed",
-          (event) => {
-            event.stopPropagation();
-            onRemovedSelect(hold.old_hold_id);
-          },
-          selectedOldHoldId === hold.old_hold_id,
+          hold.matched_old_hold_id ?? undefined,
         ),
       )}
     </svg>

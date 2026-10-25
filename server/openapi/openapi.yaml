@@ -811,6 +811,28 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
 
+  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}/holds/{holdId}:
+    parameters:
+      - $ref: "#/components/parameters/gymSlug"
+      - $ref: "#/components/parameters/wallId"
+      - name: imageId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: holdId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    delete:
+      operationId: deleteWallResetHold
+      summary: Delete a detected hold from a pending reset
+      tags: [Wall]
+      security: [{BearerAuth: []}]
+      responses:
+        "204": {description: Hold deleted}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
   /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}/restore:
     post:
       operationId: restoreWallResetHold

@@ -1,8 +1,15 @@
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import ResetDiffOverlay from "../components/ResetDiffOverlay";
+import { resetHoldColors, type HoldColor } from "../components/resetHoldColors";
 import WallImage from "../components/WallImage";
-import { useApplyReset, useDiscardReset, useMatchResetHold, useRestoreResetHold } from "../lib/hooks/mutations";
+import {
+  useApplyReset,
+  useDeleteResetHold,
+  useDiscardReset,
+  useMatchResetHold,
+  useRestoreResetHold,
+} from "../lib/hooks/mutations";
 import { useResetDiff, useWallDetail } from "../lib/hooks/queries";
 import { toast } from "../lib/toast";
 import styles from "./ResetReview.module.css";
@@ -17,14 +24,18 @@ export default function ResetReviewPage() {
   const wall = useWallDetail(wallId, gymSlug);
   const match = useMatchResetHold(gymSlug ?? "", wallId, imageId);
   const restore = useRestoreResetHold(gymSlug ?? "", wallId, imageId);
+  const deleteHold = useDeleteResetHold(gymSlug ?? "", wallId, imageId);
   const apply = useApplyReset(gymSlug ?? "", wallId, imageId);
   const discard = useDiscardReset(gymSlug ?? "", wallId, imageId);
 
   const [showNew, setShowNew] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [aspectRatio, setAspectRatio] = useState(1);
-  const [selectedOld, setSelectedOld] = useState<string | null>(null);
-  const [selectedWasKept, setSelectedWasKept] = useState(false);
+  const [selection, setSelection] = useState<{
+    kind: HoldColor;
+    holdId: string;
+    oldHoldId?: string;
+  } | null>(null);
 
   if (diff.isLoading || wall.isLoading) {
     return (
@@ -55,11 +66,15 @@ export default function ResetReviewPage() {
     );
   }
 
+  const keptCount = data.new_holds.filter((hold) => hold.matched_old_hold_id).length;
+  const legend: { color: HoldColor; label: string; count: number }[] = [
+    { color: "kept", label: "Kept", count: keptCount },
+    { color: "new", label: "New", count: data.new_holds.length - keptCount },
+    { color: "removed", label: "Removed", count: data.removed_holds.length },
+  ];
+
   const wallUrl = `/walls/${wallId}?gymSlug=${gymSlug ?? ""}`;
-  const clearSelection = () => {
-    setSelectedOld(null);
-    setSelectedWasKept(false);
-  };
+  const clearSelection = () => setSelection(null);
   const finish = async () => {
     try {
       const result = await apply.mutateAsync();
@@ -77,19 +92,38 @@ export default function ResetReviewPage() {
       // The mutation reports the error.
     }
   };
-  const handleNewHoldSelect = (newHoldId: string) => {
-    if (!selectedOld) return;
-    match.mutate({ old_hold_id: selectedOld, new_hold_id: newHoldId });
-    clearSelection();
+  const selectHold = (kind: HoldColor, holdId: string, oldHoldId?: string) => {
+    if (!selection || selection.kind === kind) {
+      setSelection({ kind, holdId, oldHoldId });
+      return;
+    }
+
+    if (selection.kind === "removed" && kind === "new") {
+      match.mutate({ old_hold_id: selection.holdId, new_hold_id: holdId });
+      clearSelection();
+    } else if (selection.kind === "new" && kind === "removed") {
+      match.mutate({ old_hold_id: holdId, new_hold_id: selection.holdId });
+      clearSelection();
+    } else if (selection.kind === "kept" && kind === "new" && selection.oldHoldId) {
+      match.mutate({ old_hold_id: selection.oldHoldId, new_hold_id: holdId });
+      clearSelection();
+    } else {
+      setSelection({ kind, holdId, oldHoldId });
+    }
   };
   const markChanged = () => {
-    if (!selectedOld) return;
-    match.mutate({ old_hold_id: selectedOld, new_hold_id: null });
+    if (selection?.kind !== "kept" || !selection.oldHoldId) return;
+    match.mutate({ old_hold_id: selection.oldHoldId, new_hold_id: null });
     clearSelection();
   };
   const restoreHold = () => {
-    if (!selectedOld) return;
-    restore.mutate({ old_hold_id: selectedOld });
+    if (selection?.kind !== "removed") return;
+    restore.mutate({ old_hold_id: selection.holdId });
+    clearSelection();
+  };
+  const discardSelectedHold = () => {
+    if (selection?.kind !== "new" && selection?.kind !== "kept") return;
+    deleteHold.mutate(selection.holdId);
     clearSelection();
   };
   const togglePhoto = () => {
@@ -123,36 +157,58 @@ export default function ResetReviewPage() {
             <ResetDiffOverlay
               diff={data}
               aspectRatio={aspectRatio}
-              selectedOldHoldId={selectedOld}
-              onRemovedSelect={(oldHoldId) => {
-                setSelectedOld(oldHoldId);
-                setSelectedWasKept(false);
-              }}
-              onNewSelect={handleNewHoldSelect}
-              onChanged={(oldHoldId) => {
-                setSelectedOld(oldHoldId);
-                setSelectedWasKept(true);
-              }}
+              selected={selection ? { kind: selection.kind, id: selection.holdId } : null}
+              onSelect={selectHold}
             />
           )}
         </WallImage>
       </div>
 
       <main className={`content ${styles.controls}`}>
+        {showNew && (
+          <>
+            <ul className={styles.legend}>
+              {legend.map(({ color, label, count }) => (
+                <li key={color}>
+                  <span
+                    className={styles.swatch}
+                    style={{
+                      background: resetHoldColors[color].fill,
+                      borderColor: resetHoldColors[color].stroke,
+                      borderStyle: color === "removed" ? "dashed" : "solid",
+                    }}
+                  />
+                  {label} · {count}
+                </li>
+              ))}
+            </ul>
+            <p className="muted">Tap any hold to fix it.</p>
+          </>
+        )}
         <button type="button" className="btn" onClick={togglePhoto}>
           {showNew ? "Show old photo" : "Show new photo"}
         </button>
 
-        {selectedOld && showNew && (
+        {selection && showNew && (
           <div className={styles.selected}>
-            <p>Old hold selected. Tap a new hold to match it.</p>
-            {selectedWasKept ? (
+            <p>
+              {selection.kind === "removed" && "Tap the blue hold it became, or mark it as still there."}
+              {selection.kind === "new" && "Tap the red hold it replaced, or mark it as not a hold."}
+              {selection.kind === "kept" && "Tap a blue hold to re-match it, or mark it changed."}
+            </p>
+            {selection.kind === "removed" && (
+              <button type="button" className="btn" onClick={restoreHold} disabled={restore.isPending}>
+                Still there
+              </button>
+            )}
+            {selection.kind === "kept" && (
               <button type="button" className="btn" onClick={markChanged} disabled={match.isPending}>
                 Changed
               </button>
-            ) : (
-              <button type="button" className="btn" onClick={restoreHold} disabled={restore.isPending}>
-                Still there
+            )}
+            {(selection.kind === "new" || selection.kind === "kept") && (
+              <button type="button" className="btn" onClick={discardSelectedHold} disabled={deleteHold.isPending}>
+                Not a hold
               </button>
             )}
             <button type="button" className="btn btn-ghost" onClick={clearSelection}>

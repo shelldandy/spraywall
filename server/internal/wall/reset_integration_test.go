@@ -79,6 +79,7 @@ func newResetTestEnv(t *testing.T) *resetTestEnv {
 		r.Route("/walls/{wallId}/resets/{imageId}", func(r chi.Router) {
 			r.Get("/", h.GetReset)
 			r.Put("/matches", h.UpdateResetMatch)
+			r.Delete("/holds/{holdId}", h.DeleteResetHold)
 			r.Post("/restore", h.RestoreResetHold)
 			r.Post("/apply", h.ApplyReset)
 			r.Delete("/", h.DiscardReset)
@@ -282,6 +283,55 @@ func TestResetDiffRestoreMatchApplyPreservesLegacyHistory(t *testing.T) {
 	}
 	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM circuit_routes WHERE circuit_id=$1 AND route_id=$2`, circuit, keptRoute).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("circuit route count=%d err=%v", count, err)
+	}
+}
+
+func TestDeleteResetNewHoldRemovesItFromDiff(t *testing.T) {
+	e := newResetTestEnv(t)
+	var newID uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO holds(wall_image_id,bbox,confidence) VALUES($1,'{"x":0.6,"y":0.6,"w":0.05,"h":0.05}',0.7) RETURNING id`, e.pendingID).Scan(&newID); err != nil {
+		t.Fatal(err)
+	}
+	if rec := e.request(http.MethodDelete, "/holds/"+newID.String(), ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete new hold %d %s", rec.Code, rec.Body)
+	}
+
+	diff := e.request(http.MethodGet, "/", "")
+	var got struct {
+		NewHolds []struct {
+			ID uuid.UUID `json:"id"`
+		} `json:"new_holds"`
+	}
+	if diff.Code != http.StatusOK || json.Unmarshal(diff.Body.Bytes(), &got) != nil {
+		t.Fatalf("get diff %d %s", diff.Code, diff.Body)
+	}
+	if len(got.NewHolds) != 1 || got.NewHolds[0].ID != e.newHold {
+		t.Fatalf("deleted hold remains in new_holds: %+v", got.NewHolds)
+	}
+}
+
+func TestDeleteResetMatchedHoldMakesOldHoldRemoved(t *testing.T) {
+	e := newResetTestEnv(t)
+	if rec := e.request(http.MethodDelete, "/holds/"+e.newHold.String(), ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete matched hold %d %s", rec.Code, rec.Body)
+	}
+
+	diff := e.request(http.MethodGet, "/", "")
+	var got struct {
+		NewHolds []json.RawMessage `json:"new_holds"`
+		Removed  []struct {
+			OldHoldID uuid.UUID `json:"old_hold_id"`
+		} `json:"removed_holds"`
+	}
+	if diff.Code != http.StatusOK || json.Unmarshal(diff.Body.Bytes(), &got) != nil {
+		t.Fatalf("get diff %d %s", diff.Code, diff.Body)
+	}
+	if len(got.NewHolds) != 0 || len(got.Removed) != 1 || got.Removed[0].OldHoldID != e.oldHold {
+		t.Fatalf("unexpected diff after deletion: %+v", got)
+	}
+
+	if rec := e.request(http.MethodDelete, "/holds/"+e.oldHold.String(), ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("delete hold from another image %d %s", rec.Code, rec.Body)
 	}
 }
 

@@ -185,6 +185,7 @@ func main() {
 					r.Route("/resets/{imageId}", func(r chi.Router) {
 						r.Get("/", wallHandler.GetReset)
 						r.Put("/matches", wallHandler.UpdateResetMatch)
+						r.Delete("/holds/{holdId}", wallHandler.DeleteResetHold)
 						r.Post("/restore", wallHandler.RestoreResetHold)
 						r.Post("/apply", wallHandler.ApplyReset)
 						r.Delete("/", wallHandler.DiscardReset)

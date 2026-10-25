@@ -26,6 +26,18 @@ export async function uploadWallImage(
   });
 }
 
+function invalidateResetQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  wallId: string,
+  imageId: string,
+) {
+  queryClient.invalidateQueries({ queryKey: ["reset-diff", wallId, imageId] });
+  queryClient.invalidateQueries({ queryKey: ["wall-detail", wallId] });
+  queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
+  queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+  queryClient.invalidateQueries({ queryKey: ["circuits", wallId] });
+}
+
 function useResetMutation<T>(
   gymSlug: string,
   wallId: string,
@@ -46,19 +58,28 @@ function useResetMutation<T>(
       await ensureOkJson(response, "Reset request failed");
       return method === "DELETE" ? (undefined as T) : response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["reset-diff", wallId, imageId] });
-      queryClient.invalidateQueries({ queryKey: ["wall-detail", wallId] });
-      queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
-      queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
-      queryClient.invalidateQueries({ queryKey: ["circuits", wallId] });
-    },
+    onSuccess: () => invalidateResetQueries(queryClient, wallId, imageId),
     onError: toastError,
   });
 }
 
 export function useMatchResetHold(gymSlug: string, wallId: string, imageId: string) {
   return useResetMutation<void>(gymSlug, wallId, imageId, "/matches", "PUT");
+}
+
+export function useDeleteResetHold(gymSlug: string, wallId: string, imageId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (holdId) => {
+      const response = await apiFetch(
+        `/gyms/${gymSlug}/walls/${wallId}/resets/${imageId}/holds/${holdId}`,
+        { method: "DELETE" },
+      );
+      await ensureOkJson(response, "Could not delete hold");
+    },
+    onSuccess: () => invalidateResetQueries(queryClient, wallId, imageId),
+    onError: toastError,
+  });
 }
 
 export function useRestoreResetHold(gymSlug: string, wallId: string, imageId: string) {

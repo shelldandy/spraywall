@@ -311,6 +311,25 @@ func (h *Handler) GetReset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"new_holds": newHolds, "removed_holds": removed, "alignment": map[string]any{"ok": a.OK, "inliers": a.Inliers}, "affected_routes": affectedRoutes, "kept_route_count": kept, "detection_status": detectionStatus})
 }
 
+var errPendingResetNotFound = errors.New("pending reset not found")
+
+func lockPendingReset(ctx context.Context, tx pgx.Tx, wallID, imageID uuid.UUID) (pgtype.UUID, error) {
+	var parent pgtype.UUID
+	var reviewStatus *string
+	var active bool
+	err := tx.QueryRow(ctx, `SELECT parent_image_id,review_status,is_active FROM wall_images WHERE id=$1 AND wall_id=$2 AND reset_kind='partial' FOR UPDATE`, shared.PgUUID(imageID), shared.PgUUID(wallID)).Scan(&parent, &reviewStatus, &active)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return pgtype.UUID{}, errPendingResetNotFound
+	}
+	if err != nil {
+		return pgtype.UUID{}, err
+	}
+	if !parent.Valid || reviewStatus == nil || *reviewStatus != "pending" || active {
+		return pgtype.UUID{}, errPendingResetNotFound
+	}
+	return parent, nil
+}
+
 func (h *Handler) UpdateResetMatch(w http.ResponseWriter, r *http.Request) {
 	wallID, imageID, ok := h.resetAccess(w, r)
 	if !ok {
@@ -332,20 +351,13 @@ func (h *Handler) UpdateResetMatch(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(context.Background())
 
-	var parent pgtype.UUID
-	var reviewStatus *string
-	var active bool
-	err = tx.QueryRow(r.Context(), `SELECT parent_image_id,review_status,is_active FROM wall_images WHERE id=$1 AND wall_id=$2 AND reset_kind='partial' FOR UPDATE`, shared.PgUUID(imageID), shared.PgUUID(wallID)).Scan(&parent, &reviewStatus, &active)
-	if errors.Is(err, pgx.ErrNoRows) {
+	parent, err := lockPendingReset(r.Context(), tx, wallID, imageID)
+	if errors.Is(err, errPendingResetNotFound) {
 		writeError(w, http.StatusNotFound, "pending reset not found")
 		return
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load pending reset")
-		return
-	}
-	if !parent.Valid || reviewStatus == nil || *reviewStatus != "pending" || active {
-		writeError(w, http.StatusNotFound, "pending reset not found")
 		return
 	}
 
@@ -395,6 +407,48 @@ func upsertMatch(ctx context.Context, tx pgx.Tx, imageID, oldID, newID uuid.UUID
 	}
 	_, err := tx.Exec(ctx, `INSERT INTO hold_matches(wall_image_id,old_hold_id,new_hold_id,source,iou) VALUES($1,$2,$3,'manual',NULL)`, imageID, oldID, newID)
 	return err
+}
+
+func (h *Handler) DeleteResetHold(w http.ResponseWriter, r *http.Request) {
+	wallID, imageID, ok := h.resetAccess(w, r)
+	if !ok {
+		return
+	}
+	holdID, err := uuid.Parse(chi.URLParam(r, "holdId"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid hold id")
+		return
+	}
+
+	tx, err := h.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	defer tx.Rollback(context.Background())
+
+	if _, err := lockPendingReset(r.Context(), tx, wallID, imageID); errors.Is(err, errPendingResetNotFound) {
+		writeError(w, http.StatusNotFound, "pending reset not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load pending reset")
+		return
+	}
+
+	result, err := tx.Exec(r.Context(), `DELETE FROM holds WHERE id=$1 AND wall_image_id=$2`, shared.PgUUID(holdID), shared.PgUUID(imageID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete reset hold")
+		return
+	}
+	if result.RowsAffected() == 0 {
+		writeError(w, http.StatusNotFound, "reset hold not found")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) RestoreResetHold(w http.ResponseWriter, r *http.Request) {
