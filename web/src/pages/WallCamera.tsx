@@ -12,6 +12,14 @@ interface VideoFrame {
   height: number;
 }
 
+interface Lens {
+  deviceId: string;
+  /** Device label reported by the browser, e.g. "Back Ultra Wide Camera". */
+  name: string;
+  /** Short button label, e.g. "0.5x". */
+  label: string;
+}
+
 interface ImageCaptureConstructor {
   new (track: MediaStreamTrack): { takePhoto: () => Promise<Blob> };
 }
@@ -37,6 +45,59 @@ function getContainedFrame(
   };
 }
 
+const LENS_KEY = "spraywall-camera-lens";
+const LENS_ORDER = ["0.5x", "1x", "Tele"];
+const VIDEO_SIZE = { width: { ideal: 4096 }, height: { ideal: 4096 } };
+
+function lensLabel(name: string): string | null {
+  const lower = name.toLowerCase();
+  // Front cameras can't shoot the wall, and iOS's virtual Dual/Triple cameras
+  // switch lenses on their own, which breaks alignment with the ghost image.
+  if (!name || lower.includes("front") || /dual|triple/.test(lower)) return null;
+  if (lower.includes("ultra wide")) return "0.5x";
+  if (lower.includes("telephoto")) return "Tele";
+  if (lower === "back camera") return "1x";
+  return name;
+}
+
+/** Back camera lenses; empty until camera permission has been granted (no labels before then). */
+async function listLenses(): Promise<Lens[]> {
+  const devices = (await navigator.mediaDevices?.enumerateDevices()) ?? [];
+  const rank = (label: string) => {
+    const index = LENS_ORDER.indexOf(label);
+    return index === -1 ? LENS_ORDER.length : index;
+  };
+  return devices
+    .filter((device) => device.kind === "videoinput")
+    .flatMap((device) => {
+      const label = lensLabel(device.label);
+      return label ? [{ deviceId: device.deviceId, name: device.label, label }] : [];
+    })
+    .sort((a, b) => rank(a.label) - rank(b.label));
+}
+
+function readSavedLens(): string | null {
+  try { return localStorage.getItem(LENS_KEY); } catch { return null; }
+}
+
+function saveLens(name: string) {
+  try { localStorage.setItem(LENS_KEY, name); } catch { /* storage unavailable */ }
+}
+
+/** The saved lens if present, else the ultra wide (walls are usually shot wide). */
+function preferredLens(lenses: Lens[]): Lens | undefined {
+  const saved = readSavedLens();
+  return lenses.find((lens) => lens.name === saved) ?? lenses.find((lens) => lens.label === "0.5x");
+}
+
+async function requestStream(deviceId?: string): Promise<MediaStream> {
+  if (!navigator.mediaDevices) throw new Error("Camera unavailable");
+  const video = deviceId
+    ? { deviceId: { exact: deviceId }, ...VIDEO_SIZE }
+    : { facingMode: { ideal: "environment" }, ...VIDEO_SIZE };
+  return navigator.mediaDevices.getUserMedia({ video, audio: false });
+}
+
 export default function WallCameraPage() {
   const { wallId = "" } = useParams();
   const [params] = useSearchParams();
@@ -48,6 +109,8 @@ export default function WallCameraPage() {
   const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Bumped on every stream request and on unmount so stale requests drop their stream.
+  const streamGenRef = useRef(0);
   const [videoFrame, setVideoFrame] = useState<VideoFrame>({
     left: 0,
     top: 0,
@@ -57,6 +120,37 @@ export default function WallCameraPage() {
   const [ready, setReady] = useState(false);
   const [opacity, setOpacity] = useState(0.4);
   const [busy, setBusy] = useState(false);
+  const [lenses, setLenses] = useState<Lens[]>([]);
+  const [activeLens, setActiveLens] = useState("");
+  const [switching, setSwitching] = useState(false);
+
+  /** Replace the current stream; resolves null if superseded by a newer request or unmount. */
+  const openStream = async (deviceId?: string): Promise<MediaStream | null> => {
+    const gen = ++streamGenRef.current;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+
+    let media: MediaStream;
+    try {
+      media = await requestStream(deviceId);
+    } catch (error) {
+      if (!deviceId) throw error;
+      media = await requestStream();
+    }
+    if (gen !== streamGenRef.current) {
+      media.getTracks().forEach((track) => track.stop());
+      return null;
+    }
+
+    streamRef.current = media;
+    setActiveLens(media.getVideoTracks()[0]?.label ?? "");
+    const video = videoRef.current;
+    if (video) {
+      video.srcObject = media;
+      await video.play();
+    }
+    return gen === streamGenRef.current ? media : null;
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -80,27 +174,24 @@ export default function WallCameraPage() {
 
     const startCamera = async () => {
       try {
-        const media = await navigator.mediaDevices?.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 4096 },
-            height: { ideal: 4096 },
-          },
-          audio: false,
-        });
+        // With permission already granted, labels are available up front and we can
+        // open the preferred lens directly; otherwise open the default camera first.
+        let available = await listLenses();
+        const media = await openStream(preferredLens(available)?.deviceId);
         if (!media) return;
-        if (!mounted) {
-          media.getTracks().forEach((track) => track.stop());
-          return;
-        }
+        updateVideoFrame();
 
-        streamRef.current = media;
-        if (video) {
-          video.srcObject = media;
-          await video.play();
-          updateVideoFrame();
+        if (available.length === 0) {
+          available = await listLenses();
+          const preferred = preferredLens(available);
+          if (preferred && preferred.name !== media.getVideoTracks()[0]?.label) {
+            if (!(await openStream(preferred.deviceId))) return;
+          }
         }
-        if (mounted) setReady(true);
+        if (mounted) {
+          setLenses(available);
+          setReady(true);
+        }
       } catch {
         if (mounted) setReady(false);
       }
@@ -110,6 +201,9 @@ export default function WallCameraPage() {
 
     return () => {
       mounted = false;
+      // A counter, not a DOM ref: bumping the live value is the point.
+      // oxlint-disable-next-line react-hooks/exhaustive-deps
+      streamGenRef.current++;
       resizeObserver?.disconnect();
       video?.removeEventListener("loadedmetadata", updateVideoFrame);
       video?.removeEventListener("resize", updateVideoFrame);
@@ -117,6 +211,18 @@ export default function WallCameraPage() {
       streamRef.current = null;
     };
   }, []);
+
+  const switchLens = async (lens: Lens) => {
+    saveLens(lens.name);
+    setSwitching(true);
+    try {
+      if (await openStream(lens.deviceId)) setReady(true);
+    } catch {
+      setReady(false);
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   const upload = async (image: Blob) => {
     setBusy(true);
@@ -196,7 +302,29 @@ export default function WallCameraPage() {
             alt="Previous wall photo alignment guide"
           />
         )}
-        {!ready && <div className={styles.fallback}>Camera unavailable — choose a photo</div>}
+        {!ready && (
+          <div className={styles.fallback}>
+            {window.isSecureContext
+              ? "Camera unavailable — choose a photo"
+              : "Camera needs HTTPS — choose a photo"}
+          </div>
+        )}
+        {lenses.length > 1 && (
+          <div className={styles.lenses}>
+            {lenses.map((lens) => (
+              <button
+                key={lens.deviceId}
+                type="button"
+                className={`${styles.lens} ${lens.name === activeLens ? styles.lensActive : ""}`}
+                disabled={switching || busy}
+                aria-pressed={lens.name === activeLens}
+                onClick={() => void switchLens(lens)}
+              >
+                {lens.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {oldImage && (
