@@ -131,6 +131,10 @@ export default function WallDetailPage() {
         return;
       }
       setHoldSelections((prev) => new Map(prev).set(holdId, role));
+      // Both start holds placed: hand holds are the natural next step.
+      if (role === "start" && currentRole !== "start" && roleCount + 1 === 2) {
+        setCreateTool("hand");
+      }
     },
     [createTool, holdSelections],
   );
