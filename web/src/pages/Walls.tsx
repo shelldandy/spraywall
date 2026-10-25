@@ -18,7 +18,6 @@ export default function WallsPage() {
   const [wallFormGymSlug, setWallFormGymSlug] = useState<string | null>(null);
   const [wallName, setWallName] = useState("");
   const [formToScroll, setFormToScroll] = useState<"gym" | "wall" | null>(null);
-  const [scrollRequest, setScrollRequest] = useState(0);
   const gymFormRef = useRef<HTMLFormElement>(null);
   const wallFormRef = useRef<HTMLFormElement>(null);
 
@@ -27,9 +26,9 @@ export default function WallsPage() {
   useEffect(() => {
     const create = searchParams.get("create");
     if (create === "gym") {
+      // oxlint-disable-next-line react/set-state-in-effect -- URL params initialize inline-form state before they are cleared.
       setShowGymForm(true);
       setFormToScroll("gym");
-      setScrollRequest((request) => request + 1);
       setSearchParams({}, { replace: true });
     } else if (create === "wall") {
       const slug = searchParams.get("gymSlug");
@@ -37,20 +36,20 @@ export default function WallsPage() {
         setWallFormGymSlug(slug);
         setWallName("");
         setFormToScroll("wall");
-        setScrollRequest((request) => request + 1);
       }
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
 
+  // One-shot: once the requested form has rendered, bring it into view and focus it.
   useEffect(() => {
-    if (gymsWithWallsQuery.isLoading) return;
-    if (formToScroll === "gym" && showGymForm) {
-      gymFormRef.current?.scrollIntoView({ block: "center" });
-    } else if (formToScroll === "wall" && wallFormGymSlug) {
-      wallFormRef.current?.scrollIntoView({ block: "center" });
-    }
-  }, [formToScroll, gymsWithWallsQuery.isLoading, scrollRequest, showGymForm, wallFormGymSlug]);
+    if (!formToScroll || gymsWithWallsQuery.isLoading) return;
+    const form = formToScroll === "gym" ? gymFormRef.current : wallFormRef.current;
+    form?.scrollIntoView({ block: "center" });
+    form?.querySelector("input")?.focus({ preventScroll: true });
+    // oxlint-disable-next-line react/set-state-in-effect -- Clears the one-shot scroll request after it runs.
+    setFormToScroll(null);
+  }, [formToScroll, gymsWithWallsQuery.isLoading]);
 
   const createGymMutation = useMutation<Gym, Error, { name: string; slug: string }>({
     mutationFn: async ({ name, slug }) => {
