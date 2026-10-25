@@ -48,7 +48,72 @@ function getContainedFrame(
 
 const LENS_KEY = "spraywall-camera-lens";
 const LENS_ORDER = ["0.5x", "1x", "Tele"];
-const VIDEO_SIZE = { width: { ideal: 4096 }, height: { ideal: 4096 } };
+// iOS renders a black preview when asked for 4096 (its photo-only sensor formats);
+// 1920 streams fine.
+const VIDEO_SIZE = { width: { ideal: 1920 }, height: { ideal: 1920 } };
+const PHOTO_SIZE = { width: { ideal: 4096 }, height: { ideal: 4096 } };
+
+/** Resolves on the next decoded video frame, or after a timeout. */
+function nextFrame(video: HTMLVideoElement): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 1000);
+    video.requestVideoFrameCallback(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+/** Draws the current video frame; null if there is no frame yet. */
+function drawFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const context = canvas.getContext("2d");
+  if (!context || canvas.width === 0 || canvas.height === 0) return null;
+  context.drawImage(video, 0, 0);
+  return canvas;
+}
+
+/** True if a downscaled copy of the canvas is entirely black. */
+function isBlank(canvas: HTMLCanvasElement): boolean {
+  const sample = document.createElement("canvas");
+  sample.width = 16;
+  sample.height = 16;
+  const context = sample.getContext("2d", { willReadFrequently: true });
+  if (!context) return false;
+  context.drawImage(canvas, 0, 0, 16, 16);
+  const { data } = context.getImageData(0, 0, 16, 16);
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i] + data[i + 1] + data[i + 2] > 15) return false;
+  }
+  return true;
+}
+
+/**
+ * iOS can't take photos from a stream and shows a black preview at full size, so
+ * briefly raise the track to full size for a single frame, then restore the preview.
+ * Null if the full-size frame is no larger than the preview or comes out blank.
+ */
+async function drawFullSizeFrame(
+  video: HTMLVideoElement,
+  track: MediaStreamTrack,
+): Promise<HTMLCanvasElement | null> {
+  const previewWidth = video.videoWidth;
+  try {
+    await track.applyConstraints(PHOTO_SIZE);
+    for (let i = 0; i < 5 && video.videoWidth <= previewWidth; i++) await nextFrame(video);
+    await nextFrame(video);
+    const canvas = drawFrame(video);
+    return canvas && canvas.width > previewWidth && !isBlank(canvas) ? canvas : null;
+  } catch {
+    return null;
+  } finally {
+    await track.applyConstraints(VIDEO_SIZE).catch(() => undefined);
+    for (let i = 0; i < 5 && video.videoWidth > previewWidth; i++) await nextFrame(video);
+    await nextFrame(video);
+  }
+}
 
 /** Back camera lenses; empty until camera permission has been granted (no labels before then). */
 async function listLenses(): Promise<Lens[]> {
@@ -144,8 +209,14 @@ export default function WallCameraPage() {
     setActiveLens({ deviceId: track?.getSettings().deviceId, name: track?.label ?? "" });
     const video = videoRef.current;
     if (video) {
+      // iOS keeps rendering the ended stream (a black frame) unless the element is
+      // detached first, and only plays inline video without a gesture when muted.
+      video.pause();
+      video.srcObject = null;
+      video.muted = true;
       video.srcObject = media;
-      await video.play();
+      // A rejected play() doesn't mean the stream is bad; autoplay can still start it.
+      await video.play().catch(() => undefined);
     }
     return gen === streamGenRef.current ? media : null;
   };
@@ -276,18 +347,15 @@ export default function WallCameraPage() {
     }
 
     if (!image) {
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const context = canvas.getContext("2d");
-      if (!context || canvas.width === 0 || canvas.height === 0) {
-        toast("Could not capture a camera image.", "error");
-        return;
+      setBusy(true);
+      const fullSize = track ? await drawFullSizeFrame(video, track) : null;
+      const canvas = fullSize ?? drawFrame(video);
+      if (canvas) {
+        image = await new Promise<Blob | undefined>((resolve) => {
+          canvas.toBlob((blob) => resolve(blob ?? undefined), "image/jpeg", 0.9);
+        });
       }
-      context.drawImage(video, 0, 0);
-      image = await new Promise<Blob | undefined>((resolve) => {
-        canvas.toBlob((blob) => resolve(blob ?? undefined), "image/jpeg", 0.9);
-      });
+      if (!image) setBusy(false);
     }
 
     if (image) await upload(image);
@@ -306,7 +374,7 @@ export default function WallCameraPage() {
         Cancel
       </button>
       <div ref={stageRef} className={styles.stage}>
-        <video ref={videoRef} autoPlay playsInline className={styles.video} />
+        <video ref={videoRef} autoPlay muted playsInline className={styles.video} />
         {oldImage && ready && videoFrame.width > 0 && (
           <img
             src={oldImage}
