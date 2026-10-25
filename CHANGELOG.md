@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.2.0](https://github.com/shelldandy/spraywall/compare/v1.1.1...v1.2.0) (2026-10-25)
+
+
+### Features
+
+* improve partial reset review ([16c3d93](https://github.com/shelldandy/spraywall/commit/16c3d93ffbb8286cab64460d6359bb628954b3ef))
+* **server:** support partial wall resets ([2cdb6b4](https://github.com/shelldandy/spraywall/commit/2cdb6b44e17b08d7ec9667bce8fa0df7dfb18b5f))
+* support iterative partial wall resets ([60bb3f3](https://github.com/shelldandy/spraywall/commit/60bb3f342d320b07e155151f3c369a16252d9d9b))
+* **web:** add bottom action navigation ([6c7e112](https://github.com/shelldandy/spraywall/commit/6c7e112da4200fc787adb6be9601b707d273f66a))
+* **web:** add camera lens picker for partial resets ([471d5ad](https://github.com/shelldandy/spraywall/commit/471d5adc36d20c033bf7570346bdc559315c30cd))
+* **web:** add partial wall reset workflow ([3c3cf18](https://github.com/shelldandy/spraywall/commit/3c3cf18c45982f07d91a898bd35487ecefa75e59))
+* **web:** camera lens picker + tailnet HTTPS dev setup ([f20f4a8](https://github.com/shelldandy/spraywall/commit/f20f4a8395be48def8323cfd56d4dfc629180d98))
+* **web:** use new app artwork for icons and branding ([cd88ef4](https://github.com/shelldandy/spraywall/commit/cd88ef4fc9e56e747b85b9c2ea612be7ae42faea))
+* **web:** use new app artwork for icons and branding ([0eeeffc](https://github.com/shelldandy/spraywall/commit/0eeeffce771f32755f7079fe5a24e249fca204e8))
+* **worker:** align and match holds for partial resets ([ce15b4f](https://github.com/shelldandy/spraywall/commit/ce15b4f68c67ea97c6522d67f4b5cfe5339fa191))
+
+
+### Bug Fixes
+
+* address partial reset review feedback ([5363ca1](https://github.com/shelldandy/spraywall/commit/5363ca1a3905dfd68cb9fec54d7e08c9feaf3bb4))
+* **server:** continue when stale reset cleanup fails ([3acaba1](https://github.com/shelldandy/spraywall/commit/3acaba187dbf1e9283e4969fec27ee7cb0ea6bb6))
+* **web:** keep action navigation inside auth routes ([0e4c6b6](https://github.com/shelldandy/spraywall/commit/0e4c6b637a29a679f2bfc17bbc42d07e87f5b97f))
+* **web:** keep profile in the action tab bar ([8a032b7](https://github.com/shelldandy/spraywall/commit/8a032b7c5c70437bbf08d7b49bfb70282302fe8d))
+* **web:** make iOS home-screen icon full bleed ([b804254](https://github.com/shelldandy/spraywall/commit/b804254cd7e38791bf457985029e2ccf7fe79650))
+* **web:** make iOS home-screen icon full bleed ([2eb38b2](https://github.com/shelldandy/spraywall/commit/2eb38b22f18f35a563e0f15227c7ee9c8d82c65a))
+* **web:** match flattened icons to the dark app background ([18fa283](https://github.com/shelldandy/spraywall/commit/18fa2834183e1e871f0358993a052fdb6ddd5fa2))
+* **web:** repair iOS PWA camera lens switching ([f7b5efd](https://github.com/shelldandy/spraywall/commit/f7b5efd688c00fa1f08160b89d836b0fe1b6ef32))
+* **web:** retain explicit rear camera lens ([7d32bf2](https://github.com/shelldandy/spraywall/commit/7d32bf26cc830e727eed3ccec91f90bdc8191f11))
+* **web:** scope action nav spacing to visible routes ([80b77e4](https://github.com/shelldandy/spraywall/commit/80b77e4a5e63576fd2b6dacf28954ec800ba9213))
+* **web:** show iOS PWA camera preview and capture full-size frames ([85fd63d](https://github.com/shelldandy/spraywall/commit/85fd63debef80fb40132c455f94da86e6949d77e))
+* **web:** show iOS PWA camera preview and capture full-size frames ([d3b871c](https://github.com/shelldandy/spraywall/commit/d3b871cef7888fded00d0ae40b19c1bf5366b0da))
+* **web:** update circuits after visiting a wall ([d5ed95b](https://github.com/shelldandy/spraywall/commit/d5ed95bf829ca6fa2d1a3253bb08598150d8cc77))
+
 ## [1.1.1](https://github.com/shelldandy/spraywall/compare/v1.1.0...v1.1.1) (2026-10-21)
 
 
