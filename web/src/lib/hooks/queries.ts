@@ -30,7 +30,7 @@ export function useGyms() {
   });
 }
 
-export function useGymsWithWalls() {
+export function useGymsWithWalls(enabled = true) {
   return useQuery<GymWithWalls[]>({
     queryKey: ["gyms-with-walls"],
     queryFn: async () => {
@@ -45,6 +45,7 @@ export function useGymsWithWalls() {
         }),
       );
     },
+    enabled,
   });
 }
 

@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { Link } from "react-router";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link, useSearchParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
 import type { Gym, Wall } from "../lib/api/types";
@@ -9,6 +9,7 @@ import styles from "./Walls.module.css";
 
 export default function WallsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [showGymForm, setShowGymForm] = useState(false);
   const [gymName, setGymName] = useState("");
@@ -16,8 +17,34 @@ export default function WallsPage() {
 
   const [wallFormGymSlug, setWallFormGymSlug] = useState<string | null>(null);
   const [wallName, setWallName] = useState("");
+  const gymFormRef = useRef<HTMLFormElement>(null);
+  const wallFormRef = useRef<HTMLFormElement>(null);
 
   const gymsWithWallsQuery = useGymsWithWalls();
+
+  useEffect(() => {
+    const create = searchParams.get("create");
+    if (create === "gym") {
+      // oxlint-disable-next-line react/set-state-in-effect -- URL params initialize inline-form state before they are cleared.
+      setShowGymForm(true);
+      setSearchParams({}, { replace: true });
+    } else if (create === "wall") {
+      const slug = searchParams.get("gymSlug");
+      if (!slug) return;
+      // oxlint-disable-next-line react/set-state-in-effect -- URL params initialize inline-form state before they are cleared.
+      setWallFormGymSlug(slug);
+      setWallName("");
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (showGymForm) gymFormRef.current?.scrollIntoView({ block: "center" });
+  }, [showGymForm]);
+
+  useEffect(() => {
+    if (wallFormGymSlug) wallFormRef.current?.scrollIntoView({ block: "center" });
+  }, [wallFormGymSlug]);
 
   const createGymMutation = useMutation<Gym, Error, { name: string; slug: string }>({
     mutationFn: async ({ name, slug }) => {
@@ -235,7 +262,7 @@ export default function WallsPage() {
 
                   {canEditWalls &&
                     (wallFormGymSlug === gym.slug ? (
-                      <form className={styles.inlineForm} onSubmit={(e) => submitWall(e, gym)}>
+                      <form ref={wallFormRef} className={styles.inlineForm} onSubmit={(e) => submitWall(e, gym)}>
                         <input
                           className="input"
                           placeholder="Wall name"
@@ -281,7 +308,7 @@ export default function WallsPage() {
             })}
 
             {showGymForm ? (
-              <form className={styles.gymForm} onSubmit={submitGym}>
+              <form ref={gymFormRef} className={styles.gymForm} onSubmit={submitGym}>
                 <h3 className={styles.formTitle}>New Gym</h3>
                 <input
                   className="input"
