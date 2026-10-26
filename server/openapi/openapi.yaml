@@ -1569,6 +1569,16 @@ components:
         hold_roles:
           type: object
           additionalProperties: true
+        active_hold_ids:
+          type: array
+          description: Hold IDs translated to the active wall image for legacy routes.
+          items:
+            type: string
+            format: uuid
+        active_hold_roles:
+          type: [object, "null"]
+          description: Hold roles translated to the active wall image for legacy routes.
+          additionalProperties: true
         status:
           type: string
           enum: [draft, published]

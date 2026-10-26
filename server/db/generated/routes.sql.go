@@ -457,7 +457,7 @@ func (q *Queries) UpdateClimbLog(ctx context.Context, arg UpdateClimbLogParams) 
 }
 
 const updateRoute = `-- name: UpdateRoute :one
-UPDATE routes SET name = $2, grade = $3, description = $4, hold_ids = $5, hold_roles = $6, tags = $7
+UPDATE routes SET name = $2, grade = $3, description = $4, hold_ids = $5, hold_roles = $6, tags = $7, wall_image_id = $8
 WHERE id = $1
 RETURNING id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status, tags
 `
@@ -470,6 +470,7 @@ type UpdateRouteParams struct {
 	HoldIds     []pgtype.UUID `json:"hold_ids"`
 	HoldRoles   []byte        `json:"hold_roles"`
 	Tags        []string      `json:"tags"`
+	WallImageID pgtype.UUID   `json:"wall_image_id"`
 }
 
 func (q *Queries) UpdateRoute(ctx context.Context, arg UpdateRouteParams) (Route, error) {
@@ -481,6 +482,7 @@ func (q *Queries) UpdateRoute(ctx context.Context, arg UpdateRouteParams) (Route
 		arg.HoldIds,
 		arg.HoldRoles,
 		arg.Tags,
+		arg.WallImageID,
 	)
 	var i Route
 	err := row.Scan(

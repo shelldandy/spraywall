@@ -52,7 +52,13 @@ export default function RouteDetailPage() {
   const wall = wallQuery.data;
   const allHolds = holdsQuery.data;
 
-  const routeHoldIds = useMemo(() => new Set(routeData?.hold_ids ?? []), [routeData?.hold_ids]);
+  const visibleHoldIds = routeData?.is_legacy
+    ? routeData.active_hold_ids ?? []
+    : routeData?.hold_ids ?? [];
+  const visibleHoldRoles = routeData?.is_legacy
+    ? routeData.active_hold_roles ?? null
+    : routeData?.hold_roles ?? null;
+  const routeHoldIds = useMemo(() => new Set(visibleHoldIds), [visibleHoldIds]);
   const routeHolds = useMemo(
     () => (allHolds ?? []).filter((h) => routeHoldIds.has(h.id)),
     [allHolds, routeHoldIds],
@@ -113,8 +119,8 @@ export default function RouteDetailPage() {
     const search = new URLSearchParams({
       gymSlug,
       editRouteId: routeId,
-      editHoldIds: JSON.stringify(routeData?.hold_ids ?? []),
-      editHoldRoles: routeData?.hold_roles ? JSON.stringify(routeData.hold_roles) : "",
+      editHoldIds: JSON.stringify(visibleHoldIds),
+      editHoldRoles: visibleHoldRoles ? JSON.stringify(visibleHoldRoles) : "",
       editName: routeData?.name ?? "",
       editGrade: routeData?.grade ?? "",
       editDescription: routeData?.description ?? "",
@@ -250,7 +256,7 @@ export default function RouteDetailPage() {
                         selectedIds={routeHoldIds}
                         onToggle={() => {}}
                         mode="view"
-                        holdRoles={routeData?.hold_roles ?? null}
+                        holdRoles={visibleHoldRoles}
                       />
                     )}
                   </WallImage>
