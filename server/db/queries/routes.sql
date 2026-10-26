@@ -11,7 +11,7 @@ SELECT * FROM routes WHERE wall_id = $1 AND (status = 'published' OR created_by 
 ORDER BY created_at DESC;
 
 -- name: UpdateRoute :one
-UPDATE routes SET name = $2, grade = $3, description = $4, hold_ids = $5, hold_roles = $6, tags = $7
+UPDATE routes SET name = $2, grade = $3, description = $4, hold_ids = $5, hold_roles = $6, tags = $7, wall_image_id = $8
 WHERE id = $1
 RETURNING *;
 

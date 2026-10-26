@@ -325,3 +325,152 @@ VALUES ($1, (SELECT id FROM wall_images LIMIT 1), (SELECT id FROM users LIMIT 1)
 		t.Fatal("migration Down did not remove routes.tags")
 	}
 }
+
+func routeTestImage(t *testing.T, e *routeTestEnv, storageKey string, parent *uuid.UUID, partial, active bool) uuid.UUID {
+	t.Helper()
+	if _, err := e.pool.Exec(context.Background(), `UPDATE wall_images SET is_active=false WHERE wall_id=$1`, shared.PgUUID(e.wallID)); err != nil {
+		t.Fatal(err)
+	}
+	resetKind := "full"
+	var reviewStatus *string
+	if partial {
+		resetKind = "partial"
+		applied := "applied"
+		reviewStatus = &applied
+	}
+	var imageID uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO wall_images(wall_id,storage_key,is_active,parent_image_id,reset_kind,review_status) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, shared.PgUUID(e.wallID), storageKey, active, parent, resetKind, reviewStatus).Scan(&imageID); err != nil {
+		t.Fatal(err)
+	}
+	return imageID
+}
+
+func routeTestHold(t *testing.T, e *routeTestEnv, imageID uuid.UUID) uuid.UUID {
+	t.Helper()
+	var holdID uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO holds(wall_image_id,bbox,confidence) VALUES($1,'{}',1) RETURNING id`, imageID).Scan(&holdID); err != nil {
+		t.Fatal(err)
+	}
+	return holdID
+}
+
+func routeTestArchivedRoute(t *testing.T, e *routeTestEnv, imageID uuid.UUID, holdIDs []uuid.UUID, roles string) uuid.UUID {
+	t.Helper()
+	var routeID uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,$3,'Archived test',$4,$5,'published','{}') RETURNING id`, shared.PgUUID(e.wallID), imageID, shared.PgUUID(e.creatorID), holdIDs, []byte(roles)).Scan(&routeID); err != nil {
+		t.Fatal(err)
+	}
+	return routeID
+}
+
+func TestLegacyRouteRemapAndReactivation(t *testing.T) {
+	e := newRouteTestEnv(t)
+	var oldImage uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `SELECT id FROM wall_images WHERE wall_id=$1 AND is_active`, shared.PgUUID(e.wallID)).Scan(&oldImage); err != nil {
+		t.Fatal(err)
+	}
+
+	imageB := routeTestImage(t, e, "partial-b", &oldImage, true, true)
+	matchedB := routeTestHold(t, e, imageB)
+	missingB := routeTestHold(t, e, imageB)
+	if _, err := e.pool.Exec(context.Background(), `INSERT INTO hold_matches(wall_image_id,old_hold_id,new_hold_id,source) VALUES($1,$2,$3,'manual')`, imageB, e.holdIDs[0], matchedB); err != nil {
+		t.Fatal(err)
+	}
+	roles := fmt.Sprintf(`{"start":[%q],"finish":[%q]}`, e.holdIDs[0], e.holdIDs[1])
+	routeID := routeTestArchivedRoute(t, e, oldImage, e.holdIDs, roles)
+
+	get := e.request(http.MethodGet, routeID.String(), e.token, "")
+	var detail struct {
+		IsLegacy        bool                   `json:"is_legacy"`
+		ActiveHoldIDs   []uuid.UUID            `json:"active_hold_ids"`
+		ActiveHoldRoles map[string][]uuid.UUID `json:"active_hold_roles"`
+	}
+	if get.Code != http.StatusOK || json.Unmarshal(get.Body.Bytes(), &detail) != nil {
+		t.Fatalf("get legacy route: %d %s", get.Code, get.Body)
+	}
+	if !detail.IsLegacy || len(detail.ActiveHoldIDs) != 1 || detail.ActiveHoldIDs[0] != matchedB {
+		t.Fatalf("partial remap legacy=%v holds=%v: %s", detail.IsLegacy, detail.ActiveHoldIDs, get.Body)
+	}
+	if len(detail.ActiveHoldRoles["start"]) != 1 || detail.ActiveHoldRoles["start"][0] != matchedB || len(detail.ActiveHoldRoles["finish"]) != 0 {
+		t.Fatalf("partial role remap: %#v", detail.ActiveHoldRoles)
+	}
+
+	foreign := fmt.Sprintf(`{"name":"Foreign","hold_ids":[%q,%q]}`, e.holdIDs[0], e.holdIDs[1])
+	if rec := e.request(http.MethodPut, routeID.String(), e.token, foreign); rec.Code != http.StatusBadRequest {
+		t.Fatalf("update with foreign holds: %d %s", rec.Code, rec.Body)
+	}
+	update := fmt.Sprintf(`{"name":"Restored","hold_ids":[%q,%q],"hold_roles":{"start":[%q],"finish":[%q]}}`, matchedB, missingB, matchedB, missingB)
+	updated := e.request(http.MethodPut, routeID.String(), e.token, update)
+	var updateResult struct {
+		WallImageID uuid.UUID `json:"wall_image_id"`
+		IsLegacy    bool      `json:"is_legacy"`
+	}
+	if updated.Code != http.StatusOK || json.Unmarshal(updated.Body.Bytes(), &updateResult) != nil {
+		t.Fatalf("update legacy route: %d %s", updated.Code, updated.Body)
+	}
+	if updateResult.WallImageID != imageB || updateResult.IsLegacy {
+		t.Fatalf("updated route image=%s legacy=%v, want %s and false", updateResult.WallImageID, updateResult.IsLegacy, imageB)
+	}
+	mixedForeign := fmt.Sprintf(`{"name":"Mixed foreign","hold_ids":[%q,%q]}`, matchedB, e.holdIDs[0])
+	if rec := e.request(http.MethodPut, routeID.String(), e.token, mixedForeign); rec.Code != http.StatusBadRequest {
+		t.Fatalf("update active route with a foreign hold: %d %s", rec.Code, rec.Body)
+	}
+	var persistedImage uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `SELECT wall_image_id FROM routes WHERE id=$1`, routeID).Scan(&persistedImage); err != nil || persistedImage != imageB {
+		t.Fatalf("persisted image=%s err=%v", persistedImage, err)
+	}
+}
+
+func TestGetRouteRemapsResetChainAndFullReset(t *testing.T) {
+	t.Run("chain", func(t *testing.T) {
+		e := newRouteTestEnv(t)
+		var imageA uuid.UUID
+		if err := e.pool.QueryRow(context.Background(), `SELECT id FROM wall_images WHERE wall_id=$1 AND is_active`, shared.PgUUID(e.wallID)).Scan(&imageA); err != nil {
+			t.Fatal(err)
+		}
+		imageB := routeTestImage(t, e, "chain-b", &imageA, true, false)
+		holdB := routeTestHold(t, e, imageB)
+		if _, err := e.pool.Exec(context.Background(), `INSERT INTO hold_matches(wall_image_id,old_hold_id,new_hold_id,source) VALUES($1,$2,$3,'manual')`, imageB, e.holdIDs[0], holdB); err != nil {
+			t.Fatal(err)
+		}
+		imageC := routeTestImage(t, e, "chain-c", &imageB, true, true)
+		holdC := routeTestHold(t, e, imageC)
+		if _, err := e.pool.Exec(context.Background(), `INSERT INTO hold_matches(wall_image_id,old_hold_id,new_hold_id,source) VALUES($1,$2,$3,'manual')`, imageC, holdB, holdC); err != nil {
+			t.Fatal(err)
+		}
+		roles := fmt.Sprintf(`{"start":[%q],"finish":[%q]}`, e.holdIDs[0], e.holdIDs[1])
+		routeID := routeTestArchivedRoute(t, e, imageA, e.holdIDs, roles)
+		rec := e.request(http.MethodGet, routeID.String(), e.token, "")
+		var got struct {
+			ActiveHoldIDs []uuid.UUID            `json:"active_hold_ids"`
+			ActiveRoles   map[string][]uuid.UUID `json:"active_hold_roles"`
+		}
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &got) != nil {
+			t.Fatalf("get chained route: %d %s", rec.Code, rec.Body)
+		}
+		if len(got.ActiveHoldIDs) != 1 || got.ActiveHoldIDs[0] != holdC || len(got.ActiveRoles["start"]) != 1 || got.ActiveRoles["start"][0] != holdC || len(got.ActiveRoles["finish"]) != 0 {
+			t.Fatalf("chain remap holds=%v roles=%#v", got.ActiveHoldIDs, got.ActiveRoles)
+		}
+	})
+
+	t.Run("full reset has no ancestry", func(t *testing.T) {
+		e := newRouteTestEnv(t)
+		var imageA uuid.UUID
+		if err := e.pool.QueryRow(context.Background(), `SELECT id FROM wall_images WHERE wall_id=$1 AND is_active`, shared.PgUUID(e.wallID)).Scan(&imageA); err != nil {
+			t.Fatal(err)
+		}
+		routeID := routeTestArchivedRoute(t, e, imageA, e.holdIDs, `{}`)
+		routeTestImage(t, e, "full-reset", nil, false, true)
+		rec := e.request(http.MethodGet, routeID.String(), e.token, "")
+		var got struct {
+			IsLegacy      bool        `json:"is_legacy"`
+			ActiveHoldIDs []uuid.UUID `json:"active_hold_ids"`
+		}
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &got) != nil {
+			t.Fatalf("get full-reset route: %d %s", rec.Code, rec.Body)
+		}
+		if !got.IsLegacy || got.ActiveHoldIDs == nil || len(got.ActiveHoldIDs) != 0 {
+			t.Fatalf("full reset remap legacy=%v holds=%v", got.IsLegacy, got.ActiveHoldIDs)
+		}
+	})
+}

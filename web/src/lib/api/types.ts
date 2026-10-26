@@ -106,6 +106,8 @@ export interface Route {
   description: string | null;
   hold_ids: string[];
   hold_roles: HoldRoles | null;
+  active_hold_ids?: string[];
+  active_hold_roles?: HoldRoles | null;
   created_at: string;
   send_count: number;
   has_sent: boolean;

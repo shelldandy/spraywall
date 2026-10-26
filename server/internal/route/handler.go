@@ -89,15 +89,17 @@ func parseRouteID(r *http.Request) (uuid.UUID, error) {
 
 type routeResponse struct {
 	generated.Route
-	HoldRoles     json.RawMessage `json:"hold_roles"`
-	SendCount     int             `json:"send_count"`
-	HasSent       bool            `json:"has_sent"`
-	IsLegacy      bool            `json:"is_legacy"`
-	Progress      string          `json:"progress"`
-	HasFlashed    bool            `json:"has_flashed"`
-	RatingAverage *float64        `json:"rating_average"`
-	RatingCount   int             `json:"rating_count"`
-	MyRating      *int            `json:"my_rating"`
+	HoldRoles       json.RawMessage `json:"hold_roles"`
+	ActiveHoldIDs   *[]uuid.UUID    `json:"active_hold_ids,omitempty"`
+	ActiveHoldRoles json.RawMessage `json:"active_hold_roles,omitempty"`
+	SendCount       int             `json:"send_count"`
+	HasSent         bool            `json:"has_sent"`
+	IsLegacy        bool            `json:"is_legacy"`
+	Progress        string          `json:"progress"`
+	HasFlashed      bool            `json:"has_flashed"`
+	RatingAverage   *float64        `json:"rating_average"`
+	RatingCount     int             `json:"rating_count"`
+	MyRating        *int            `json:"my_rating"`
 }
 
 // ---------- endpoints ----------
@@ -353,6 +355,23 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 
 	rt.Tags = nonNilRouteTags(rt.Tags)
 	response := routeResponse{Route: rt, HoldRoles: json.RawMessage(rt.HoldRoles), IsLegacy: isLegacy}
+	if isLegacy {
+		activeHoldIDs := []uuid.UUID{}
+		var activeHoldRoles json.RawMessage
+		if activeImgErr == nil {
+			var remapErr error
+			activeHoldIDs, activeHoldRoles, remapErr = remapToActive(
+				r.Context(), h.db, uuid.UUID(rt.WallImageID.Bytes), uuid.UUID(activeImg.ID.Bytes),
+				uuidIDsFromPg(rt.HoldIds), json.RawMessage(rt.HoldRoles),
+			)
+			if remapErr != nil {
+				writeError(w, http.StatusInternalServerError, "could not map route holds to active image")
+				return
+			}
+		}
+		response.ActiveHoldIDs = &activeHoldIDs
+		response.ActiveHoldRoles = activeHoldRoles
+	}
 	applySummary(&response, summaries[rt.ID])
 	writeJSON(w, http.StatusOK, response)
 }
@@ -434,6 +453,33 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 		holdIDs[i] = shared.PgUUID(parsed)
 	}
 
+	activeImage, imageErr := h.queries.GetActiveWallImage(r.Context(), rt.WallID)
+	if imageErr != nil {
+		if errors.Is(imageErr, pgx.ErrNoRows) {
+			writeError(w, http.StatusBadRequest, "wall has no active image")
+		} else {
+			writeError(w, http.StatusInternalServerError, "database error")
+		}
+		return
+	}
+
+	wallImageID := activeImage.ID
+	existingHolds, err := h.queries.GetHoldsByWallImage(r.Context(), wallImageID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	validHoldIDs := make(map[pgtype.UUID]bool, len(existingHolds))
+	for _, hold := range existingHolds {
+		validHoldIDs[hold.ID] = true
+	}
+	for _, holdID := range holdIDs {
+		if !validHoldIDs[holdID] {
+			writeError(w, http.StatusBadRequest, "one or more hold IDs do not belong to the active wall image")
+			return
+		}
+	}
+
 	var grade pgtype.Text
 	if body.Grade != nil {
 		grade = pgtype.Text{String: *body.Grade, Valid: true}
@@ -455,6 +501,7 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 		HoldIds:     holdIDs,
 		HoldRoles:   holdRoles,
 		Tags:        nonNilRouteTags(tags),
+		WallImageID: wallImageID,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update route")
@@ -473,12 +520,7 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated.Tags = nonNilRouteTags(updated.Tags)
-	activeImage, imageErr := h.queries.GetActiveWallImage(r.Context(), updated.WallID)
-	if imageErr != nil && !errors.Is(imageErr, pgx.ErrNoRows) {
-		writeError(w, http.StatusInternalServerError, "database error")
-		return
-	}
-	isLegacy := errors.Is(imageErr, pgx.ErrNoRows) || (imageErr == nil && updated.WallImageID != activeImage.ID)
+	isLegacy := updated.WallImageID != activeImage.ID
 	summaries, summaryErr := h.summarizeRoutes(r.Context(), []generated.Route{updated}, shared.PgUUID(userID))
 	if summaryErr != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
