@@ -52,12 +52,18 @@ export default function RouteDetailPage() {
   const wall = wallQuery.data;
   const allHolds = holdsQuery.data;
 
-  const visibleHoldIds = routeData?.is_legacy
-    ? routeData.active_hold_ids ?? []
-    : routeData?.hold_ids ?? [];
-  const visibleHoldRoles = routeData?.is_legacy
-    ? routeData.active_hold_roles ?? null
-    : routeData?.hold_roles ?? null;
+  const visibleHoldIds = useMemo(
+    () => routeData?.is_legacy
+      ? routeData.active_hold_ids ?? []
+      : routeData?.hold_ids ?? [],
+    [routeData],
+  );
+  const visibleHoldRoles = useMemo(
+    () => routeData?.is_legacy
+      ? routeData.active_hold_roles ?? null
+      : routeData?.hold_roles ?? null,
+    [routeData],
+  );
   const routeHoldIds = useMemo(() => new Set(visibleHoldIds), [visibleHoldIds]);
   const routeHolds = useMemo(
     () => (allHolds ?? []).filter((h) => routeHoldIds.has(h.id)),

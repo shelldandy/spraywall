@@ -463,13 +463,8 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wallImageID := rt.WallImageID
-	validationImageID := rt.WallImageID
-	if rt.WallImageID != activeImage.ID {
-		validationImageID = activeImage.ID
-		wallImageID = activeImage.ID
-	}
-	existingHolds, err := h.queries.GetHoldsByWallImage(r.Context(), validationImageID)
+	wallImageID := activeImage.ID
+	existingHolds, err := h.queries.GetHoldsByWallImage(r.Context(), wallImageID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
@@ -480,11 +475,7 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, holdID := range holdIDs {
 		if !validHoldIDs[holdID] {
-			if rt.WallImageID != activeImage.ID {
-				writeError(w, http.StatusBadRequest, "one or more hold IDs do not belong to the active wall image")
-			} else {
-				writeError(w, http.StatusBadRequest, "one or more hold IDs do not belong to the route wall image")
-			}
+			writeError(w, http.StatusBadRequest, "one or more hold IDs do not belong to the active wall image")
 			return
 		}
 	}
