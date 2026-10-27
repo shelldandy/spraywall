@@ -6,7 +6,7 @@
 }
 .overlay::backdrop { background: rgb(0 0 0 / 40%); }
 .sheet {
-  display: flex; flex-direction: column; width: 100%; max-width: 640px; max-height: 70%;
+  display: flex; flex-direction: column; width: 100%; max-width: 640px; max-height: 85%;
   padding-bottom: calc(16px + var(--safe-bottom)); border-radius: 16px 16px 0 0;
   background: var(--bg); animation: filter-slide-up 0.2s ease-out;
 }
@@ -19,5 +19,5 @@
 .count { color: var(--text-muted); font-size: 14px; text-align: right; }
 @media (min-width: 700px) {
   .overlay { justify-content: center; }
-  .sheet { max-height: 70vh; border-radius: 16px; padding-bottom: 8px; }
+  .sheet { max-height: 85vh; border-radius: 16px; padding-bottom: 8px; }
 }
