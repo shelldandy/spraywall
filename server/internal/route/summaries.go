@@ -9,17 +9,18 @@ import (
 )
 
 type routeSummary struct {
-	sendCount     int
-	hasSent       bool
-	progress      string
-	hasFlashed    bool
-	ratingAverage *float64
-	ratingCount   int
-	myRating      *int
+	sendCount      int
+	hasSent        bool
+	progress       string
+	hasFlashed     bool
+	ratingAverage  *float64
+	ratingCount    int
+	myRating       *int
+	betaVideoCount int
 }
 
-// summarizeRoutes runs separate batched log and rating aggregates so repeats
-// never multiply successful-event counts or rating weights.
+// summarizeRoutes runs separate batched log, rating, and beta-video aggregates
+// so repeats never multiply successful-event counts or rating weights.
 func (h *Handler) summarizeRoutes(ctx context.Context, routes []generated.Route, userID pgtype.UUID) (map[pgtype.UUID]routeSummary, error) {
 	out := make(map[pgtype.UUID]routeSummary, len(routes))
 	if len(routes) == 0 {
@@ -61,6 +62,15 @@ func (h *Handler) summarizeRoutes(ctx context.Context, routes []generated.Route,
 		}
 		out[row.RouteID] = value
 	}
+	videoCounts, err := h.queries.GetRouteBetaVideoCounts(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range videoCounts {
+		value := out[row.RouteID]
+		value.betaVideoCount = int(row.VideoCount)
+		out[row.RouteID] = value
+	}
 	return out, nil
 }
 
@@ -72,4 +82,5 @@ func applySummary(response *routeResponse, summary routeSummary) {
 	response.RatingAverage = summary.ratingAverage
 	response.RatingCount = summary.ratingCount
 	response.MyRating = summary.myRating
+	response.BetaVideoCount = summary.betaVideoCount
 }

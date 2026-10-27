@@ -119,6 +119,8 @@ export interface Route {
   rating_count?: number;
   my_rating?: number | null;
   /** Optional for compatibility with routes restored from older offline caches. */
+  beta_video_count?: number;
+  /** Optional for compatibility with routes restored from older offline caches. */
   tags?: RouteTagId[];
 }
 

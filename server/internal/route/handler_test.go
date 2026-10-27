@@ -39,9 +39,10 @@ type routeTestEnv struct {
 }
 
 type routeTestResponse struct {
-	ID     string   `json:"id"`
-	Tags   []string `json:"tags"`
-	Status string   `json:"status"`
+	ID             string   `json:"id"`
+	Tags           []string `json:"tags"`
+	Status         string   `json:"status"`
+	BetaVideoCount int      `json:"beta_video_count"`
 }
 
 func newRouteTestEnv(t *testing.T) *routeTestEnv {

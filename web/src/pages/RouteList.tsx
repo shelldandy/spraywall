@@ -8,7 +8,7 @@ import RouteTags from "../components/RouteTags";
 import type { Circuit, Hold, Route } from "../lib/api/types";
 import { getGradeColorStyle, getVGradeRank, uniqueVGrades } from "../lib/grades";
 import { circuitColor } from "../lib/circuitStyle";
-import { applyCircuit, parseRouteFilters, writeRouteFilters, matchesRouteFilters, hasRouteFilters, type ProgressFilter } from "../lib/routeFilters";
+import { applyCircuit, parseRouteFilters, writeRouteFilters, matchesRouteFilters, hasRouteFilters, parseRouteSort, writeRouteSort, sortRoutes, type ProgressFilter, type RouteSort } from "../lib/routeFilters";
 import type { RouteTagId } from "../lib/routeTags";
 import styles from "./RouteList.module.css";
 
@@ -72,20 +72,24 @@ export default function RouteList({
   const [gradePickerOpen, setGradePickerOpen] = useState(false);
   const [progressPickerOpen, setProgressPickerOpen] = useState(false);
   const [starsPickerOpen, setStarsPickerOpen] = useState(false);
+  const [sortPickerOpen, setSortPickerOpen] = useState(false);
   const [circuitPickerOpen, setCircuitPickerOpen] = useState(false);
   const gradeTriggerRef = useRef<HTMLButtonElement>(null);
   const progressTriggerRef = useRef<HTMLButtonElement>(null);
   const starsTriggerRef = useRef<HTMLButtonElement>(null);
+  const sortTriggerRef = useRef<HTMLButtonElement>(null);
   const circuitTriggerRef = useRef<HTMLButtonElement>(null);
   const filters = parseRouteFilters(searchParams);
-  const { tags: selectedTags, minGrade, maxGrade, progress, minStars } = filters;
+  const sort = parseRouteSort(searchParams);
+  const { tags: selectedTags, minGrade, maxGrade, progress, minStars, hasBeta } = filters;
   const minRank = minGrade === null ? null : getVGradeRank(minGrade);
   const gradeOptions = uniqueVGrades();
   const hasGradeFilter = minGrade !== null || maxGrade !== null;
 
   useEffect(() => {
     const currentFilters = parseRouteFilters(searchParams);
-    const canonical = writeRouteFilters(new URLSearchParams(searchParams), currentFilters);
+    const canonicalFilters = writeRouteFilters(new URLSearchParams(searchParams), currentFilters);
+    const canonical = writeRouteSort(canonicalFilters, parseRouteSort(searchParams));
     if (canonical.toString() !== searchParams.toString()) setSearchParams(canonical, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -100,15 +104,18 @@ export default function RouteList({
     setSearchParams(canonical, { replace: true });
   }, [circuitsLoaded, filters, activeCircuit, searchParams, setSearchParams]);
   const circuitRoutes = activeCircuit ? applyCircuit(routes, activeCircuit.route_ids) : routes;
-  const matchingRoutes = circuitRoutes.filter((route) => matchesRouteFilters(route, filters));
+  const matchingRoutes = sortRoutes(circuitRoutes.filter((route) => matchesRouteFilters(route, filters)), sort);
   const hasActiveFilters = hasRouteFilters(filters);
   const updateFilters = (next: Partial<typeof filters>) => {
     const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, ...next });
     setSearchParams(nextParams, { replace: true });
   };
   const updateTags = (tags: readonly RouteTagId[]) => updateFilters({ tags: [...tags] });
+  const updateSort = (nextSort: RouteSort) => {
+    setSearchParams(writeRouteSort(new URLSearchParams(searchParams), nextSort), { replace: true });
+  };
   const clearFilters = () => {
-    const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, tags: [], minGrade: null, maxGrade: null, progress: null, minStars: null, circuit: null });
+    const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, tags: [], minGrade: null, maxGrade: null, progress: null, minStars: null, circuit: null, hasBeta: false });
     setSearchParams(nextParams, { replace: true });
   };
   const selectGrade = (grade: string) => {
@@ -133,6 +140,7 @@ export default function RouteList({
     : minGrade !== null ? `${minGrade}+` : maxGrade !== null ? `≤${maxGrade}` : "Grade";
   const progressLabel = progressChoices.find((choice) => choice.value === progress)?.label ?? "All";
   const starsLabel = minStars === null ? "Any" : `${minStars}+`;
+  const sortLabel = sort === "grade_asc" ? "Grade ↑" : sort === "grade_desc" ? "Grade ↓" : "Newest";
   const noMatchesMessage = "No routes match these filters";
 
   return (
@@ -155,12 +163,16 @@ export default function RouteList({
         >
           {hasGradeFilter && <span aria-hidden="true">✓</span>}{gradeSummary}
         </button>
+        <button type="button" className={`${styles.gradeToggle} ${hasBeta ? styles.gradeToggleActive : ""}`} aria-pressed={hasBeta} onClick={() => updateFilters({ hasBeta: !hasBeta })}>
+          {hasBeta && <span aria-hidden="true">✓</span>}▶ Has beta
+        </button>
         <button ref={progressTriggerRef} type="button" className={`${styles.gradeToggle} ${progress ? styles.gradeToggleActive : ""}`} aria-expanded={progressPickerOpen} onClick={() => setProgressPickerOpen(true)}>
           {progress && <span aria-hidden="true">✓</span>}Progress: {progressLabel}
         </button>
         <button ref={starsTriggerRef} type="button" className={`${styles.gradeToggle} ${minStars !== null ? styles.gradeToggleActive : ""}`} aria-expanded={starsPickerOpen} onClick={() => setStarsPickerOpen(true)}>
           {minStars !== null && <span aria-hidden="true">✓</span>}Community: {starsLabel}
         </button>
+        <button ref={sortTriggerRef} type="button" className={`${styles.gradeToggle} ${sort !== "newest" ? styles.gradeToggleActive : ""}`} aria-expanded={sortPickerOpen} onClick={() => setSortPickerOpen(true)}>Sort: {sortLabel}</button>
         <button ref={circuitTriggerRef} type="button" className={`${styles.gradeToggle} ${activeCircuit ? styles.gradeToggleActive : ""}`} style={activeCircuit ? { borderColor: circuitColor(activeCircuit.color), backgroundColor: `color-mix(in srgb, ${circuitColor(activeCircuit.color)} 20%, var(--bg-muted))` } : undefined} onClick={() => setCircuitPickerOpen(true)}>Circuit: {activeCircuit ? `${activeCircuit.emoji} ${activeCircuit.name}` : "Any"}</button>
         {hasActiveFilters && <button type="button" className={`${styles.gradeToggle} ${styles.clearAllToggle}`} onClick={clearFilters}>Clear all</button>}
       </div>
@@ -183,6 +195,14 @@ export default function RouteList({
         <div className={styles.gradeOptions} role="group" aria-label="Filter by personal progress">
           <button type="button" className={`${styles.gradeOption} ${progress === null ? styles.gradeOptionAnySelected : ""}`} aria-pressed={progress === null} onClick={() => updateFilters({ progress: null })}>All</button>
           {progressChoices.map(({ value, label }) => <button key={value} type="button" className={`${styles.gradeOption} ${progress === value ? styles.gradeOptionSelected : ""}`} aria-pressed={progress === value} onClick={() => updateFilters({ progress: value })}>{label}</button>)}
+        </div>
+      </FilterDrawer>
+      <FilterDrawer open={sortPickerOpen} title="Sort" onClose={() => setSortPickerOpen(false)} onClear={() => updateSort("newest")} matchingCount={matchingRoutes.length} triggerRef={sortTriggerRef}>
+        <div className={styles.gradeOptions} role="group" aria-label="Sort climbs">
+          {(["newest", "grade_asc", "grade_desc"] as const).map((value) => {
+            const label = value === "newest" ? "Newest" : value === "grade_asc" ? "Grade ↑" : "Grade ↓";
+            return <button key={value} type="button" className={`${styles.gradeOption} ${sort === value ? styles.gradeOptionSelected : ""}`} aria-pressed={sort === value} onClick={() => updateSort(value)}>{label}</button>;
+          })}
         </div>
       </FilterDrawer>
       <FilterDrawer open={circuitPickerOpen} title="Circuit" onClose={() => setCircuitPickerOpen(false)} onClear={() => updateCircuit(null)} matchingCount={matchingRoutes.length} triggerRef={circuitTriggerRef}>
@@ -209,7 +229,7 @@ export default function RouteList({
       {matchingRoutes.length > 0 && (
         <ul className={styles.list}>
           {matchingRoutes.map((route) => {
-            const linkParams = writeRouteFilters(new URLSearchParams(searchParams), filters);
+            const linkParams = writeRouteSort(writeRouteFilters(new URLSearchParams(searchParams), filters), sort);
             linkParams.set("wallId", wallId);
             linkParams.set("gymSlug", gymSlug);
             return (

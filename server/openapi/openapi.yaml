@@ -1799,7 +1799,10 @@ components:
           type: integer
         my_rating:
           type: [integer, "null"]
-      required: [id, wall_id, name, hold_ids, tags, send_count, has_sent, progress, has_flashed, rating_average, rating_count, my_rating]
+        beta_video_count:
+          type: integer
+          description: Number of beta videos linked to this route.
+      required: [id, wall_id, name, hold_ids, tags, send_count, has_sent, progress, has_flashed, rating_average, rating_count, my_rating, beta_video_count]
 
     ClimbLogRequest:
       type: object

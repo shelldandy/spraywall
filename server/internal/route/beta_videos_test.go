@@ -99,6 +99,18 @@ func TestBetaVideoCreateListDuplicateAndDeletePermissions(t *testing.T) {
 	if first.ClimberHandle == nil || *first.ClimberHandle != "beta-climber" || !first.CanDelete {
 		t.Fatalf("handle normalization or poster permission failed: %#v", first)
 	}
+	listRec := e.request(http.MethodGet, "", e.token, "")
+	var routeCounts []routeTestResponse
+	if listRec.Code != http.StatusOK || json.Unmarshal(listRec.Body.Bytes(), &routeCounts) != nil {
+		t.Fatalf("list route beta video counts: %d %s", listRec.Code, listRec.Body)
+	}
+	countsByID := make(map[string]int, len(routeCounts))
+	for _, route := range routeCounts {
+		countsByID[route.ID] = route.BetaVideoCount
+	}
+	if countsByID[routeA.ID] != 1 || countsByID[routeB.ID] != 0 {
+		t.Fatalf("route beta video counts = %#v, want route A=1 and route B=0", countsByID)
+	}
 	if rec := e.requestSubpath(http.MethodPost, routeA.ID, "/beta-videos", e.other, `{"url":"https://www.youtube.com/shorts/dQw4w9WgXcQ"}`); rec.Code != http.StatusConflict {
 		t.Fatalf("duplicate status = %d, want 409: %s", rec.Code, rec.Body)
 	}
