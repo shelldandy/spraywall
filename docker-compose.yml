@@ -53,6 +53,7 @@ services:
       OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:-}
       OIDC_ADMIN_MAX_AGE: ${OIDC_ADMIN_MAX_AGE:-24h}
       PASSWORD_LOGIN_ENABLED: ${PASSWORD_LOGIN_ENABLED:-true}
+      IMMICH_ALLOWED_HOSTS: ${IMMICH_ALLOWED_HOSTS:-}
     depends_on:
       postgres:
         condition: service_healthy

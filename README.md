@@ -85,12 +85,16 @@ cp .env.example .env
 # Start backend services (Postgres, MinIO, Go server, Python worker)
 make dev
 
-# In another terminal — start the web app (proxies /api and /images to :8080)
+# In another terminal — start the web app (proxies /api, /images, and /beta-media to :8080)
 make web
 ```
 
 The app is a mobile-first PWA. Open it on your phone and use "Add to Home Screen" to install it.
 It caches the app shell, wall images and recently viewed data for offline browsing; changes need a connection.
+
+## Beta Videos
+
+Climbers can add YouTube, Instagram, TikTok, and Immich video links to climbs. Immich links are resolved and streamed by the server, so Immich can remain accessible only on your LAN or tailnet. To enable Immich, set `IMMICH_ALLOWED_HOSTS` to a comma-separated list of exact hostnames (optionally including ports), without a scheme; for example `photos.example.net,immich.tailnet:2283`. The allow-list is required as an SSRF guard. Leave it empty to disable Immich links. YouTube, Instagram, and TikTok links work without this setting.
 
 ## Services (dev)
 

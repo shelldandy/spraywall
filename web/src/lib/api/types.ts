@@ -157,6 +157,29 @@ export interface ActivityPage {
   next_cursor: string | null;
 }
 
+export type BetaVideoSource = "immich" | "youtube" | "instagram" | "tiktok";
+
+export interface BetaVideo {
+  id: string;
+  source: BetaVideoSource;
+  url: string;
+  climber_handle: string | null;
+  thumbnail_url: string | null;
+  playback_url: string | null;
+  created_at: string;
+  user: {
+    id: string;
+    display_name: string;
+    avatar_url: string | null;
+  };
+  can_delete: boolean;
+}
+
+export interface BetaVideoList {
+  items: BetaVideo[];
+  total: number;
+}
+
 export interface LogbookEntry extends ClimbLog {
   user_id: string;
   /** Deprecated compatibility alias for cached send clients. */

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../api/fetch";
 import { prepareImageForUpload } from "../image";
-import type { Circuit, HoldRoles, Me } from "../api/types";
+import type { BetaVideo, Circuit, HoldRoles, Me } from "../api/types";
 import type { RouteTagId } from "../routeTags";
 import { useAuthStore } from "../store/auth";
 import { toastError } from "../toast";
@@ -159,6 +159,34 @@ export function useDeleteClimbLog(gymSlug: string, wallId: string, routeId: stri
       await ensureOkJson(res, "Failed to delete log entry");
     },
     onSuccess: () => invalidateClimbData(queryClient, routeId, wallId),
+  });
+}
+
+export function useCreateBetaVideo(gymSlug: string, wallId: string, routeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<BetaVideo, Error, { url: string; climber_handle?: string }>({
+    mutationFn: async (input) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/beta-videos`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+      await ensureOkJson(res, "Failed to add beta video");
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["beta-videos", routeId] }),
+    onError: toastError,
+  });
+}
+
+export function useDeleteBetaVideo(gymSlug: string, wallId: string, routeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (videoId) => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/beta-videos/${videoId}`, { method: "DELETE" });
+      await ensureOkJson(res, "Failed to delete beta video");
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["beta-videos", routeId] }),
+    onError: toastError,
   });
 }
 

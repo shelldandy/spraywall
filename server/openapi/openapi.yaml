@@ -1016,6 +1016,95 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/beta-videos:
+    parameters:
+      - $ref: "#/components/parameters/gymSlug"
+      - $ref: "#/components/parameters/wallId"
+      - $ref: "#/components/parameters/routeId"
+    get:
+      operationId: listBetaVideos
+      summary: List beta videos for a climb
+      tags: [Route]
+      security: [{BearerAuth: []}]
+      responses:
+        "200":
+          description: Beta videos, newest first (at most 100 items)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BetaVideoList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: createBetaVideo
+      summary: Add a beta video link to a climb
+      tags: [Route]
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateBetaVideoRequest"}
+      responses:
+        "201":
+          description: Beta video added
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BetaVideo"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {description: This link was already added to the climb}
+        "422": {description: Immich share is unavailable, password-protected, contains no video, or its host is not allowed}
+  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/beta-videos/{videoId}:
+    delete:
+      operationId: deleteBetaVideo
+      summary: Delete a beta video
+      tags: [Route]
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
+        - name: videoId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "204": {description: Beta video deleted}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /beta-media/{videoId}/{kind}:
+    get:
+      operationId: getBetaVideoMedia
+      summary: Stream an Immich beta thumbnail or video
+      description: Public endpoint for native media elements. UUIDs are unguessable and media is available only while the beta video exists.
+      tags: [Route]
+      security: []
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: kind
+          in: path
+          required: true
+          schema: {type: string, enum: [thumbnail, playback]}
+        - name: Range
+          in: header
+          required: false
+          schema: {type: string}
+        - name: If-Range
+          in: header
+          required: false
+          schema: {type: string}
+      responses:
+        "200": {description: Media stream}
+        "206": {description: Partial media stream}
+        "404": {description: Video not found or share revoked}
+        "502": {description: Immich server unavailable}
+
   /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/activity:
     get:
       operationId: listRouteActivity
@@ -1326,6 +1415,40 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    CreateBetaVideoRequest:
+      type: object
+      required: [url]
+      properties:
+        url: {type: string, format: uri, maxLength: 2048}
+        climber_handle: {type: [string, "null"], maxLength: 80}
+    BetaVideo:
+      type: object
+      required: [id, source, url, climber_handle, thumbnail_url, playback_url, created_at, user, can_delete]
+      properties:
+        id: {type: string, format: uuid}
+        source: {type: string, enum: [immich, youtube, instagram, tiktok]}
+        url: {type: string, format: uri}
+        climber_handle: {type: [string, "null"]}
+        thumbnail_url: {type: [string, "null"]}
+        playback_url: {type: [string, "null"]}
+        created_at: {type: string, format: date-time}
+        user:
+          type: object
+          required: [id, display_name, avatar_url]
+          properties:
+            id: {type: string, format: uuid}
+            display_name: {type: string}
+            avatar_url: {type: [string, "null"]}
+        can_delete: {type: boolean}
+    BetaVideoList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: "#/components/schemas/BetaVideo"}
+        total: {type: integer, minimum: 0}
     Circuit:
       type: object
       required: [id, wall_id, created_by, creator_name, name, color, emoji, is_shared, is_owner, route_ids, created_at, updated_at]

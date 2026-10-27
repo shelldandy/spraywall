@@ -13,6 +13,7 @@ import type {
   Circuit,
   ResetDiff,
   ActivityPage,
+  BetaVideoList,
 } from "../api/types";
 import { useAuthStore } from "../store/auth";
 
@@ -149,6 +150,18 @@ export function useRouteLogs(routeId: string, gymSlug?: string, wallId?: string)
       return res.json();
     },
     enabled: Boolean(routeId && gymSlug && wallId),
+  });
+}
+
+export function useBetaVideos({ gymSlug, wallId, routeId }: { gymSlug: string; wallId: string; routeId: string }) {
+  return useQuery<BetaVideoList>({
+    queryKey: ["beta-videos", routeId],
+    queryFn: async () => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/beta-videos`);
+      if (!res.ok) throw new Error("Failed to fetch beta videos");
+      return res.json();
+    },
+    enabled: Boolean(gymSlug && wallId && routeId),
   });
 }
 
