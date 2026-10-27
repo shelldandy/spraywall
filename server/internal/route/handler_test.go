@@ -101,6 +101,9 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 	})
 	r.Route("/gyms/{gymSlug}", func(r chi.Router) {
 		r.Use(auth.Authenticate)
+		r.Route("/walls/{wallId}", func(r chi.Router) {
+			r.Get("/activity", routehandler.NewHandler(q, pool).WallActivity)
+		})
 		r.Route("/walls/{wallId}/circuits", func(r chi.Router) {
 			h := routehandler.NewHandler(q, pool)
 			r.Get("/", h.ListCircuits)
@@ -120,6 +123,7 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 			r.Get("/", h.ListRoutes)
 			r.Route("/{routeId}", func(r chi.Router) {
 				r.Get("/", h.GetRoute)
+				r.Get("/activity", h.RouteActivity)
 				r.Put("/", h.UpdateRoute)
 				r.Route("/logs", func(r chi.Router) {
 					r.Get("/", h.GetLogs)

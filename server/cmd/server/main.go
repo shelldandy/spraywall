@@ -180,6 +180,7 @@ func main() {
 				r.Get("/", wallHandler.ListWalls)
 				r.Route("/{wallId}", func(r chi.Router) {
 					r.Get("/", wallHandler.GetWall)
+					r.Get("/activity", routeHandler.WallActivity)
 					r.Delete("/", wallHandler.DeleteWall)
 					r.Post("/images", wallHandler.UploadImage)
 					r.Route("/resets/{imageId}", func(r chi.Router) {
@@ -210,6 +211,7 @@ func main() {
 						r.Get("/", routeHandler.ListRoutes)
 						r.Route("/{routeId}", func(r chi.Router) {
 							r.Get("/", routeHandler.GetRoute)
+							r.Get("/activity", routeHandler.RouteActivity)
 							r.Put("/", routeHandler.UpdateRoute)
 							r.Delete("/", routeHandler.DeleteRoute)
 							r.Patch("/publish", routeHandler.PublishRoute)
