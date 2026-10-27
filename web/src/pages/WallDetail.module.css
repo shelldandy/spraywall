@@ -15,6 +15,20 @@
   color: var(--accent);
 }
 
+.manageWallIconButton {
+  padding: 6px 8px;
+}
+
+.manageWallIconButton svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .browseBody {
   width: 100%;
   max-width: 860px;
@@ -58,6 +72,13 @@
   color: var(--text);
   font-weight: 700;
   box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+}
+
+.viewCount {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .manageWallButton {

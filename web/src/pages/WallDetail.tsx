@@ -502,6 +502,19 @@ export default function WallDetailPage() {
           <button type="button" className={`btn btn-ghost ${styles.headerRight}`} onClick={closeCreateMode}>
             Done
           </button>
+        ) : canEdit ? (
+          <button
+            type="button"
+            className={`btn btn-ghost ${styles.headerRight} ${styles.manageWallIconButton}`}
+            onClick={() => setIsManagingWall(true)}
+            aria-label="Manage wall"
+            title="Manage wall"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z" />
+              <path d="m19.4 15 .1.1a1.8 1.8 0 0 1-2.55 2.55l-.1-.1a1.8 1.8 0 0 0-3.07 1.27v.28a1.8 1.8 0 0 1-3.6 0v-.15a1.8 1.8 0 0 0-3.07-1.27l-.1.1a1.8 1.8 0 0 1-2.55-2.55l.1-.1a1.8 1.8 0 0 0-1.27-3.07H3a1.8 1.8 0 0 1 0-3.6h.15a1.8 1.8 0 0 0 1.27-3.07l-.1-.1a1.8 1.8 0 0 1 2.55-2.55l.1.1a1.8 1.8 0 0 0 3.07-1.27V3a1.8 1.8 0 0 1 3.6 0v.15a1.8 1.8 0 0 0 3.07 1.27l.1-.1a1.8 1.8 0 0 1 2.55 2.55l-.1.1a1.8 1.8 0 0 0 1.27 3.07H21a1.8 1.8 0 0 1 0 3.6h-.15A1.8 1.8 0 0 0 19.4 15Z" />
+            </svg>
+          </button>
         ) : (
           <span className={styles.headerRight} aria-hidden="true" />
         )}
@@ -674,22 +687,12 @@ export default function WallDetailPage() {
           {wallQuery.isError && !wall && <p className="error-text">{wallQuery.error.message}</p>}
           <div className={styles.browseHeading}>
             <div className={styles.viewToggle} role="group" aria-label="Wall view">
-              <button type="button" className={browseView === "climbs" ? styles.viewActive : ""} aria-pressed={browseView === "climbs"} onClick={() => setBrowseView("climbs")}>Climbs</button>
+              <button type="button" className={browseView === "climbs" ? styles.viewActive : ""} aria-pressed={browseView === "climbs"} onClick={() => setBrowseView("climbs")}>
+                Climbs{browseView === "climbs" && routesQuery.data && routesQuery.data.length > 0 && <> <span className={styles.viewCount}>{routesQuery.data.length}</span></>}
+              </button>
               <button type="button" className={browseView === "activity" ? styles.viewActive : ""} aria-pressed={browseView === "activity"} onClick={() => setBrowseView("activity")}>Activity</button>
             </div>
             <Link className={`btn btn-ghost ${styles.manageWallButton}`} to={`/circuits?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`}>Circuits</Link>
-            {browseView === "climbs" && routesQuery.data && routesQuery.data.length > 0 && (
-              <span className="muted">{routesQuery.data.length}</span>
-            )}
-            {canEdit && (
-              <button
-                type="button"
-                className={`btn ${styles.manageWallButton}`}
-                onClick={() => setIsManagingWall(true)}
-              >
-                Manage Wall
-              </button>
-            )}
           </div>
           {browseView === "activity" ? (
             <ActivityFeed gymSlug={gymSlug ?? ""} wallId={wallId} showRoute />
