@@ -10,6 +10,7 @@ import { parseRouteTags } from "../lib/routeTags";
 import HoldOverlay from "../components/HoldOverlay";
 import WallImage from "../components/WallImage";
 import RouteList from "./RouteList";
+import ActivityFeed from "../components/ActivityFeed";
 import styles from "./WallDetail.module.css";
 
 type HoldRole = "normal" | "start" | "hand" | "finish" | "foot";
@@ -51,7 +52,7 @@ function initialSelections(editHoldIds: string | null, editHoldRoles: string | n
 
 export default function WallDetailPage() {
   const { wallId = "" } = useParams<{ wallId: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const gymSlug = searchParams.get("gymSlug") ?? undefined;
   const editRouteId = searchParams.get("editRouteId");
   const editName = searchParams.get("editName");
@@ -63,6 +64,7 @@ export default function WallDetailPage() {
 
   const isEditingRoute = !!editRouteId;
   const isCreateMode = isEditingRoute || searchParams.get("mode") === "create";
+  const browseView = searchParams.get("view") === "activity" ? "activity" : "climbs";
 
   const [isEditingHolds, setIsEditingHolds] = useState(false);
   const [isManagingWall, setIsManagingWall] = useState(false);
@@ -320,6 +322,13 @@ export default function WallDetailPage() {
       params.set("initialTags", JSON.stringify(initialRouteTags(editTags)));
     }
     navigate(`/routes/create?${params}`);
+  };
+
+  const setBrowseView = (view: "climbs" | "activity") => {
+    const next = new URLSearchParams(searchParams);
+    if (view === "activity") next.set("view", "activity");
+    else next.delete("view");
+    setSearchParams(next);
   };
 
   const closeCreateMode = () => {
@@ -664,9 +673,12 @@ export default function WallDetailPage() {
         <main className={`content ${styles.browseBody}`}>
           {wallQuery.isError && !wall && <p className="error-text">{wallQuery.error.message}</p>}
           <div className={styles.browseHeading}>
-            <h2>Climbs</h2>
+            <div className={styles.viewToggle} role="group" aria-label="Wall view">
+              <button type="button" className={browseView === "climbs" ? styles.viewActive : ""} aria-pressed={browseView === "climbs"} onClick={() => setBrowseView("climbs")}>Climbs</button>
+              <button type="button" className={browseView === "activity" ? styles.viewActive : ""} aria-pressed={browseView === "activity"} onClick={() => setBrowseView("activity")}>Activity</button>
+            </div>
             <Link className={`btn btn-ghost ${styles.manageWallButton}`} to={`/circuits?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`}>Circuits</Link>
-            {routesQuery.data && routesQuery.data.length > 0 && (
+            {browseView === "climbs" && routesQuery.data && routesQuery.data.length > 0 && (
               <span className="muted">{routesQuery.data.length}</span>
             )}
             {canEdit && (
@@ -679,7 +691,9 @@ export default function WallDetailPage() {
               </button>
             )}
           </div>
-          {routesQuery.isLoading ? (
+          {browseView === "activity" ? (
+            <ActivityFeed gymSlug={gymSlug ?? ""} wallId={wallId} showRoute />
+          ) : routesQuery.isLoading ? (
             <div className={styles.loader}>
               <div className="spinner" />
             </div>

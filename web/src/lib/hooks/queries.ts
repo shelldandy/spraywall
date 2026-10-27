@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { API_BASE, apiFetch } from "../api/fetch";
 import type {
   AuthConfig,
@@ -12,6 +12,7 @@ import type {
   Me,
   Circuit,
   ResetDiff,
+  ActivityPage,
 } from "../api/types";
 import { useAuthStore } from "../store/auth";
 
@@ -148,6 +149,26 @@ export function useRouteLogs(routeId: string, gymSlug?: string, wallId?: string)
       return res.json();
     },
     enabled: Boolean(routeId && gymSlug && wallId),
+  });
+}
+
+export function useActivity({ gymSlug, wallId, routeId }: { gymSlug: string; wallId: string; routeId?: string }) {
+  const userId = useAuthStore((s) => s.userId);
+  return useInfiniteQuery({
+    queryKey: ["activity", wallId, routeId ?? "wall", userId],
+    queryFn: async ({ pageParam }) => {
+      const endpoint = routeId
+        ? `/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/activity`
+        : `/gyms/${gymSlug}/walls/${wallId}/activity`;
+      const search = new URLSearchParams();
+      if (pageParam) search.set("cursor", pageParam);
+      const res = await apiFetch(`${endpoint}${search.size ? `?${search}` : ""}`);
+      if (!res.ok) throw new Error("Failed to fetch activity");
+      return res.json() as Promise<ActivityPage>;
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.next_cursor,
+    enabled: Boolean(gymSlug && wallId),
   });
 }
 

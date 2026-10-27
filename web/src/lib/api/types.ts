@@ -134,6 +134,29 @@ export interface ClimbLog {
   attempts?: number | null;
 }
 
+export interface ActivityItem {
+  id: string;
+  route_id: string;
+  route_name: string;
+  route_grade: string | null;
+  route_is_legacy: boolean;
+  outcome: ClimbOutcome;
+  climbed_on: string;
+  logged_at: string;
+  notes: string | null;
+  attempts: number | null;
+  user: {
+    id: string;
+    display_name: string;
+    avatar_url: string | null;
+  };
+}
+
+export interface ActivityPage {
+  items: ActivityItem[];
+  next_cursor: string | null;
+}
+
 export interface LogbookEntry extends ClimbLog {
   user_id: string;
   /** Deprecated compatibility alias for cached send clients. */

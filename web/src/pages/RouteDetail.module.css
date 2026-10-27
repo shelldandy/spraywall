@@ -181,6 +181,15 @@
   color: var(--text-muted);
 }
 
+.activitySection {
+  margin: 8px 0 24px;
+}
+
+.activitySection h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
 .sendButton {
   margin-bottom: 12px;
   padding: 14px;

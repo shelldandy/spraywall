@@ -12,21 +12,13 @@ import {
 } from "../lib/hooks/mutations";
 import { prepareImageForUpload } from "../lib/image";
 import { oidcErrorMessage } from "../lib/oidc";
+import { initials } from "../lib/initials";
 import { toast } from "../lib/toast";
 import styles from "./Profile.module.css";
 
 const AVATAR_DIMENSION = 512;
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const MIN_PASSWORD_LENGTH = 8;
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  return parts
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join("")
-    .toUpperCase();
-}
 
 export default function ProfilePage() {
   const meQuery = useMe();

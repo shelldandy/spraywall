@@ -121,6 +121,7 @@ function invalidateClimbData(queryClient: ReturnType<typeof useQueryClient>, rou
   queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
   queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
   queryClient.invalidateQueries({ queryKey: ["climb-logs", routeId] });
+  queryClient.invalidateQueries({ queryKey: ["activity", wallId] });
   queryClient.invalidateQueries({ queryKey: ["logbook"] });
 }
 

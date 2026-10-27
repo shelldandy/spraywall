@@ -981,11 +981,82 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /gyms/{gymSlug}/walls/{wallId}/activity:
+    get:
+      operationId: listWallActivity
+      summary: List activity across climbs on a wall
+      description: Returns published climb activity from all gym members, including notes, newest climbing date first. Draft activity is visible only to its author.
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - name: cursor
+          in: query
+          description: Opaque cursor returned by the previous page.
+          schema: { type: string }
+        - name: limit
+          in: query
+          description: Page size (default 20, maximum 50).
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: Activity page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller is not a member of the gym
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/activity:
+    get:
+      operationId: listRouteActivity
+      summary: List activity for a climb
+      description: Returns all gym members' activity and notes for this climb. Draft activity is visible only to its author.
+      tags: [Route]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/gymSlug"
+        - $ref: "#/components/parameters/wallId"
+        - $ref: "#/components/parameters/routeId"
+        - name: cursor
+          in: query
+          description: Opaque cursor returned by the previous page.
+          schema: { type: string }
+        - name: limit
+          in: query
+          description: Page size (default 20, maximum 50).
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: Activity page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller is not a member of the gym
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/logs:
     get:
       operationId: listClimbLogs
       summary: List the current user's history for a climb
-      description: Returns only the authenticated member's entries; notes are never shared with other members.
+      description: Returns only the authenticated member's entries. The activity feed is a separate gym-visible view that includes notes.
       tags: [Route]
       security:
         - BearerAuth: []
@@ -1625,6 +1696,38 @@ components:
         logged_at: { type: string, format: date-time }
         notes: { type: [string, "null"] }
       required: [id, route_id, outcome, climbed_on, logged_at, notes]
+
+    ActivityItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        route_id: { type: string, format: uuid }
+        route_name: { type: string }
+        route_grade: { type: [string, "null"] }
+        route_is_legacy: { type: boolean }
+        outcome: { type: string, enum: [attempt, send, flash] }
+        climbed_on: { type: string, format: date }
+        logged_at: { type: string, format: date-time }
+        notes: { type: [string, "null"] }
+        attempts: { type: [integer, "null"] }
+        user:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            display_name: { type: string }
+            avatar_url: { type: [string, "null"], format: uri-reference }
+          required: [id, display_name, avatar_url]
+      required: [id, route_id, route_name, route_grade, route_is_legacy, outcome, climbed_on, logged_at, notes, attempts, user]
+
+    ActivityPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityItem"
+        next_cursor: { type: [string, "null"] }
+      required: [items, next_cursor]
 
     LogbookEntry:
       allOf:

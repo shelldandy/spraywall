@@ -33,6 +33,33 @@
   font-size: 20px;
 }
 
+.viewToggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-muted);
+}
+
+.viewToggle button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.viewToggle .viewActive {
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+}
+
 .manageWallButton {
   margin-left: auto;
   padding: 8px 12px;
