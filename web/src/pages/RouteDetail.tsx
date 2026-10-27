@@ -146,6 +146,9 @@ export default function RouteDetailPage() {
     if (nextId) navigate(`/routes/${nextId}?${circuitParams}`);
   };
   const sendCount = routeData?.send_count ?? 0;
+  const ratingSummary = routeData?.rating_average == null
+    ? "Unrated"
+    : `★ ${routeData.rating_average.toFixed(1)} (${routeData.rating_count ?? 0})`;
   const isAuthor = routeData?.created_by === userId;
 
   return (
@@ -222,7 +225,7 @@ export default function RouteDetailPage() {
                   <RouteTags tags={routeData?.tags} inline />
                 </div>
                 <div className={styles.metaStats}>
-                  {sendCount} send{sendCount !== 1 ? "s" : ""} · {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""} · ★ {routeData?.rating_average == null ? "—" : routeData.rating_average.toFixed(1)} avg
+                  {sendCount} send{sendCount !== 1 ? "s" : ""} · {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""} · {ratingSummary}
                 </div>
                 <div className={`${styles.metaActions} ${styles.actionBar} ${routeData?.status === "published" ? "" : styles.actionBarSingle}`}>
                   <button

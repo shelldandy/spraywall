@@ -688,7 +688,7 @@ export default function WallDetailPage() {
           <div className={styles.browseHeading}>
             <div className={styles.viewToggle} role="group" aria-label="Wall view">
               <button type="button" className={browseView === "climbs" ? styles.viewActive : ""} aria-pressed={browseView === "climbs"} onClick={() => setBrowseView("climbs")}>
-                Climbs{browseView === "climbs" && routesQuery.data && routesQuery.data.length > 0 && <> <span className={styles.viewCount}>{routesQuery.data.length}</span></>}
+                Climbs{routesQuery.data && routesQuery.data.length > 0 && <span className={styles.viewCount}> {routesQuery.data.length}</span>}
               </button>
               <button type="button" className={browseView === "activity" ? styles.viewActive : ""} aria-pressed={browseView === "activity"} onClick={() => setBrowseView("activity")}>Activity</button>
             </div>

@@ -235,7 +235,7 @@ export default function RouteList({
                       {route.progress === "projects" && !route.has_sent && <span className={`${styles.badge} ${styles.projectBadge}`}>Projects</span>}
                       {route.has_sent && <span className={`${styles.badge} ${styles.sentBadge}`}>Sent</span>}
                       {route.has_flashed && <span className={`${styles.badge} ${styles.flashBadge}`}>Flashed</span>}
-                      <RouteTags tags={route.tags} compact maxVisible={2} />
+                      <RouteTags tags={route.tags} compact />
                     </div>
                   </div>
                   <div className={styles.gradeColumn}>
