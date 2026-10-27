@@ -146,6 +146,9 @@ export default function RouteDetailPage() {
     if (nextId) navigate(`/routes/${nextId}?${circuitParams}`);
   };
   const sendCount = routeData?.send_count ?? 0;
+  const ratingSummary = routeData?.rating_average == null
+    ? "Unrated"
+    : `★ ${routeData.rating_average.toFixed(1)} (${routeData.rating_count ?? 0})`;
   const isAuthor = routeData?.created_by === userId;
 
   return (
@@ -208,20 +211,23 @@ export default function RouteDetailPage() {
                 <div className={styles.legacyBanner}>This climb was archived when the wall was reset</div>
               )}
 
-              <div className={styles.metaRow}>
-                {routeData?.grade && (
-                  <span className={`${styles.pill} ${styles.gradeBadge}`} style={getGradeColorStyle(routeData.grade)}>
-                    {routeData.grade}
-                  </span>
-                )}
-                {routeData?.is_legacy && <span className={`${styles.pill} ${styles.resetBadge}`}>Reset</span>}
-                <span className={styles.sendCount}>
-                  {sendCount} send{sendCount !== 1 ? "s" : ""}
-                </span>
-                {routeData?.progress === "projects" && <span className={`${styles.pill} ${styles.projectBadge}`}>Projects</span>}
-                {routeData?.has_sent && <span className={`${styles.pill} ${styles.sentBadge}`}>Sent</span>}
-                {routeData?.has_flashed && <span className={`${styles.pill} ${styles.flashBadge}`}>Flashed</span>}
-                <div className={styles.metaActions}>
+              <div className={styles.metaSection}>
+                <div className={styles.metaRow}>
+                  {routeData?.grade && (
+                    <span className={`${styles.pill} ${styles.gradeBadge}`} style={getGradeColorStyle(routeData.grade)}>
+                      {routeData.grade}
+                    </span>
+                  )}
+                  {routeData?.is_legacy && <span className={`${styles.pill} ${styles.resetBadge}`}>Reset</span>}
+                  {routeData?.progress === "projects" && <span className={`${styles.pill} ${styles.projectBadge}`}>Projects</span>}
+                  {routeData?.has_sent && <span className={`${styles.pill} ${styles.sentBadge}`}>Sent</span>}
+                  {routeData?.has_flashed && <span className={`${styles.pill} ${styles.flashBadge}`}>Flashed</span>}
+                  <RouteTags tags={routeData?.tags} inline />
+                </div>
+                <div className={styles.metaStats}>
+                  {sendCount} send{sendCount !== 1 ? "s" : ""} · {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""} · {ratingSummary}
+                </div>
+                <div className={`${styles.metaActions} ${styles.actionBar} ${routeData?.status === "published" ? "" : styles.actionBarSingle}`}>
                   <button
                     ref={logTriggerRef}
                     type="button"
@@ -251,8 +257,6 @@ export default function RouteDetailPage() {
                 <span>· {currentCircuitIndex + 1} of {circuitRouteIds.length} ·</span>
                 <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === circuitRouteIds.length - 1} onClick={() => moveCircuit(1)}>Next ›</button>
               </nav>}
-              <RouteTags tags={routeData?.tags} />
-
               {routeData?.description && <p className={styles.description}>{routeData.description}</p>}
 
               {wall?.image ? (
@@ -272,10 +276,6 @@ export default function RouteDetailPage() {
               ) : (
                 <div className={styles.noImage}>No wall image</div>
               )}
-
-              <p className={styles.holdCount}>
-                {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""}
-              </p>
 
               <section className={styles.activitySection} aria-label="Activity">
                 <h2>Activity</h2>

@@ -502,6 +502,19 @@ export default function WallDetailPage() {
           <button type="button" className={`btn btn-ghost ${styles.headerRight}`} onClick={closeCreateMode}>
             Done
           </button>
+        ) : canEdit ? (
+          <button
+            type="button"
+            className={`btn btn-ghost ${styles.headerRight} ${styles.manageWallIconButton}`}
+            onClick={() => setIsManagingWall(true)}
+            aria-label="Manage wall"
+            title="Manage wall"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c0 .66.4 1.26 1.02 1.51l.08.03a2 2 0 1 1 0 2.92l-.08.03A1.65 1.65 0 0 0 19.4 15Z" />
+            </svg>
+          </button>
         ) : (
           <span className={styles.headerRight} aria-hidden="true" />
         )}
@@ -674,22 +687,12 @@ export default function WallDetailPage() {
           {wallQuery.isError && !wall && <p className="error-text">{wallQuery.error.message}</p>}
           <div className={styles.browseHeading}>
             <div className={styles.viewToggle} role="group" aria-label="Wall view">
-              <button type="button" className={browseView === "climbs" ? styles.viewActive : ""} aria-pressed={browseView === "climbs"} onClick={() => setBrowseView("climbs")}>Climbs</button>
+              <button type="button" className={browseView === "climbs" ? styles.viewActive : ""} aria-pressed={browseView === "climbs"} onClick={() => setBrowseView("climbs")}>
+                Climbs{routesQuery.data && routesQuery.data.length > 0 && <span className={styles.viewCount}> {routesQuery.data.length}</span>}
+              </button>
               <button type="button" className={browseView === "activity" ? styles.viewActive : ""} aria-pressed={browseView === "activity"} onClick={() => setBrowseView("activity")}>Activity</button>
             </div>
             <Link className={`btn btn-ghost ${styles.manageWallButton}`} to={`/circuits?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`}>Circuits</Link>
-            {browseView === "climbs" && routesQuery.data && routesQuery.data.length > 0 && (
-              <span className="muted">{routesQuery.data.length}</span>
-            )}
-            {canEdit && (
-              <button
-                type="button"
-                className={`btn ${styles.manageWallButton}`}
-                onClick={() => setIsManagingWall(true)}
-              >
-                Manage Wall
-              </button>
-            )}
           </div>
           {browseView === "activity" ? (
             <ActivityFeed gymSlug={gymSlug ?? ""} wallId={wallId} showRoute />

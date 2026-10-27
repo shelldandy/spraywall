@@ -257,9 +257,14 @@
 
 .badges {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
   margin-top: 6px;
+}
+
+.badges:empty {
+  display: none;
 }
 
 .badge {

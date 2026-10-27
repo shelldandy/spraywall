@@ -229,16 +229,14 @@ export default function RouteList({
                       <span className={styles.metaSeparator}> · </span>
                       {route.rating_average == null ? "Unrated" : `★ ${route.rating_average.toFixed(1)} (${route.rating_count ?? 0})`}
                     </div>
-                    {(route.status === "draft" || route.is_legacy || route.has_sent || route.progress === "projects" || route.has_flashed) && (
-                      <div className={styles.badges}>
-                        {route.status === "draft" && <span className={`${styles.badge} ${styles.draftBadge}`}>Draft</span>}
-                        {route.is_legacy && <span className={`${styles.badge} ${styles.resetBadge}`}>Reset</span>}
-                        {route.progress === "projects" && !route.has_sent && <span className={`${styles.badge} ${styles.projectBadge}`}>Projects</span>}
-                        {route.has_sent && <span className={`${styles.badge} ${styles.sentBadge}`}>Sent</span>}
-                        {route.has_flashed && <span className={`${styles.badge} ${styles.flashBadge}`}>Flashed</span>}
-                      </div>
-                    )}
-                    <RouteTags tags={route.tags} />
+                    <div className={styles.badges} role="group" aria-label="Route status and style tags">
+                      {route.status === "draft" && <span className={`${styles.badge} ${styles.draftBadge}`}>Draft</span>}
+                      {route.is_legacy && <span className={`${styles.badge} ${styles.resetBadge}`}>Reset</span>}
+                      {route.progress === "projects" && !route.has_sent && <span className={`${styles.badge} ${styles.projectBadge}`}>Projects</span>}
+                      {route.has_sent && <span className={`${styles.badge} ${styles.sentBadge}`}>Sent</span>}
+                      {route.has_flashed && <span className={`${styles.badge} ${styles.flashBadge}`}>Flashed</span>}
+                      <RouteTags tags={route.tags} compact />
+                    </div>
                   </div>
                   <div className={styles.gradeColumn}>
                     {route.grade ? (
