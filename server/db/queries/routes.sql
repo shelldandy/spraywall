@@ -34,6 +34,10 @@ SELECT route_id, avg(stars)::float8 AS rating_average, count(*)::bigint AS ratin
        COALESCE(max(stars) FILTER (WHERE user_id = $2), 0)::integer AS my_rating
 FROM route_ratings WHERE route_id = ANY($1::uuid[]) GROUP BY route_id;
 
+-- name: GetRouteBetaVideoCounts :many
+SELECT route_id, count(*)::bigint AS video_count
+FROM beta_videos WHERE route_id = ANY($1::uuid[]) GROUP BY route_id;
+
 -- name: CreateClimbLog :one
 INSERT INTO climb_logs (id, route_id, user_id, outcome, climbed_on, notes, attempts)
 VALUES ($1, $2, $3, $4, $5, $6, $7)

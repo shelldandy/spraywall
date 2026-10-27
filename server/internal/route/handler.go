@@ -106,6 +106,7 @@ type routeResponse struct {
 	RatingAverage   *float64        `json:"rating_average"`
 	RatingCount     int             `json:"rating_count"`
 	MyRating        *int            `json:"my_rating"`
+	BetaVideoCount  int             `json:"beta_video_count"`
 }
 
 // ---------- endpoints ----------

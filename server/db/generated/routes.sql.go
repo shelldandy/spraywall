@@ -155,6 +155,36 @@ func (q *Queries) GetClimbLogForUpdate(ctx context.Context, arg GetClimbLogForUp
 	return i, err
 }
 
+const getRouteBetaVideoCounts = `-- name: GetRouteBetaVideoCounts :many
+SELECT route_id, count(*)::bigint AS video_count
+FROM beta_videos WHERE route_id = ANY($1::uuid[]) GROUP BY route_id
+`
+
+type GetRouteBetaVideoCountsRow struct {
+	RouteID    pgtype.UUID `json:"route_id"`
+	VideoCount int64       `json:"video_count"`
+}
+
+func (q *Queries) GetRouteBetaVideoCounts(ctx context.Context, dollar_1 []pgtype.UUID) ([]GetRouteBetaVideoCountsRow, error) {
+	rows, err := q.db.Query(ctx, getRouteBetaVideoCounts, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetRouteBetaVideoCountsRow
+	for rows.Next() {
+		var i GetRouteBetaVideoCountsRow
+		if err := rows.Scan(&i.RouteID, &i.VideoCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getRouteByID = `-- name: GetRouteByID :one
 SELECT id, wall_id, wall_image_id, created_by, name, grade, description, hold_ids, created_at, hold_roles, status, tags FROM routes WHERE id = $1
 `

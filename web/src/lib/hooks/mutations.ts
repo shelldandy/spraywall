@@ -173,7 +173,11 @@ export function useCreateBetaVideo(gymSlug: string, wallId: string, routeId: str
       await ensureOkJson(res, "Failed to add beta video");
       return res.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["beta-videos", routeId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["beta-videos", routeId] });
+      queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
+    },
     onError: toastError,
   });
 }
@@ -185,7 +189,11 @@ export function useDeleteBetaVideo(gymSlug: string, wallId: string, routeId: str
       const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/beta-videos/${videoId}`, { method: "DELETE" });
       await ensureOkJson(res, "Failed to delete beta video");
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["beta-videos", routeId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["beta-videos", routeId] });
+      queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
+    },
     onError: toastError,
   });
 }
