@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { uploadWallImage } from "../lib/hooks/mutations";
 import { filterAmbiguousWideLenses, lensLabel } from "../lib/cameraLenses";
 import { toast } from "../lib/toast";
@@ -370,9 +370,9 @@ export default function WallCameraPage() {
 
   return (
     <main className={styles.camera}>
-      <button type="button" className="btn btn-ghost" onClick={() => navigate(-1)}>
+      <Link className="btn btn-ghost" to={`/walls/${wallId}?gymSlug=${gymSlug}`}>
         Cancel
-      </button>
+      </Link>
       <div ref={stageRef} className={styles.stage}>
         <video ref={videoRef} autoPlay muted playsInline className={styles.video} />
         {oldImage && ready && videoFrame.width > 0 && (
