@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import ResetDiffOverlay from "../components/ResetDiffOverlay";
 import { resetHoldColors, type HoldColor } from "../components/resetHoldColors";
 import WallImage from "../components/WallImage";
@@ -134,9 +134,9 @@ export default function ResetReviewPage() {
   return (
     <div className={`screen ${styles.review}`}>
       <header className="header">
-        <button type="button" className="btn btn-ghost" onClick={() => navigate(-1)}>
+        <Link className="btn btn-ghost" to={wallUrl}>
           Back
-        </button>
+        </Link>
         <h1>Review reset</h1>
       </header>
 

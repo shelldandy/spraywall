@@ -49,7 +49,7 @@ export default function LogbookPage() {
               <ul className={styles.list}>
                 {section.data.map((item) => (
                   <li key={item.id}>
-                    <Link className={styles.entryCard} to={`/routes/${item.route_id}?wallId=${encodeURIComponent(item.wall_id)}&gymSlug=${encodeURIComponent(item.gym_slug)}`}>
+                    <Link className={styles.entryCard} to={`/routes/${item.route_id}?${new URLSearchParams({ wallId: item.wall_id, gymSlug: item.gym_slug, from: "logbook" })}`}>
                       <div className={styles.entryInfo}>
                         <span className={styles.entryName}>{item.route_name}</span>
                         <span className={`${styles.outcome} ${styles[item.outcome]}`}>{item.outcome}</span>

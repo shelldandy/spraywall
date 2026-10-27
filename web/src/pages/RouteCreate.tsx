@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useCreateRoute, useUpdateRoute } from "../lib/hooks/mutations";
 import type { HoldRoles } from "../lib/api/types";
 import GradePicker from "../components/GradePicker";
@@ -7,7 +7,6 @@ import RouteTagPicker from "../components/RouteTagPicker";
 import { parseRouteTags } from "../lib/routeTags";
 import { formatGrade, gradeIdFromV } from "../lib/grades";
 import styles from "./RouteCreate.module.css";
-import { useGoBack } from "../lib/nav";
 import { generateRouteName } from "../lib/routeNames";
 
 function parseJson<T>(value: string | null, fallback: T): T {
@@ -58,7 +57,20 @@ export default function RouteCreatePage() {
   const isPending = createRouteMutation.isPending || updateRouteMutation.isPending;
   const canSave = !!name.trim() && !isPending;
 
-  const goBack = useGoBack(`/walls/${wallId}?${new URLSearchParams({ gymSlug })}`);
+  const backParams = new URLSearchParams({
+    gymSlug,
+    mode: "create",
+    editHoldIds: holdIdsParam ?? "[]",
+    editHoldRoles: holdRolesParam ?? "",
+  });
+  if (isEditing) {
+    backParams.set("editRouteId", routeId);
+    backParams.set("editName", params.get("initialName") ?? "");
+    backParams.set("editGrade", params.get("initialGrade") ?? "");
+    backParams.set("editDescription", params.get("initialDescription") ?? "");
+    backParams.set("editTags", params.get("initialTags") ?? "[]");
+  }
+  const backUrl = `/walls/${wallId}?${backParams}`;
 
   const rollName = () => {
     const next = generateRouteName(name);
@@ -91,9 +103,9 @@ export default function RouteCreatePage() {
   return (
     <div className="screen">
       <header className="header">
-        <button type="button" className={`btn btn-ghost ${styles.side}`} onClick={goBack}>
+        <Link className={`btn btn-ghost ${styles.side}`} to={backUrl}>
           {"< Back"}
-        </button>
+        </Link>
         <h1 className={styles.title}>{isEditing ? "Edit Route" : "Create Route"}</h1>
         <span className={styles.side} />
       </header>

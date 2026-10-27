@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useCircuits, useRoutes } from "../lib/hooks/queries";
 import { useCreateCircuit, useDeleteCircuit, useSetCircuitRoutes, useUpdateCircuit } from "../lib/hooks/mutations";
-import { useGoBack } from "../lib/nav";
 import type { Circuit } from "../lib/api/types";
 import CircuitForm, { CircuitBadge, type CircuitFormValues } from "../components/CircuitForm";
 import { circuitColor } from "../lib/circuitStyle";
@@ -17,7 +16,7 @@ export default function CircuitsPage() {
   const create = useCreateCircuit(gymSlug, wallId);
   const remove = useDeleteCircuit(gymSlug, wallId);
   const [createOpen, setCreateOpen] = useState(true);
-  const goBack = useGoBack(`/walls/${wallId}`);
+  const backUrl = `/walls/${wallId}?${new URLSearchParams({ gymSlug })}`;
   const createCircuit = async (values: CircuitFormValues) => {
     try {
       await create.mutateAsync({ ...values, is_shared: false, route_ids: [] });
@@ -30,7 +29,7 @@ export default function CircuitsPage() {
   const circuits = circuitsQuery.data ?? [];
 
   return <div className={`screen ${styles.screen}`}>
-    <header className="header"><button type="button" className="btn btn-ghost" onClick={goBack}>‹ Back</button><h1>Circuits</h1><span /></header>
+    <header className="header"><Link className="btn btn-ghost" to={backUrl}>‹ Back</Link><h1>Circuits</h1><span /></header>
     <main className={`content ${styles.body}`}>
       <section className={styles.create} aria-label="Create a circuit">
         {createOpen ? <>

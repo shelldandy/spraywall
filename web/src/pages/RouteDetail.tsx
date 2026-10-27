@@ -17,7 +17,6 @@ import HoldOverlay from "../components/HoldOverlay";
 import RouteTags from "../components/RouteTags";
 import WallImage from "../components/WallImage";
 import styles from "./RouteDetail.module.css";
-import { useGoBack } from "../lib/nav";
 import RouteList from "./RouteList";
 
 function CircuitToggle({ circuit, gymSlug, wallId, routeId }: { circuit: Circuit; gymSlug: string; wallId: string; routeId: string }) {
@@ -117,11 +116,17 @@ export default function RouteDetailPage() {
   const imageUrl = wall?.image?.image_url ?? null;
 
   const fallbackParams = new URLSearchParams(params);
-  fallbackParams.set("wallId", wallId);
+  fallbackParams.delete("wallId");
+  fallbackParams.delete("circuit");
+  fallbackParams.delete("from");
   fallbackParams.set("gymSlug", gymSlug);
   fallbackParams.delete("tag");
   for (const tag of parseRouteTags(params.getAll("tag"))) fallbackParams.append("tag", tag);
-  const goBack = useGoBack(`/routes?${fallbackParams}`);
+  const backUrl = params.has("circuit")
+    ? `/circuits?${new URLSearchParams({ wallId, gymSlug })}`
+    : params.get("from") === "logbook"
+      ? "/logbook"
+      : `/walls/${wallId}?${fallbackParams}`;
 
   const editRoute = () => {
     const search = new URLSearchParams({
@@ -154,9 +159,9 @@ export default function RouteDetailPage() {
   return (
     <div className={`screen ${styles.screen}`}>
       <header className="header">
-        <button type="button" className={`btn btn-ghost ${styles.side}`} onClick={goBack}>
+        <Link className={`btn btn-ghost ${styles.side}`} to={backUrl}>
           {"< Back"}
-        </button>
+        </Link>
         <h1 className={styles.title}>{routeData?.name ?? "Route"}</h1>
         {isAuthor ? (
           <button

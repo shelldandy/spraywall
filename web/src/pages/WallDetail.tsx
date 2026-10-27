@@ -333,7 +333,7 @@ export default function WallDetailPage() {
 
   const closeCreateMode = () => {
     if (isEditingRoute) {
-      navigate(`/routes/${editRouteId}?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`);
+      navigate(`/routes/${editRouteId}?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`, { replace: true });
       return;
     }
     navigate(`/walls/${wallId}?${new URLSearchParams({ gymSlug: gymSlug ?? "" })}`, { replace: true });
@@ -486,9 +486,9 @@ export default function WallDetailPage() {
   return (
     <div className="screen">
       <header className={`header ${styles.header}`}>
-        <button type="button" className="btn btn-ghost" onClick={() => navigate("/walls")}>
+        <Link className="btn btn-ghost" to="/walls">
           {"< Back"}
-        </button>
+        </Link>
         <h1 className={styles.title}>{wall?.wall.name ?? "Wall"}</h1>
         {isEditingHolds || isManagingWall ? (
           <button

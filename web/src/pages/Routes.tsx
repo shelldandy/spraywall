@@ -1,8 +1,7 @@
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useCircuits, useHolds, useRoutes, useWallDetail } from "../lib/hooks/queries";
 import RouteList from "./RouteList";
 import styles from "./Routes.module.css";
-import { useGoBack } from "../lib/nav";
 import { parseRouteTags } from "../lib/routeTags";
 
 export default function RoutesPage() {
@@ -24,14 +23,14 @@ export default function RoutesPage() {
   fallbackParams.set("gymSlug", gymSlug ?? "");
   fallbackParams.delete("tag");
   for (const tag of parseRouteTags(params.getAll("tag"))) fallbackParams.append("tag", tag);
-  const goBack = useGoBack(`/walls/${wallId}?${fallbackParams}`);
+  const backUrl = `/walls/${wallId}?${fallbackParams}`;
 
   return (
     <div className="screen">
       <header className="header">
-        <button type="button" className={`btn btn-ghost ${styles.side}`} onClick={goBack}>
+        <Link className={`btn btn-ghost ${styles.side}`} to={backUrl}>
           {"< Back"}
-        </button>
+        </Link>
         <h1 className={styles.title}>Routes</h1>
         <span className={styles.side} />
       </header>
