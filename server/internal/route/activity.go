@@ -190,6 +190,7 @@ func (h *Handler) queryActivity(r *http.Request, wallID pgtype.UUID, routeID *pg
 SELECT l.id::text, l.route_id::text, r.name, r.grade,
        (r.wall_image_id IS DISTINCT FROM (
            SELECT wi.id FROM wall_images wi WHERE wi.wall_id = r.wall_id AND wi.is_active
+           ORDER BY wi.created_at DESC LIMIT 1
        )) AS is_legacy,
        l.outcome, l.climbed_on::text, l.logged_at, l.notes, l.attempts,
        u.id::text, u.display_name, u.avatar_key

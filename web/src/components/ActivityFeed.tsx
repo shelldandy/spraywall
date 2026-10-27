@@ -68,7 +68,7 @@ export default function ActivityFeed({ gymSlug, wallId, routeId, showRoute }: Ac
                   )}
                   <p className={styles.summary}>
                     <strong>{item.user.display_name}</strong> {outcomeVerbs[item.outcome]} <span className={styles.routeName}>{name}</span>
-                    <span className={styles.relativeTime}> · {formatRelativeTime(item.climbed_on)}</span>
+                    <time className={styles.relativeTime} dateTime={item.logged_at}> · {formatRelativeTime(item.logged_at)}</time>
                   </p>
                 </div>
                 <div className={styles.pills}>

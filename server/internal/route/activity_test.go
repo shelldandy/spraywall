@@ -196,6 +196,28 @@ VALUES($1,$2,$3,'Foreign route',$4,'{}'::jsonb,'published','{}'::text[]) RETURNI
 	}
 }
 
+func TestWallActivityUsesNewestImageWhenMultipleAreActive(t *testing.T) {
+	e := newRouteTestEnv(t)
+	rt := e.create(t, "", "published")
+	if rec := e.requestSubpath(http.MethodPost, rt.ID, "/logs", e.token, `{"outcome":"send","climbed_on":"2025-04-01"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("create log: %d %s", rec.Code, rec.Body)
+	}
+	image, err := e.q.CreateWallImage(t.Context(), generated.CreateWallImageParams{
+		WallID: shared.PgUUID(e.wallID), StorageKey: "overlapping-reset-image",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(t.Context(), `UPDATE wall_images SET created_at=now() + interval '1 minute' WHERE id=$1`, image.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	page := activityPageFrom(t, e.requestWallActivity(e.wallID, e.other, ""))
+	if len(page.Items) != 1 || !page.Items[0].RouteLegacy {
+		t.Fatalf("feed should tolerate multiple active images and use the newest: %#v", page.Items)
+	}
+}
+
 func TestActivityPaginationUsesDisjointDescendingPages(t *testing.T) {
 	e := newRouteTestEnv(t)
 	rt := e.create(t, "", "published")

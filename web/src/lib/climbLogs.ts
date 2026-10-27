@@ -53,29 +53,31 @@ export function formatRelativeTime(iso: string, now = new Date(), locale?: strin
   const target = dateOnly ?? new Date(iso);
   if (Number.isNaN(target.getTime())) return iso;
 
-  const dayMs = 24 * 60 * 60 * 1000;
-  const dayDifference = dateOnly
-    ? (Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()) -
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) / dayMs
-    : (target.getTime() - now.getTime()) / dayMs;
-  const days = Math.round(dayDifference);
-  const absoluteDays = Math.abs(days);
-  let value: number;
-  let unit: Intl.RelativeTimeFormatUnit;
-  if (absoluteDays < 7) {
-    value = days;
-    unit = "day";
-  } else if (absoluteDays < 30) {
-    value = Math.round(days / 7);
-    unit = "week";
-  } else if (absoluteDays < 365) {
-    value = Math.round(days / 30);
-    unit = "month";
-  } else {
-    value = Math.round(days / 365);
-    unit = "year";
+  const relative = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  if (!dateOnly) {
+    const seconds = (target.getTime() - now.getTime()) / 1000;
+    const absoluteSeconds = Math.abs(seconds);
+    const units: [Intl.RelativeTimeFormatUnit, number, number][] = [
+      ["second", 1, 60],
+      ["minute", 60, 60 * 60],
+      ["hour", 60 * 60, 24 * 60 * 60],
+      ["day", 24 * 60 * 60, 7 * 24 * 60 * 60],
+      ["week", 7 * 24 * 60 * 60, 30 * 24 * 60 * 60],
+      ["month", 30 * 24 * 60 * 60, 365 * 24 * 60 * 60],
+      ["year", 365 * 24 * 60 * 60, Number.POSITIVE_INFINITY],
+    ];
+    const [unit, secondsPerUnit] = units.find(([, , upperBound]) => absoluteSeconds < upperBound) ?? units.at(-1)!;
+    return relative.format(Math.round(seconds / secondsPerUnit), unit);
   }
-  return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(value, unit);
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.round((Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()) -
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) / dayMs);
+  const absoluteDays = Math.abs(days);
+  if (absoluteDays < 7) return relative.format(days, "day");
+  if (absoluteDays < 30) return relative.format(Math.round(days / 7), "week");
+  if (absoluteDays < 365) return relative.format(Math.round(days / 30), "month");
+  return relative.format(Math.round(days / 365), "year");
 }
 
 export function deriveProgress(outcomes: readonly ClimbOutcome[]): PersonalProgress {
