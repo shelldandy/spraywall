@@ -29,6 +29,7 @@ const routeTestJWTSecret = "route-test-secret"
 type routeTestEnv struct {
 	pool      *pgxpool.Pool
 	q         *generated.Queries
+	handler   *routehandler.Handler
 	router    chi.Router
 	token     string
 	other     string
@@ -86,6 +87,7 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 		holdIDs = append(holdIDs, uuid.UUID(hold.ID.Bytes))
 	}
 	auth := user.NewHandler(q, routeTestJWTSecret, pool, user.Options{})
+	routeHandler := routehandler.NewHandler(q, pool)
 	creatorToken, err := auth.IssueTokens(context.Background(), q, creator)
 	if err != nil {
 		t.Fatal(err)
@@ -95,9 +97,10 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
+	r.Get("/beta-media/{videoId}/{kind}", routeHandler.ServeBetaMedia)
 	r.Route("/users/me", func(r chi.Router) {
 		r.Use(auth.Authenticate)
-		r.Get("/logbook", routehandler.NewHandler(q, pool).Logbook)
+		r.Get("/logbook", routeHandler.Logbook)
 	})
 	r.Route("/gyms/{gymSlug}", func(r chi.Router) {
 		r.Use(auth.Authenticate)
@@ -105,7 +108,7 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 			r.Get("/activity", routehandler.NewHandler(q, pool).WallActivity)
 		})
 		r.Route("/walls/{wallId}/circuits", func(r chi.Router) {
-			h := routehandler.NewHandler(q, pool)
+			h := routeHandler
 			r.Get("/", h.ListCircuits)
 			r.Post("/", h.CreateCircuit)
 			r.Route("/{circuitId}", func(r chi.Router) {
@@ -118,12 +121,15 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 			})
 		})
 		r.Route("/walls/{wallId}/routes", func(r chi.Router) {
-			h := routehandler.NewHandler(q, pool)
+			h := routeHandler
 			r.Post("/", h.CreateRoute)
 			r.Get("/", h.ListRoutes)
 			r.Route("/{routeId}", func(r chi.Router) {
 				r.Get("/", h.GetRoute)
 				r.Get("/activity", h.RouteActivity)
+				r.Get("/beta-videos", h.RouteBetaVideos)
+				r.Post("/beta-videos", h.CreateBetaVideo)
+				r.Delete("/beta-videos/{videoId}", h.DeleteBetaVideo)
 				r.Put("/", h.UpdateRoute)
 				r.Route("/logs", func(r chi.Router) {
 					r.Get("/", h.GetLogs)
@@ -138,7 +144,7 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 			})
 		})
 	})
-	return &routeTestEnv{pool: pool, q: q, router: r, token: creatorToken.AccessToken, other: otherToken.AccessToken, wallID: uuid.UUID(wall.ID.Bytes), creatorID: uuid.UUID(creator.ID.Bytes), holdIDs: holdIDs}
+	return &routeTestEnv{pool: pool, q: q, handler: routeHandler, router: r, token: creatorToken.AccessToken, other: otherToken.AccessToken, wallID: uuid.UUID(wall.ID.Bytes), creatorID: uuid.UUID(creator.ID.Bytes), holdIDs: holdIDs}
 }
 
 func (e *routeTestEnv) path(routeID string) string {

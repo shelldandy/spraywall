@@ -20,6 +20,7 @@ type Handler struct {
 	queries *generated.Queries
 	db      generated.DBTX
 	txPool  txBeginner
+	immich  *ImmichClient
 }
 
 // NewHandler creates a new Handler. The pool enables atomic climb-log writes.
@@ -32,6 +33,11 @@ func NewHandler(queries *generated.Queries, databases ...generated.DBTX) *Handle
 		}
 	}
 	return h
+}
+
+// SetImmichClient enables trusted Immich share resolution and media proxying.
+func (h *Handler) SetImmichClient(client *ImmichClient) {
+	h.immich = client
 }
 
 // ---------- helpers ----------

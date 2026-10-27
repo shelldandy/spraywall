@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -142,11 +143,13 @@ func main() {
 
 	// Handlers
 	routeHandler := route.NewHandler(queries, pool)
+	routeHandler.SetImmichClient(route.NewImmichClient(strings.Split(os.Getenv("IMMICH_ALLOWED_HOSTS"), ",")))
 	wallHandler := wall.NewHandler(queries, storageClient, pool)
 	inviteHandler := invite.NewHandler(queries, pool)
 
-	// Image proxy (no auth required, keys are unguessable UUIDs)
+	// Public media proxies use unguessable UUIDs and work with native img/video elements.
 	r.Get("/images/*", wallHandler.ServeImage)
+	r.Get("/beta-media/{videoId}/{kind}", routeHandler.ServeBetaMedia)
 
 	// Current user's profile and logbook (authenticated, outside gyms)
 	r.Route("/users/me", func(r chi.Router) {
@@ -212,6 +215,9 @@ func main() {
 						r.Route("/{routeId}", func(r chi.Router) {
 							r.Get("/", routeHandler.GetRoute)
 							r.Get("/activity", routeHandler.RouteActivity)
+							r.Get("/beta-videos", routeHandler.RouteBetaVideos)
+							r.Post("/beta-videos", routeHandler.CreateBetaVideo)
+							r.Delete("/beta-videos/{videoId}", routeHandler.DeleteBetaVideo)
 							r.Put("/", routeHandler.UpdateRoute)
 							r.Delete("/", routeHandler.DeleteRoute)
 							r.Patch("/publish", routeHandler.PublishRoute)

@@ -6,6 +6,7 @@ import type { Circuit, ClimbLog } from "../lib/api/types";
 import { formatCalendarDate } from "../lib/climbLogs";
 import ClimbLogForm from "../components/ClimbLogForm";
 import ActivityFeed from "../components/ActivityFeed";
+import BetaVideos from "../components/BetaVideos";
 import FilterDrawer from "../components/FilterDrawer";
 import CircuitForm, { CircuitBadge, type CircuitFormValues } from "../components/CircuitForm";
 import StarRating from "../components/StarRating";
@@ -279,6 +280,10 @@ export default function RouteDetailPage() {
               <section className={styles.activitySection} aria-label="Activity">
                 <h2>Activity</h2>
                 <ActivityFeed gymSlug={gymSlug} wallId={wallId} routeId={routeId} showRoute={false} />
+              </section>
+
+              <section className={styles.betaSection} aria-label="Beta videos">
+                <BetaVideos gymSlug={gymSlug} wallId={wallId} routeId={routeId} />
               </section>
 
               <FilterDrawer open={circuitDrawerOpen} title={creatingCircuit ? "New circuit" : "Circuits"} onBack={creatingCircuit ? returnToCircuitList : undefined} onClose={closeCircuitDrawer} triggerRef={circuitTriggerRef} showFooter={false}>

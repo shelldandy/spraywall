@@ -1,0 +1,297 @@
+.root {
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.heading h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.count {
+  color: var(--text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.addButton {
+  display: inline-flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--accent);
+  font-size: 25px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+}
+
+.field {
+  display: grid;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.field small {
+  font-weight: 400;
+}
+
+.field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+}
+
+.form > button {
+  justify-self: start;
+}
+
+.formError {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.empty {
+  margin: 12px 0 18px;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.scroller {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  margin: 0 -4px 8px;
+  padding: 2px 4px 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+}
+
+.card {
+  position: relative;
+  flex: 0 0 160px;
+  width: 160px;
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-muted);
+  scroll-snap-align: start;
+}
+
+.mediaButton,
+.mediaLink {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.thumbnail,
+.placeholder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.immich { background: linear-gradient(150deg, #314a79, #141924 75%); }
+.youtube { background: linear-gradient(150deg, #ee433e, #48171e 80%); }
+.instagram { background: linear-gradient(145deg, #f5b13a, #d82c85 48%, #593db3 90%); }
+.tiktok { background: linear-gradient(145deg, #263d4b, #11151c 75%); }
+
+.bigIcon {
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  border: 1px solid rgb(255 255 255 / 45%);
+  border-radius: 50%;
+  background: rgb(0 0 0 / 20%);
+  font-size: 35px;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+}
+
+.platform {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  padding: 5px 8px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 999px;
+  background: rgb(20 20 24 / 76%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+.handle {
+  position: absolute;
+  z-index: 1;
+  right: 8px;
+  bottom: 9px;
+  left: 8px;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  padding: 5px 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(20 20 24 / 78%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+.deleteButton,
+.closeButton {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 50%;
+  background: rgb(20 20 24 / 80%);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.deleteButton {
+  top: 7px;
+  right: 7px;
+}
+
+.deleteButton:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.dialog {
+  width: min(92vw, 620px);
+  max-width: none;
+  max-height: 92dvh;
+  padding: 0;
+  overflow: visible;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 82%);
+  backdrop-filter: blur(3px);
+}
+
+.player {
+  position: relative;
+  padding: 10px;
+}
+
+.player video {
+  display: block;
+  width: 100%;
+  max-height: calc(92dvh - 42px);
+  border-radius: 8px;
+  background: #000;
+  object-fit: contain;
+}
+
+.player p {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.closeButton {
+  top: -12px;
+  right: -12px;
+  width: 34px;
+  height: 34px;
+  font-size: 24px;
+}
+
+@media (max-width: 420px) {
+  .card { flex-basis: 148px; width: 148px; }
+}

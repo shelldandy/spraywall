@@ -33,7 +33,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,ico,webmanifest}'],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/images\//, /^\/healthz/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/images\//, /^\/beta-media\//, /^\/healthz/],
         runtimeCaching: [
           {
             // Wall images are addressed by storage key, so they never change.
@@ -63,6 +63,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/images': { target: API_TARGET, changeOrigin: true },
+      '/beta-media': { target: API_TARGET, changeOrigin: true },
     },
   },
 })

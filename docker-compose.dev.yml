@@ -11,6 +11,8 @@ services:
   server:
     build:
       target: dev
+    environment:
+      IMMICH_ALLOWED_HOSTS: ${IMMICH_ALLOWED_HOSTS:-}
     ports:
       - "8080:8080"
     volumes:
