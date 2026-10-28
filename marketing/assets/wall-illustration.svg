@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 540" role="img" aria-labelledby="title description">
+  <title id="title">One wall. Many ways up.</title>
+  <desc id="description">An original spray wall illustration. A dashed line links green start holds at the bottom to cyan hand holds and a pink finish hold at the top. A yellow foot hold supports the line. Text labels identify the hold roles.</desc>
+  <defs>
+    <pattern id="bolts" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="16" cy="16" r="2" fill="#171717" opacity=".22"/>
+    </pattern>
+    <path id="jug" d="M-31-12C-26-32 8-34 26-17C44-1 32 22 12 27C-8 34-42 16-31-12Z"/>
+    <path id="edge" d="M-35 0C-25-15 20-23 36-8C49 6 9 21-14 18C-27 17-45 12-35 0Z"/>
+    <path id="pebble" d="M-20-12C-9-28 13-22 24-5C37 15 10 29-9 20C-25 14-32 3-20-12Z"/>
+    <path id="pinch" d="M-16-30C-4-39 17-19 22 3C29 27 9 39-10 25C-25 15-32-18-16-30Z"/>
+  </defs>
+
+  <path fill="#efe4cf" d="M0 0h560v540H0z"/>
+  <path fill="#e5dfeb" d="M0 0h198l-47 540H0z"/>
+  <path fill="#f6edda" d="m198 0 250 0 112 540H151z"/>
+  <path d="m198 0-47 540M448 0l112 540" fill="none" stroke="#171717" stroke-width="2" opacity=".35"/>
+  <path fill="url(#bolts)" d="M0 0h560v540H0z"/>
+
+  <!-- Unselected holds: flat colors, irregular silhouettes, hard offset shadows. -->
+  <g stroke="#171717" stroke-width="3" stroke-linejoin="round">
+    <g transform="translate(62 69) rotate(-20)"><use href="#pebble" x="4" y="5" fill="#171717"/><use href="#pebble" fill="#ffcf24"/><path d="m-8-6 13 8" fill="none"/></g>
+    <g transform="translate(190 53) rotate(18) scale(.9)"><use href="#edge" x="4" y="5" fill="#171717"/><use href="#edge" fill="#ff91b7"/><path d="m-20 3 37-6" fill="none"/></g>
+    <g transform="translate(478 85) rotate(36)"><use href="#pinch" x="4" y="5" fill="#171717"/><use href="#pinch" fill="#b5a5d8"/><path d="M-7-14 6 15" fill="none"/></g>
+    <g transform="translate(92 188) rotate(40)"><use href="#jug" x="4" y="5" fill="#171717"/><use href="#jug" fill="#ff885b"/><path d="M-12-7Q-2-15 13-6" fill="none" stroke-width="5"/></g>
+    <g transform="translate(402 170) rotate(-20) scale(.8)"><use href="#edge" x="4" y="5" fill="#171717"/><use href="#edge" fill="#ffcf24"/><path d="m-22 3 39-5" fill="none"/></g>
+    <g transform="translate(492 256) rotate(-12) scale(.75)"><use href="#jug" x="4" y="5" fill="#171717"/><use href="#jug" fill="#ff91b7"/><path d="M-12-7Q-2-15 13-6" fill="none" stroke-width="5"/></g>
+    <g transform="translate(61 307) rotate(-32) scale(.85)"><use href="#pinch" x="4" y="5" fill="#171717"/><use href="#pinch" fill="#b5a5d8"/><path d="M-7-14 6 15" fill="none"/></g>
+    <g transform="translate(278 374) rotate(18) scale(.8)"><use href="#pebble" x="4" y="5" fill="#171717"/><use href="#pebble" fill="#ff885b"/><path d="m-8-6 13 8" fill="none"/></g>
+    <g transform="translate(460 465) rotate(-25)"><use href="#edge" x="4" y="5" fill="#171717"/><use href="#edge" fill="#b5a5d8"/><path d="m-22 3 39-5" fill="none"/></g>
+    <g transform="translate(47 481) rotate(20) scale(.75)"><use href="#pebble" x="4" y="5" fill="#171717"/><use href="#pebble" fill="#ff885b"/><path d="m-8-6 13 8" fill="none"/></g>
+  </g>
+
+  <!-- A route connects the two starts to the finish; this is an illustration, not app UI. -->
+  <path d="m123 420 105 26-33-136 136-52-79-86L350 81" fill="none" stroke="#171717" stroke-width="4" stroke-dasharray="8 9" stroke-linecap="round" stroke-linejoin="round"/>
+  <g stroke="#171717" stroke-width="3" stroke-linejoin="round">
+    <g transform="translate(123 420) rotate(-20)"><use href="#jug" x="5" y="6" fill="#171717"/><use href="#jug" fill="#b8e85d"/><path d="M-12-7Q-2-15 13-6" fill="none" stroke-width="5"/></g>
+    <g transform="translate(228 446) rotate(12)"><use href="#edge" x="5" y="6" fill="#171717"/><use href="#edge" fill="#b8e85d"/><path d="m-20 3 37-6" fill="none"/></g>
+    <g transform="translate(195 310) rotate(-18)"><use href="#pinch" x="5" y="6" fill="#171717"/><use href="#pinch" fill="#49dce8"/><path d="M-7-14 6 15" fill="none"/></g>
+    <g transform="translate(331 258) rotate(-18)"><use href="#jug" x="5" y="6" fill="#171717"/><use href="#jug" fill="#49dce8"/><path d="M-12-7Q-2-15 13-6" fill="none" stroke-width="5"/></g>
+    <g transform="translate(252 172) rotate(10)"><use href="#edge" x="5" y="6" fill="#171717"/><use href="#edge" fill="#49dce8"/><path d="m-20 3 37-6" fill="none"/></g>
+    <g transform="translate(350 81) rotate(-16) scale(1.1)"><use href="#jug" x="5" y="6" fill="#171717"/><use href="#jug" fill="#ff91b7"/><path d="M-12-7Q-2-15 13-6" fill="none" stroke-width="5"/></g>
+    <g transform="translate(382 366) rotate(20) scale(.8)"><use href="#pebble" x="5" y="6" fill="#171717"/><use href="#pebble" fill="#ffcf24"/><path d="m-8-6 13 8" fill="none"/></g>
+  </g>
+
+  <g font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="800" letter-spacing="1" fill="#171717">
+    <path d="M292 15h116v29H292z" fill="#ff91b7" stroke="#171717" stroke-width="2"/>
+    <text x="350" y="34" text-anchor="middle">FINISH</text>
+    <path d="m350 44 0 9" stroke="#171717" stroke-width="2"/>
+    <path d="M377 239h77v28h-77z" fill="#49dce8" stroke="#171717" stroke-width="2"/>
+    <text x="415" y="258" text-anchor="middle">HAND</text>
+    <path d="M366 253h11" stroke="#171717" stroke-width="2"/>
+    <path d="M416 350h74v28h-74z" fill="#ffcf24" stroke="#171717" stroke-width="2"/>
+    <text x="453" y="369" text-anchor="middle">FOOT</text>
+    <path d="M403 364h13" stroke="#171717" stroke-width="2"/>
+    <path d="M104 487h145v29H104z" fill="#b8e85d" stroke="#171717" stroke-width="2"/>
+    <text x="176" y="506" text-anchor="middle">START HERE</text>
+    <path d="m139 487-9-31m72 31 15-18" fill="none" stroke="#171717" stroke-width="2"/>
+  </g>
+</svg>
