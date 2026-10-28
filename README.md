@@ -92,6 +92,38 @@ make web
 The app is a mobile-first PWA. Open it on your phone and use "Add to Home Screen" to install it.
 It caches the app shell, wall images and recently viewed data for offline browsing; changes need a connection.
 
+## Marketing site
+
+`marketing/` is a standalone, single-page HTML/CSS site. It uses local assets and system fonts, with no JavaScript, package installation, build step, or backend services.
+
+Preview it from the repository root:
+
+```bash
+python3 -m http.server 4173 --directory marketing
+# Open http://localhost:4173
+```
+
+Validate the HTML structure, local links/assets, SVG, and Netlify configuration (Python 3.11+):
+
+```bash
+python3 scripts/check-marketing.py
+```
+
+### Deploy to Netlify
+
+Import this repository as a new Netlify project. The root `netlify.toml` sets:
+
+| Setting | Value |
+| ------- | ----- |
+| Framework | None / Other |
+| Base directory | Repository root (`.`) |
+| Build command | Empty (no build) |
+| Publish directory | `marketing` |
+
+No environment variables, plugins, functions, or API proxies are needed. Only `marketing/` is published; do not change the publish directory to the repository root. Netlify's Git integration can create Deploy Previews for pull requests. Check the page and its direct asset URLs in a preview before publishing to your production domain. If you use the Netlify CLI, `netlify dev` is configured to serve the static site.
+
+**This deploys the marketing site, not the Spraywall app.** Host the app separately using the [self-hosting instructions](#self-hosting); its API, storage, worker, and PWA remain unchanged. The site links to those instructions rather than a hosted signup. If you later add canonical or Open Graph URL metadata, use the actual marketing domain, not a placeholder.
+
 ## Beta Videos
 
 Climbers can add YouTube, Instagram, TikTok, and Immich video links to climbs. Immich links are resolved and streamed by the server, so Immich can remain accessible only on your LAN or tailnet. To enable Immich, set `IMMICH_ALLOWED_HOSTS` to a comma-separated list of exact hostnames (optionally including ports), without a scheme; for example `photos.example.net,immich.tailnet:2283`. The allow-list is required as an SSRF guard. Leave it empty to disable Immich links. YouTube, Instagram, and TikTok links work without this setting.

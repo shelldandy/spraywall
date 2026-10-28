@@ -1,0 +1,9 @@
+# Deploy only the standalone marketing page, not the application or repository.
+[build]
+  base = "."
+  publish = "marketing"
+  command = ""
+
+[dev]
+  framework = "#static"
+  publish = "marketing"
