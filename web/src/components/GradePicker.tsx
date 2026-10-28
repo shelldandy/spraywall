@@ -32,13 +32,21 @@ export default function GradePicker({ selectedGradeId, onSelect, system = "v" }:
     const dialog = dialogRef.current;
     if (!dialog) return;
 
-    if (visible && !dialog.open) dialog.showModal();
-    else if (!visible && dialog.open) dialog.close();
+    if (visible) {
+      if (!dialog.open) {
+        dialog.showModal();
+        // Keep the modal itself focused so its offscreen opening animation doesn't scroll the dialog.
+        dialog.focus({ preventScroll: true });
+        dialog.scrollTop = 0;
+      }
+      dialog.firstElementChild?.classList.remove(styles.sheetClosing);
+    } else if (dialog.open) dialog.firstElementChild?.classList.add(styles.sheetClosing);
   }, [visible]);
 
+  const requestClose = () => dialogRef.current?.firstElementChild?.classList.add(styles.sheetClosing);
   const choose = (gradeId: number | null) => {
     onSelect(gradeId);
-    setVisible(false);
+    requestClose();
   };
 
   return (
@@ -62,22 +70,34 @@ export default function GradePicker({ selectedGradeId, onSelect, system = "v" }:
         ref={dialogRef}
         className={styles.overlay}
         aria-label="Select Grade"
+        tabIndex={-1}
         onClick={(e) => {
-          if (e.target === e.currentTarget) setVisible(false);
+          if (e.target === e.currentTarget) requestClose();
+        }}
+        onCancel={(e) => {
+          e.preventDefault();
+          requestClose();
         }}
         onClose={() => {
+          dialogRef.current?.firstElementChild?.classList.remove(styles.sheetClosing);
           setVisible(false);
           triggerRef.current?.focus();
         }}
       >
-        <div className={styles.sheet}>
+        <div
+          className={styles.sheet}
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget && event.currentTarget.classList.contains(styles.sheetClosing)) {
+              dialogRef.current?.close();
+            }
+          }}
+        >
           <div className={styles.sheetHeader}>
             <h2 className={styles.sheetTitle}>Select Grade</h2>
             <button
               type="button"
-              autoFocus
               className="btn btn-ghost"
-              onClick={() => setVisible(false)}
+              onClick={requestClose}
             >
               Done
             </button>

@@ -8,7 +8,7 @@ import RouteTags from "../components/RouteTags";
 import type { Circuit, Hold, Route } from "../lib/api/types";
 import { getGradeColorStyle, getVGradeRank, uniqueVGrades } from "../lib/grades";
 import { circuitColor } from "../lib/circuitStyle";
-import { applyCircuit, parseRouteFilters, writeRouteFilters, matchesRouteFilters, hasRouteFilters, parseRouteSort, writeRouteSort, sortRoutes, type ProgressFilter, type RouteSort } from "../lib/routeFilters";
+import { applyCircuit, parseRouteFilters, writeRouteFilters, matchesRouteFilters, hasRouteFilters, parseRouteSort, writeRouteSort, sortRoutes, type ProgressFilter, type RouteFilters, type RouteSort } from "../lib/routeFilters";
 import type { RouteTagId } from "../lib/routeTags";
 import styles from "./RouteList.module.css";
 
@@ -18,6 +18,17 @@ const progressChoices: { value: ProgressFilter; label: string }[] = [
   { value: "projects", label: "Projects" },
   { value: "sent", label: "Sent" },
 ];
+
+function activeFilterCount(filters: RouteFilters): number {
+  return [
+    filters.tags.length > 0,
+    filters.minGrade !== null || filters.maxGrade !== null,
+    filters.hasBeta,
+    filters.progress !== null,
+    filters.minStars !== null,
+    filters.circuit !== null,
+  ].filter(Boolean).length;
+}
 
 interface RouteListProps {
   routes: Route[];
@@ -69,16 +80,10 @@ export default function RouteList({
   circuitsLoaded = true,
 }: RouteListProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [gradePickerOpen, setGradePickerOpen] = useState(false);
-  const [progressPickerOpen, setProgressPickerOpen] = useState(false);
-  const [starsPickerOpen, setStarsPickerOpen] = useState(false);
-  const [sortPickerOpen, setSortPickerOpen] = useState(false);
-  const [circuitPickerOpen, setCircuitPickerOpen] = useState(false);
-  const gradeTriggerRef = useRef<HTMLButtonElement>(null);
-  const progressTriggerRef = useRef<HTMLButtonElement>(null);
-  const starsTriggerRef = useRef<HTMLButtonElement>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const filtersTriggerRef = useRef<HTMLButtonElement>(null);
   const sortTriggerRef = useRef<HTMLButtonElement>(null);
-  const circuitTriggerRef = useRef<HTMLButtonElement>(null);
   const filters = parseRouteFilters(searchParams);
   const sort = parseRouteSort(searchParams);
   const { tags: selectedTags, minGrade, maxGrade, progress, minStars, hasBeta } = filters;
@@ -106,6 +111,7 @@ export default function RouteList({
   const circuitRoutes = activeCircuit ? applyCircuit(routes, activeCircuit.route_ids) : routes;
   const matchingRoutes = sortRoutes(circuitRoutes.filter((route) => matchesRouteFilters(route, filters)), sort);
   const hasActiveFilters = hasRouteFilters(filters);
+  const activeFiltersCount = activeFilterCount(filters);
   const updateFilters = (next: Partial<typeof filters>) => {
     const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, ...next });
     setSearchParams(nextParams, { replace: true });
@@ -135,89 +141,88 @@ export default function RouteList({
     const existingRank = getVGradeRank(existing)!;
     updateFilters({ minGrade: rank < existingRank ? grade : existing, maxGrade: rank > existingRank ? grade : existing });
   };
-  const gradeSummary = minGrade !== null && maxGrade !== null
-    ? minGrade === maxGrade ? minGrade : `${minGrade}–${maxGrade}`
-    : minGrade !== null ? `${minGrade}+` : maxGrade !== null ? `≤${maxGrade}` : "Grade";
-  const progressLabel = progressChoices.find((choice) => choice.value === progress)?.label ?? "All";
-  const starsLabel = minStars === null ? "Any" : `${minStars}+`;
   const sortLabel = sort === "grade_asc" ? "Grade ↑" : sort === "grade_desc" ? "Grade ↓" : "Newest";
   const noMatchesMessage = "No routes match these filters";
 
   return (
     <>
       <div className={styles.filterToolbar}>
-        <RouteTagPicker
-          selectedTags={selectedTags}
-          onChange={updateTags}
-          label="Style"
-          compact
-          helperText="Matches any selected tag"
-          matchingCount={matchingRoutes.length}
-        />
         <button
-          ref={gradeTriggerRef}
+          ref={filtersTriggerRef}
           type="button"
-          className={`${styles.gradeToggle} ${hasGradeFilter ? styles.gradeToggleActive : ""}`}
-          aria-expanded={gradePickerOpen}
-          onClick={() => setGradePickerOpen(true)}
+          className={`${styles.gradeToggle} ${hasActiveFilters ? styles.gradeToggleActive : ""}`}
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen(true)}
         >
-          {hasGradeFilter && <span aria-hidden="true">✓</span>}{gradeSummary}
+          Filters{activeFiltersCount > 0 && <> · {activeFiltersCount}</>}
         </button>
-        <button type="button" className={`${styles.gradeToggle} ${hasBeta ? styles.gradeToggleActive : ""}`} aria-pressed={hasBeta} onClick={() => updateFilters({ hasBeta: !hasBeta })}>
-          {hasBeta && <span aria-hidden="true">✓</span>}▶ Has beta
+        <button
+          ref={sortTriggerRef}
+          type="button"
+          className={`${styles.gradeToggle} ${sort !== "newest" ? styles.gradeToggleActive : ""}`}
+          aria-expanded={sortOpen}
+          onClick={() => setSortOpen(true)}
+        >
+          Sort: {sortLabel}
         </button>
-        <button ref={progressTriggerRef} type="button" className={`${styles.gradeToggle} ${progress ? styles.gradeToggleActive : ""}`} aria-expanded={progressPickerOpen} onClick={() => setProgressPickerOpen(true)}>
-          {progress && <span aria-hidden="true">✓</span>}Progress: {progressLabel}
-        </button>
-        <button ref={starsTriggerRef} type="button" className={`${styles.gradeToggle} ${minStars !== null ? styles.gradeToggleActive : ""}`} aria-expanded={starsPickerOpen} onClick={() => setStarsPickerOpen(true)}>
-          {minStars !== null && <span aria-hidden="true">✓</span>}Community: {starsLabel}
-        </button>
-        <button ref={sortTriggerRef} type="button" className={`${styles.gradeToggle} ${sort !== "newest" ? styles.gradeToggleActive : ""}`} aria-expanded={sortPickerOpen} onClick={() => setSortPickerOpen(true)}>Sort: {sortLabel}</button>
-        <button ref={circuitTriggerRef} type="button" className={`${styles.gradeToggle} ${activeCircuit ? styles.gradeToggleActive : ""}`} style={activeCircuit ? { borderColor: circuitColor(activeCircuit.color), backgroundColor: `color-mix(in srgb, ${circuitColor(activeCircuit.color)} 20%, var(--bg-muted))` } : undefined} onClick={() => setCircuitPickerOpen(true)}>Circuit: {activeCircuit ? `${activeCircuit.emoji} ${activeCircuit.name}` : "Any"}</button>
-        {hasActiveFilters && <button type="button" className={`${styles.gradeToggle} ${styles.clearAllToggle}`} onClick={clearFilters}>Clear all</button>}
       </div>
-      <FilterDrawer open={gradePickerOpen} title="Grade" onClose={() => setGradePickerOpen(false)} onClear={() => updateFilters({ minGrade: null, maxGrade: null })} matchingCount={matchingRoutes.length} triggerRef={gradeTriggerRef}>
-        <p className={styles.gradeHelper}>Select one grade, then another to set an inclusive range.</p>
-        <div className={styles.gradeOptions} role="group" aria-label="Choose a V-grade range">
-          <button type="button" className={`${styles.gradeOption} ${!hasGradeFilter ? styles.gradeOptionAnySelected : ""}`} aria-pressed={!hasGradeFilter} onClick={() => updateFilters({ minGrade: null, maxGrade: null })}>Any</button>
-          {gradeOptions.map(({ v }) => {
-            const rank = getVGradeRank(v)!;
-            const isEndpoint = v === minGrade || v === maxGrade;
-            const maxRank = maxGrade === null ? null : getVGradeRank(maxGrade);
-            const inRange = hasGradeFilter && (minRank === null || rank >= minRank) && (maxRank === null || rank <= maxRank);
-            const color = getGradeColorStyle(v);
-            const swatch = color ? { borderColor: color.backgroundColor, ...(inRange ? color : { backgroundColor: `color-mix(in srgb, ${color.backgroundColor} 12%, var(--bg-elevated))`, color: color.backgroundColor }) } : undefined;
-            return <button key={v} type="button" className={`${styles.gradeOption} ${isEndpoint ? styles.gradeOptionSelected : ""} ${inRange && !isEndpoint ? styles.gradeOptionInRange : ""}`} style={swatch} aria-pressed={isEndpoint || inRange} onClick={() => selectGrade(v)}>{v}</button>;
-          })}
-        </div>
+      <FilterDrawer open={filtersOpen} title="Filters" onClose={() => setFiltersOpen(false)} onClear={clearFilters} matchingCount={matchingRoutes.length} triggerRef={filtersTriggerRef}>
+        <section className={styles.filterSection}>
+          <h3 className={styles.filterSectionTitle}>Style</h3>
+          <p className={styles.gradeHelper}>Matches any selected tag</p>
+          <RouteTagPicker presentation="inline" selectedTags={selectedTags} onChange={updateTags} label="Style" />
+        </section>
+        <section className={styles.filterSection}>
+          <h3 className={styles.filterSectionTitle}>Grade</h3>
+          <p className={styles.gradeHelper}>Select one grade, then another to set an inclusive range.</p>
+          <div className={styles.gradeOptions} role="group" aria-label="Choose a V-grade range">
+            <button type="button" className={`${styles.gradeOption} ${!hasGradeFilter ? styles.gradeOptionAnySelected : ""}`} aria-pressed={!hasGradeFilter} onClick={() => updateFilters({ minGrade: null, maxGrade: null })}>Any</button>
+            {gradeOptions.map(({ v }) => {
+              const rank = getVGradeRank(v)!;
+              const isEndpoint = v === minGrade || v === maxGrade;
+              const maxRank = maxGrade === null ? null : getVGradeRank(maxGrade);
+              const inRange = hasGradeFilter && (minRank === null || rank >= minRank) && (maxRank === null || rank <= maxRank);
+              const color = getGradeColorStyle(v);
+              const swatch = color ? { borderColor: color.backgroundColor, ...(inRange ? color : { backgroundColor: `color-mix(in srgb, ${color.backgroundColor} 12%, var(--bg-elevated))`, color: color.backgroundColor }) } : undefined;
+              return <button key={v} type="button" className={`${styles.gradeOption} ${isEndpoint ? styles.gradeOptionSelected : ""} ${inRange && !isEndpoint ? styles.gradeOptionInRange : ""}`} style={swatch} aria-pressed={isEndpoint || inRange} onClick={() => selectGrade(v)}>{v}</button>;
+            })}
+          </div>
+        </section>
+        <section className={styles.filterSection}>
+          <h3 className={styles.filterSectionTitle}>Beta</h3>
+          <button type="button" className={`${styles.gradeOption} ${hasBeta ? styles.gradeOptionAnySelected : ""}`} aria-pressed={hasBeta} onClick={() => updateFilters({ hasBeta: !hasBeta })}>▶ Has beta video</button>
+        </section>
+        <section className={styles.filterSection}>
+          <h3 className={styles.filterSectionTitle}>Personal progress</h3>
+          <div className={styles.gradeOptions} role="group" aria-label="Filter by personal progress">
+            <button type="button" className={`${styles.gradeOption} ${progress === null ? styles.gradeOptionAnySelected : ""}`} aria-pressed={progress === null} onClick={() => updateFilters({ progress: null })}>All</button>
+            {progressChoices.map(({ value, label }) => <button key={value} type="button" className={`${styles.gradeOption} ${progress === value ? styles.gradeOptionSelected : ""}`} aria-pressed={progress === value} onClick={() => updateFilters({ progress: value })}>{label}</button>)}
+          </div>
+        </section>
+        <section className={styles.filterSection}>
+          <h3 className={styles.filterSectionTitle}>Community rating</h3>
+          <p className={styles.gradeHelper}>Minimum unrounded community average. Unrated climbs appear under Any.</p>
+          <div className={styles.gradeOptions} role="group" aria-label="Minimum community rating">
+            <button type="button" className={`${styles.gradeOption} ${minStars === null ? styles.gradeOptionAnySelected : ""}`} aria-pressed={minStars === null} onClick={() => updateFilters({ minStars: null })}>Any</button>
+            {[1, 2, 3, 4, 5].map((stars) => <button key={stars} type="button" className={`${styles.gradeOption} ${minStars === stars ? styles.gradeOptionSelected : ""}`} aria-pressed={minStars === stars} onClick={() => updateFilters({ minStars: stars })}>{stars === 5 ? "5" : `${stars}+`} ★</button>)}
+          </div>
+        </section>
+        <section className={styles.filterSection}>
+          <h3 className={styles.filterSectionTitle}>Circuit</h3>
+          <div className={styles.circuitChoices} role="group" aria-label="Filter by circuit">
+            <button type="button" className={`${styles.gradeOption} ${!activeCircuit ? styles.gradeOptionAnySelected : ""}`} aria-pressed={!activeCircuit} onClick={() => updateCircuit(null)}>Any</button>
+            {circuits.some((circuit) => circuit.is_owner) && <><h3 className={styles.circuitGroup}>Yours</h3>{circuits.filter((circuit) => circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} style={{ borderColor: circuit.id === activeCircuit?.id ? circuitColor(circuit.color) : undefined }} aria-pressed={circuit.id === activeCircuit?.id} onClick={() => updateCircuit(circuit.id)}><CircuitBadge circuit={circuit} /></button>)}</>}
+            {circuits.some((circuit) => !circuit.is_owner) && <><h3 className={styles.circuitGroup}>Shared</h3>{circuits.filter((circuit) => !circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} style={{ borderColor: circuit.id === activeCircuit?.id ? circuitColor(circuit.color) : undefined }} aria-pressed={circuit.id === activeCircuit?.id} onClick={() => updateCircuit(circuit.id)}><CircuitBadge circuit={circuit} /></button>)}</>}
+          </div>
+          <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
+        </section>
       </FilterDrawer>
-      <FilterDrawer open={progressPickerOpen} title="Personal progress" onClose={() => setProgressPickerOpen(false)} onClear={() => updateFilters({ progress: null })} matchingCount={matchingRoutes.length} triggerRef={progressTriggerRef}>
-        <div className={styles.gradeOptions} role="group" aria-label="Filter by personal progress">
-          <button type="button" className={`${styles.gradeOption} ${progress === null ? styles.gradeOptionAnySelected : ""}`} aria-pressed={progress === null} onClick={() => updateFilters({ progress: null })}>All</button>
-          {progressChoices.map(({ value, label }) => <button key={value} type="button" className={`${styles.gradeOption} ${progress === value ? styles.gradeOptionSelected : ""}`} aria-pressed={progress === value} onClick={() => updateFilters({ progress: value })}>{label}</button>)}
-        </div>
-      </FilterDrawer>
-      <FilterDrawer open={sortPickerOpen} title="Sort" onClose={() => setSortPickerOpen(false)} onClear={() => updateSort("newest")} matchingCount={matchingRoutes.length} triggerRef={sortTriggerRef}>
+      <FilterDrawer open={sortOpen} title="Sort" onClose={() => setSortOpen(false)} onClear={() => updateSort("newest")} matchingCount={matchingRoutes.length} triggerRef={sortTriggerRef}>
         <div className={styles.gradeOptions} role="group" aria-label="Sort climbs">
           {(["newest", "grade_asc", "grade_desc"] as const).map((value) => {
             const label = value === "newest" ? "Newest" : value === "grade_asc" ? "Grade ↑" : "Grade ↓";
             return <button key={value} type="button" className={`${styles.gradeOption} ${sort === value ? styles.gradeOptionSelected : ""}`} aria-pressed={sort === value} onClick={() => updateSort(value)}>{label}</button>;
           })}
-        </div>
-      </FilterDrawer>
-      <FilterDrawer open={circuitPickerOpen} title="Circuit" onClose={() => setCircuitPickerOpen(false)} onClear={() => updateCircuit(null)} matchingCount={matchingRoutes.length} triggerRef={circuitTriggerRef}>
-        <div className={styles.circuitChoices} role="group" aria-label="Filter by circuit">
-          <button type="button" className={`${styles.gradeOption} ${!activeCircuit ? styles.gradeOptionAnySelected : ""}`} onClick={() => updateCircuit(null)}>Any</button>
-          {circuits.some((circuit) => circuit.is_owner) && <><h3 className={styles.circuitGroup}>Yours</h3>{circuits.filter((circuit) => circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} style={{ borderColor: circuit.id === activeCircuit?.id ? circuitColor(circuit.color) : undefined }} aria-pressed={circuit.id === activeCircuit?.id} onClick={() => updateCircuit(circuit.id)}><CircuitBadge circuit={circuit} /></button>)}</>}
-          {circuits.some((circuit) => !circuit.is_owner) && <><h3 className={styles.circuitGroup}>Shared</h3>{circuits.filter((circuit) => !circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} style={{ borderColor: circuit.id === activeCircuit?.id ? circuitColor(circuit.color) : undefined }} aria-pressed={circuit.id === activeCircuit?.id} onClick={() => updateCircuit(circuit.id)}><CircuitBadge circuit={circuit} /></button>)}</>}
-        </div>
-        <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
-      </FilterDrawer>
-      <FilterDrawer open={starsPickerOpen} title="Community ratings" onClose={() => setStarsPickerOpen(false)} onClear={() => updateFilters({ minStars: null })} matchingCount={matchingRoutes.length} triggerRef={starsTriggerRef}>
-        <p className={styles.gradeHelper}>Minimum unrounded community average. Unrated climbs appear under Any.</p>
-        <div className={styles.gradeOptions} role="group" aria-label="Minimum community rating">
-          <button type="button" className={`${styles.gradeOption} ${minStars === null ? styles.gradeOptionAnySelected : ""}`} aria-pressed={minStars === null} onClick={() => updateFilters({ minStars: null })}>Any</button>
-          {[1, 2, 3, 4, 5].map((stars) => <button key={stars} type="button" className={`${styles.gradeOption} ${minStars === stars ? styles.gradeOptionSelected : ""}`} aria-pressed={minStars === stars} onClick={() => updateFilters({ minStars: stars })}>{stars === 5 ? "5" : `${stars}+`} ★</button>)}
         </div>
       </FilterDrawer>
       {hasActiveFilters && matchingRoutes.length === 0 && (
