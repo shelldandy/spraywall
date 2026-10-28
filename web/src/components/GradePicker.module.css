@@ -64,6 +64,19 @@
   }
 }
 
+.sheetClosing {
+  animation: slide-down 0.2s ease-in forwards;
+}
+
+@keyframes slide-down {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
 .sheetHeader {
   display: flex;
   justify-content: space-between;
