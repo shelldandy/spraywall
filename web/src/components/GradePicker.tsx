@@ -32,8 +32,12 @@ export default function GradePicker({ selectedGradeId, onSelect, system = "v" }:
     const dialog = dialogRef.current;
     if (!dialog) return;
 
-    if (visible && !dialog.open) dialog.showModal();
-    else if (!visible && dialog.open) dialog.close();
+    if (visible && !dialog.open) {
+      dialog.showModal();
+      // Keep the modal itself focused so its offscreen opening animation doesn't scroll the dialog.
+      dialog.focus({ preventScroll: true });
+      dialog.scrollTop = 0;
+    } else if (!visible && dialog.open) dialog.close();
   }, [visible]);
 
   const choose = (gradeId: number | null) => {
@@ -62,6 +66,7 @@ export default function GradePicker({ selectedGradeId, onSelect, system = "v" }:
         ref={dialogRef}
         className={styles.overlay}
         aria-label="Select Grade"
+        tabIndex={-1}
         onClick={(e) => {
           if (e.target === e.currentTarget) setVisible(false);
         }}
@@ -75,7 +80,6 @@ export default function GradePicker({ selectedGradeId, onSelect, system = "v" }:
             <h2 className={styles.sheetTitle}>Select Grade</h2>
             <button
               type="button"
-              autoFocus
               className="btn btn-ghost"
               onClick={() => setVisible(false)}
             >

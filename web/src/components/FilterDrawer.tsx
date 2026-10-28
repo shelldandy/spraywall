@@ -22,8 +22,12 @@ export default function FilterDrawer({ open, title, onClose, onBack, onClear, ma
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    else if (!open && dialog.open) dialog.close();
+    if (open && !dialog.open) {
+      dialog.showModal();
+      // Keep the modal itself focused so its offscreen opening animation doesn't scroll the dialog.
+      dialog.focus({ preventScroll: true });
+      dialog.scrollTop = 0;
+    } else if (!open && dialog.open) dialog.close();
   }, [open]);
 
   return (
@@ -31,6 +35,7 @@ export default function FilterDrawer({ open, title, onClose, onBack, onClear, ma
       ref={dialogRef}
       className={styles.overlay}
       aria-labelledby={titleId}
+      tabIndex={-1}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       onClose={() => { onClose(); triggerRef.current?.focus(); }}
     >
@@ -38,7 +43,7 @@ export default function FilterDrawer({ open, title, onClose, onBack, onClear, ma
         <header className={styles.header}>
           {onBack && <button type="button" className="btn btn-ghost" onClick={onBack} aria-label="Back">‹</button>}
           <h2 id={titleId} className={styles.title}>{title}</h2>
-          <button type="button" autoFocus className="btn btn-ghost" onClick={onClose}>Done</button>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Done</button>
         </header>
         <div className={styles.content}>{children}</div>
         {showFooter && onClear && matchingCount !== undefined && (
