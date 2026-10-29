@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 SAM_ENABLED = os.environ.get("SAM_ENABLED", "true").lower() == "true"
 SAM_MODEL_CFG = os.environ.get("SAM_MODEL_CFG", "configs/sam2.1/sam2.1_hiera_s.yaml")
+SAM_PREDICT_BATCH_SIZE = 32
 SAM_CHECKPOINT = os.environ.get(
     "SAM_CHECKPOINT",
     os.path.join(os.environ.get("MODEL_DIR", "./models"), "sam2.1_hiera_small.pt"),
@@ -80,6 +81,10 @@ def segment_holds(
         model_h = round(model_h * scale)
         image_rgb = cv2.resize(image_rgb, (model_w, model_h), interpolation=cv2.INTER_AREA)
 
+    model_scale = min(1.0, model_w / img_w, model_h / img_h)
+    kernel_radius = round(2 * model_scale)
+    kernel_size = 2 * kernel_radius + 1
+
     predictor = get_predictor()
     boxes = np.array(
         [
@@ -96,41 +101,49 @@ def segment_holds(
 
     import torch
 
-    autocast = (
-        torch.autocast(device_type="cuda", dtype=torch.bfloat16)
-        if torch.cuda.is_available()
-        else nullcontext()
-    )
-    with torch.inference_mode(), autocast:
+    with torch.inference_mode(), _cuda_autocast_context(torch):
         predictor.set_image(image_rgb)
-        masks, scores, _ = predictor.predict(
-            box=boxes,
-            multimask_output=True,
-        )
+        for batch_start in range(0, len(holds), SAM_PREDICT_BATCH_SIZE):
+            batch_end = min(batch_start + SAM_PREDICT_BATCH_SIZE, len(holds))
+            masks, scores, _ = predictor.predict(
+                box=boxes[batch_start:batch_end],
+                multimask_output=True,
+            )
 
-    # SAM 2 squeezes the batch dimension for a single box.
-    if masks.ndim == 3:
-        masks = masks[None, ...]
-    if scores.ndim == 1:
-        scores = scores[None, ...]
+            # SAM 2 squeezes the batch dimension for a single box.
+            if masks.ndim == 3:
+                masks = masks[None, ...]
+            if scores.ndim == 1:
+                scores = scores[None, ...]
 
-    for hold, hold_masks, hold_scores in zip(holds, masks, scores):
-        # Select best mask by IoU score
-        best_idx = int(np.argmax(hold_scores))
-        mask = hold_masks[best_idx]
+            for batch_index, hold in enumerate(holds[batch_start:batch_end]):
+                # Select best mask by IoU score
+                best_idx = int(np.argmax(scores[batch_index]))
+                mask = masks[batch_index, best_idx]
 
-        polygon = _post_process_mask(mask, model_w, model_h)
-        if polygon is not None:
-            hold["polygon"] = polygon
-            hold["confidence"] = max(hold["confidence"], float(hold_scores[best_idx]))
+                polygon = _post_process_mask(mask, model_w, model_h, kernel_size)
+                if polygon is not None:
+                    hold["polygon"] = polygon
+                    hold["confidence"] = max(hold["confidence"], float(scores[batch_index, best_idx]))
+                del mask
+
+            del masks, scores
 
     return holds
+
+
+def _cuda_autocast_context(torch):
+    """Use bfloat16 autocast only on CUDA devices that support it natively."""
+    if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8:
+        return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    return nullcontext()
 
 
 def _post_process_mask(
     mask: np.ndarray,
     img_w: int,
     img_h: int,
+    kernel_size: int = 5,
 ) -> list[list[float]] | None:
     """Convert binary mask to simplified polygon contour.
 
@@ -145,7 +158,7 @@ def _post_process_mask(
     mask_uint8 = (mask * 255).astype(np.uint8)
 
     # Morphological operations to clean up
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
     mask_uint8 = cv2.erode(mask_uint8, kernel, iterations=1)
     mask_uint8 = cv2.dilate(mask_uint8, kernel, iterations=1)
 

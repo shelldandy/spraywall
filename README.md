@@ -197,10 +197,12 @@ The worker polls for detection jobs and runs inference with one of two backends,
 cd worker
 pip install modal
 modal token new
+modal run modal_app.py::download_weights   # one-off: populate the models volume
 modal deploy modal_app.py
-modal run modal_app.py::download_weights   # populate the models volume; re-run after deploying SAM 2.1
 modal run modal_app.py --image-path /path/to/wall.jpg   # smoke test
 ```
+
+After deploying a SAM model upgrade, re-run `modal run modal_app.py::download_weights` to populate the Modal volume with its checkpoint.
 
 Then set these in `.env` and rebuild the worker:
 

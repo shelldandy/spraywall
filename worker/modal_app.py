@@ -20,19 +20,20 @@ YOLO_REPO = "jwlarocque/yolov8n-freeclimbs-detect-2"
 YOLO_FILE = "yolov8n-freeclimbs-detect-2.pt"
 SAM_REPO = "facebook/sam2.1-hiera-small"
 SAM_FILE = "sam2.1_hiera_small.pt"
+SAM2_GIT_URL = "git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4"
 
 app = modal.App(APP_NAME)
 models_volume = modal.Volume.from_name("spraywall-models", create_if_missing=True)
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
-    .apt_install("libgl1", "libglib2.0-0")
+    .apt_install("git", "libgl1", "libglib2.0-0")
     .pip_install(
         "ultralytics>=8.1",
         "opencv-python-headless>=4.8",
-        "sam-2 @ git+https://github.com/facebookresearch/sam2.git",
         "huggingface_hub",
     )
+    .run_commands(f"SAM2_BUILD_CUDA=0 python -m pip install 'sam-2 @ {SAM2_GIT_URL}'")
     .env({"MODEL_DIR": MODEL_DIR, "SAM_ENABLED": "true"})
     .add_local_python_source("detection")
 )
