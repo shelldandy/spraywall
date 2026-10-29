@@ -1,6 +1,7 @@
 """SAM-based hold segmentation using bounding box prompts."""
 import logging
 import os
+from contextlib import nullcontext
 
 import cv2
 import numpy as np
@@ -8,10 +9,11 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 SAM_ENABLED = os.environ.get("SAM_ENABLED", "true").lower() == "true"
-SAM_MODEL_TYPE = os.environ.get("SAM_MODEL_TYPE", "vit_b")
+SAM_MODEL_CFG = os.environ.get("SAM_MODEL_CFG", "configs/sam2.1/sam2.1_hiera_s.yaml")
+SAM_PREDICT_BATCH_SIZE = 32
 SAM_CHECKPOINT = os.environ.get(
     "SAM_CHECKPOINT",
-    os.path.join(os.environ.get("MODEL_DIR", "./models"), "sam_vit_b_01ec64.pth"),
+    os.path.join(os.environ.get("MODEL_DIR", "./models"), "sam2.1_hiera_small.pt"),
 )
 
 _sam_predictor = None
@@ -23,9 +25,9 @@ def sam_available() -> bool:
     global _sam_available
     if _sam_available is None:
         try:
-            import segment_anything  # noqa: F401
+            import sam2  # noqa: F401
         except ImportError:
-            logger.warning("SAM disabled: segment-anything is not installed (build with INSTALL_SAM=true)")
+            logger.warning("SAM disabled: sam2 is not installed (build with INSTALL_SAM=true)")
             _sam_available = False
         else:
             if not os.path.isfile(SAM_CHECKPOINT):
@@ -41,12 +43,12 @@ def get_predictor():
     global _sam_predictor
     if _sam_predictor is None:
         import torch
-        from segment_anything import SamPredictor, sam_model_registry
+        from sam2.build_sam import build_sam2
+        from sam2.sam2_image_predictor import SAM2ImagePredictor
 
-        sam = sam_model_registry[SAM_MODEL_TYPE](checkpoint=SAM_CHECKPOINT)
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        sam.to(device=device)
-        _sam_predictor = SamPredictor(sam)
+        model = build_sam2(SAM_MODEL_CFG, SAM_CHECKPOINT, device=device)
+        _sam_predictor = SAM2ImagePredictor(model)
     return _sam_predictor
 
 
@@ -71,41 +73,77 @@ def segment_holds(
     if image is None:
         return holds
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    # Keep batched output masks bounded; SAM 2's encoder uses a 1024px long side.
+    model_h, model_w = image_rgb.shape[:2]
+    if max(model_h, model_w) > 1024:
+        scale = 1024 / max(model_h, model_w)
+        model_w = round(model_w * scale)
+        model_h = round(model_h * scale)
+        image_rgb = cv2.resize(image_rgb, (model_w, model_h), interpolation=cv2.INTER_AREA)
+
+    model_scale = min(1.0, model_w / img_w, model_h / img_h)
+    kernel_radius = round(2 * model_scale)
+    kernel_size = 2 * kernel_radius + 1
 
     predictor = get_predictor()
-    predictor.set_image(image_rgb)
+    boxes = np.array(
+        [
+            [
+                hold["bbox"]["x"] * model_w,
+                hold["bbox"]["y"] * model_h,
+                (hold["bbox"]["x"] + hold["bbox"]["w"]) * model_w,
+                (hold["bbox"]["y"] + hold["bbox"]["h"]) * model_h,
+            ]
+            for hold in holds
+        ],
+        dtype=np.float32,
+    )
 
-    for hold in holds:
-        bbox = hold["bbox"]
-        # Convert normalized xywh to pixel xyxy
-        x1 = bbox["x"] * img_w
-        y1 = bbox["y"] * img_h
-        x2 = (bbox["x"] + bbox["w"]) * img_w
-        y2 = (bbox["y"] + bbox["h"]) * img_h
+    import torch
 
-        input_box = np.array([x1, y1, x2, y2])
+    with torch.inference_mode(), _cuda_autocast_context(torch):
+        predictor.set_image(image_rgb)
+        for batch_start in range(0, len(holds), SAM_PREDICT_BATCH_SIZE):
+            batch_end = min(batch_start + SAM_PREDICT_BATCH_SIZE, len(holds))
+            masks, scores, _ = predictor.predict(
+                box=boxes[batch_start:batch_end],
+                multimask_output=True,
+            )
 
-        masks, scores, _ = predictor.predict(
-            box=input_box[None, :],
-            multimask_output=True,
-        )
+            # SAM 2 squeezes the batch dimension for a single box.
+            if masks.ndim == 3:
+                masks = masks[None, ...]
+            if scores.ndim == 1:
+                scores = scores[None, ...]
 
-        # Select best mask by IoU score
-        best_idx = int(np.argmax(scores))
-        mask = masks[best_idx]
+            for batch_index, hold in enumerate(holds[batch_start:batch_end]):
+                # Select best mask by IoU score
+                best_idx = int(np.argmax(scores[batch_index]))
+                mask = masks[batch_index, best_idx]
 
-        polygon = _post_process_mask(mask, img_w, img_h)
-        if polygon is not None:
-            hold["polygon"] = polygon
-            hold["confidence"] = max(hold["confidence"], float(scores[best_idx]))
+                polygon = _post_process_mask(mask, model_w, model_h, kernel_size)
+                if polygon is not None:
+                    hold["polygon"] = polygon
+                    hold["confidence"] = max(hold["confidence"], float(scores[batch_index, best_idx]))
+                del mask
+
+            del masks, scores
 
     return holds
+
+
+def _cuda_autocast_context(torch):
+    """Use bfloat16 autocast only on CUDA devices that support it natively."""
+    if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8:
+        return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    return nullcontext()
 
 
 def _post_process_mask(
     mask: np.ndarray,
     img_w: int,
     img_h: int,
+    kernel_size: int = 5,
 ) -> list[list[float]] | None:
     """Convert binary mask to simplified polygon contour.
 
@@ -120,7 +158,7 @@ def _post_process_mask(
     mask_uint8 = (mask * 255).astype(np.uint8)
 
     # Morphological operations to clean up
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
     mask_uint8 = cv2.erode(mask_uint8, kernel, iterations=1)
     mask_uint8 = cv2.dilate(mask_uint8, kernel, iterations=1)
 

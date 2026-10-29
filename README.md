@@ -156,14 +156,14 @@ In production (`make prod`), nginx serves the built web app at `/` and proxies t
 
 ## SAM Segmentation
 
-Hold detection uses YOLOv8 for bounding boxes. By default, [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) refines each box into a polygon outline.
+Hold detection uses YOLOv8 for bounding boxes. By default, [Segment Anything Model 2.1 (SAM 2)](https://github.com/facebookresearch/sam2) refines each box into a polygon outline.
 
 ### Setup
 
 Worker Docker images (including the published ones) install SAM and download the checkpoint at build time. For local (non-Docker) runs and the `make dev` bind mount, download a SAM checkpoint into the worker models directory:
 
 ```bash
-wget -P worker/models https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+wget -P worker/models https://huggingface.co/facebook/sam2.1-hiera-small/resolve/main/sam2.1_hiera_small.pt
 ```
 
 For local (non-Docker) runs, also install the optional `sam` extra (`pip install '.[sam]'`). To opt out, set `SAM_ENABLED=false` or build the image with `INSTALL_SAM=false`; detection then returns YOLO bounding boxes without polygon segmentation. If SAM is enabled but the package or checkpoint is missing, the worker logs a warning and falls back to boxes.
@@ -177,11 +177,11 @@ For local (non-Docker) runs, also install the optional `sam` extra (`pip install
 
 ### Environment variables
 
-| Variable         | Default                              | Description              |
-| ---------------- | ------------------------------------ | ------------------------ |
-| `SAM_ENABLED`    | `true`                               | Enable SAM segmentation  |
-| `SAM_MODEL_TYPE` | `vit_b`                              | SAM model variant        |
-| `SAM_CHECKPOINT` | `./models/sam_vit_b_01ec64.pth`      | Path to checkpoint file  |
+| Variable         | Default                                | Description                         |
+| ---------------- | -------------------------------------- | ----------------------------------- |
+| `SAM_ENABLED`    | `true`                                 | Enable SAM segmentation             |
+| `SAM_MODEL_CFG`  | `configs/sam2.1/sam2.1_hiera_s.yaml`   | SAM 2 model configuration           |
+| `SAM_CHECKPOINT` | `./models/sam2.1_hiera_small.pt`       | Path to SAM 2 checkpoint file       |
 
 ## Detection Backends
 
@@ -201,6 +201,8 @@ modal run modal_app.py::download_weights   # one-off: populate the models volume
 modal deploy modal_app.py
 modal run modal_app.py --image-path /path/to/wall.jpg   # smoke test
 ```
+
+After deploying a SAM model upgrade, re-run `modal run modal_app.py::download_weights` to populate the Modal volume with its checkpoint.
 
 Then set these in `.env` and rebuild the worker:
 
