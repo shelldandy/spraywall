@@ -18,7 +18,8 @@ MODEL_DIR = "/models"
 
 YOLO_REPO = "jwlarocque/yolov8n-freeclimbs-detect-2"
 YOLO_FILE = "yolov8n-freeclimbs-detect-2.pt"
-SAM_URL = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+SAM_REPO = "facebook/sam2.1-hiera-small"
+SAM_FILE = "sam2.1_hiera_small.pt"
 
 app = modal.App(APP_NAME)
 models_volume = modal.Volume.from_name("spraywall-models", create_if_missing=True)
@@ -29,7 +30,7 @@ image = (
     .pip_install(
         "ultralytics>=8.1",
         "opencv-python-headless>=4.8",
-        "segment-anything",
+        "sam-2 @ git+https://github.com/facebookresearch/sam2.git",
         "huggingface_hub",
     )
     .env({"MODEL_DIR": MODEL_DIR, "SAM_ENABLED": "true"})
@@ -41,7 +42,6 @@ image = (
 def download_weights():
     """One-off: populate the models volume with YOLO and SAM weights."""
     import shutil
-    import urllib.request
 
     from huggingface_hub import hf_hub_download
 
@@ -50,9 +50,9 @@ def download_weights():
         shutil.copy(hf_hub_download(repo_id=YOLO_REPO, filename=YOLO_FILE), yolo_path)
         print(f"Downloaded {yolo_path}")
 
-    sam_path = os.path.join(MODEL_DIR, os.path.basename(SAM_URL))
+    sam_path = os.path.join(MODEL_DIR, SAM_FILE)
     if not os.path.exists(sam_path):
-        urllib.request.urlretrieve(SAM_URL, sam_path)
+        shutil.copy(hf_hub_download(repo_id=SAM_REPO, filename=SAM_FILE), sam_path)
         print(f"Downloaded {sam_path}")
 
     models_volume.commit()
