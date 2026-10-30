@@ -273,7 +273,8 @@ export function useDeleteRoute(gymSlug: string, wallId: string, routeId: string)
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
       queryClient.invalidateQueries({ queryKey: ["circuits", wallId] });
-      queryClient.removeQueries({ queryKey: ["route-detail", routeId] });
+      queryClient.invalidateQueries({ queryKey: ["activity", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["logbook"] });
     },
   });
 }

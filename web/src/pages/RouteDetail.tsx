@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { shouldLoadHolds, useCircuits, useHolds, useRouteDetail, useRouteLogs, useRoutes, useWallDetail } from "../lib/hooks/queries";
@@ -31,6 +32,7 @@ export default function RouteDetailPage() {
   const wallId = params.get("wallId") ?? "";
   const gymSlug = params.get("gymSlug") ?? "";
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const userId = useAuthStore((s) => s.userId);
 
   const routeQuery = useRouteDetail(routeId, gymSlug, wallId);
@@ -131,10 +133,11 @@ export default function RouteDetailPage() {
       : `/walls/${wallId}?${fallbackParams}`;
 
   const removeRoute = async () => {
-    if (!window.confirm(`Delete "${routeData?.name ?? "this climb"}"? All sends, ratings, and beta videos on this climb will be permanently deleted.`)) return;
+    if (!window.confirm(`Delete "${routeData?.name ?? "this climb"}"? All sends, ratings, beta videos, and circuit memberships on this climb will be permanently deleted.`)) return;
     try {
       await deleteRoute.mutateAsync();
       navigate(backUrl, { replace: true });
+      queryClient.removeQueries({ queryKey: ["route-detail", routeId] });
     } catch {
       // The mutation error is rendered below the delete button.
     }
