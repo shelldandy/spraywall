@@ -17,6 +17,7 @@ from main import (
     LeaseHeartbeat,
     LeaseLostError,
     claim_job,
+    clamp_heartbeat_seconds,
     mark_discarded,
     poll_and_process,
     record_failure,
@@ -157,6 +158,14 @@ def test_expired_processing_jobs_are_reclaimed_and_exhausted_crashes_fail(db):
     assert attempts == MAX_ATTEMPTS
     assert token is None
     assert expiry is None
+
+
+def test_heartbeat_interval_is_clamped_below_lease_duration():
+    assert clamp_heartbeat_seconds(900, 30) == 30
+    assert clamp_heartbeat_seconds(90, 60) == 30
+    assert clamp_heartbeat_seconds(10, 50) == 3
+    assert clamp_heartbeat_seconds(2, 50) == 1
+    assert clamp_heartbeat_seconds(900, 0) == 1
 
 
 def test_heartbeat_renews_only_the_current_live_lease(db):

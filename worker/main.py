@@ -24,8 +24,24 @@ POLL_INTERVAL = max(1, int(os.environ.get("POLL_INTERVAL_SECONDS", "5")))
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 INFERENCE_BACKEND = os.environ.get("INFERENCE_BACKEND", "local").lower()
 MAX_ATTEMPTS = max(1, int(os.environ.get("DETECTION_MAX_ATTEMPTS", "3")))
-LEASE_SECONDS = max(1, int(os.environ.get("DETECTION_LEASE_SECONDS", "900")))
-HEARTBEAT_SECONDS = max(1, int(os.environ.get("DETECTION_HEARTBEAT_SECONDS", "30")))
+
+
+def clamp_heartbeat_seconds(lease_seconds: int, requested_seconds: int) -> int:
+    """Keep heartbeat renewals comfortably ahead of lease expiration."""
+    safe_lease_seconds = max(3, lease_seconds)
+    return min(max(1, requested_seconds), max(1, safe_lease_seconds // 3))
+
+
+LEASE_SECONDS = max(3, int(os.environ.get("DETECTION_LEASE_SECONDS", "900")))
+_requested_heartbeat_seconds = int(os.environ.get("DETECTION_HEARTBEAT_SECONDS", "30"))
+HEARTBEAT_SECONDS = clamp_heartbeat_seconds(LEASE_SECONDS, _requested_heartbeat_seconds)
+if HEARTBEAT_SECONDS != _requested_heartbeat_seconds:
+    logger.warning(
+        "DETECTION_HEARTBEAT_SECONDS=%d is unsafe for a %d-second lease; clamping to %d seconds",
+        _requested_heartbeat_seconds,
+        LEASE_SECONDS,
+        HEARTBEAT_SECONDS,
+    )
 RETRY_BACKOFF_SECONDS = max(1, int(os.environ.get("DETECTION_RETRY_BACKOFF_SECONDS", "10")))
 RETRY_BACKOFF_MAX_SECONDS = max(
     RETRY_BACKOFF_SECONDS,

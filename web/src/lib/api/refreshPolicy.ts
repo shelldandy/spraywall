@@ -1,3 +1,5 @@
+export const MAX_RETRY_DELAY_MS = 30_000;
+
 export type RefreshResponsePolicy =
   | { kind: "success" }
   | { kind: "invalid" }
@@ -6,9 +8,13 @@ export type RefreshResponsePolicy =
 export function parseRetryAfter(value: string | null | undefined, now = Date.now()): number | undefined {
   if (!value?.trim()) return undefined;
   const trimmed = value.trim();
-  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    return Number.isFinite(seconds) ? Math.min(MAX_RETRY_DELAY_MS, seconds * 1000) : MAX_RETRY_DELAY_MS;
+  }
   const date = Date.parse(trimmed);
-  return Number.isNaN(date) ? undefined : Math.max(0, date - now);
+  if (!Number.isFinite(date)) return undefined;
+  return Math.min(MAX_RETRY_DELAY_MS, Math.max(0, date - now));
 }
 
 export function classifyRefreshResponse(
@@ -77,10 +83,11 @@ export class RetriableRefreshError extends Error {
 }
 
 export function queryRetryDelay(attemptIndex: number, error: unknown): number {
-  if (error instanceof RetriableRefreshError && error.retryAfterMs !== undefined) {
-    return error.retryAfterMs;
+  const retryAfterMs = error instanceof RetriableRefreshError ? error.retryAfterMs : undefined;
+  if (retryAfterMs !== undefined && Number.isFinite(retryAfterMs)) {
+    return Math.min(MAX_RETRY_DELAY_MS, Math.max(0, retryAfterMs));
   }
-  return Math.min(1000 * 2 ** attemptIndex, 30_000);
+  return Math.min(1000 * 2 ** attemptIndex, MAX_RETRY_DELAY_MS);
 }
 
 export function createSingleFlight<T>(task: () => Promise<T>): () => Promise<T> {

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   classifyRefreshResponse,
   createSingleFlight,
+  MAX_RETRY_DELAY_MS,
   queryRetryDelay,
   refreshSession,
   RetriableRefreshError,
@@ -16,11 +17,22 @@ test("refresh responses separate confirmed invalid credentials from retryable fa
   assert.deepEqual(classifyRefreshResponse(429, "12"), { kind: "retryable", retryAfterMs: 12_000 });
 });
 
-test("Retry-After supports HTTP dates and query retries honor the requested delay", () => {
+test("Retry-After supports HTTP dates and caps invalid or excessive delays", () => {
   const now = Date.parse("Wed, 21 Oct 2015 07:27:00 GMT");
   const policy = classifyRefreshResponse(429, "Wed, 21 Oct 2015 07:27:08 GMT", now);
   assert.deepEqual(policy, { kind: "retryable", retryAfterMs: 8_000 });
+  assert.equal(
+    classifyRefreshResponse(429, "Wed, 21 Oct 2015 07:37:00 GMT", now).retryAfterMs,
+    MAX_RETRY_DELAY_MS,
+  );
+  assert.equal(classifyRefreshResponse(429, "9".repeat(400)).retryAfterMs, MAX_RETRY_DELAY_MS);
+  assert.equal(classifyRefreshResponse(429, "not a retry delay").retryAfterMs, undefined);
   assert.equal(queryRetryDelay(0, new RetriableRefreshError("try later", 8_000)), 8_000);
+  assert.equal(
+    queryRetryDelay(0, new RetriableRefreshError("try later", Number.POSITIVE_INFINITY)),
+    1_000,
+  );
+  assert.equal(queryRetryDelay(0, new RetriableRefreshError("try later", 90_000)), MAX_RETRY_DELAY_MS);
   assert.equal(queryRetryDelay(2, new Error("other error")), 4_000);
 });
 
