@@ -157,7 +157,11 @@ func (e *routeTestEnv) path(routeID string) string {
 }
 
 func (e *routeTestEnv) request(method, routeID, token, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(method, e.path(routeID), strings.NewReader(body))
+	return e.requestPath(method, e.path(routeID), token, body)
+}
+
+func (e *routeTestEnv) requestPath(method, path, token, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	e.router.ServeHTTP(rec, req)
@@ -288,6 +292,84 @@ func TestRouteTagHTTPContract(t *testing.T) {
 		if item.ID == draft.ID {
 			t.Fatal("draft route visible to non-creator")
 		}
+	}
+}
+
+func TestGetRouteEnforcesRequestedWallAndDraftVisibility(t *testing.T) {
+	e := newRouteTestEnv(t)
+	published := e.create(t, "", "published")
+	if got := e.request(http.MethodGet, published.ID, e.token, "").Code; got != http.StatusOK {
+		t.Fatalf("creator published GET status = %d, want %d", got, http.StatusOK)
+	}
+
+	draft := e.create(t, "", "draft")
+	if got := e.request(http.MethodGet, draft.ID, e.token, "").Code; got != http.StatusOK {
+		t.Fatalf("creator draft GET status = %d, want %d", got, http.StatusOK)
+	}
+	if got := e.request(http.MethodGet, draft.ID, e.other, "").Code; got != http.StatusNotFound {
+		t.Fatalf("other member draft GET status = %d, want %d", got, http.StatusNotFound)
+	}
+
+	// Create a published route on another wall in the same gym. Its ID must
+	// not be usable through the original wall's route path.
+	gym, err := e.q.GetGymBySlug(context.Background(), "route-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondWall, err := e.q.CreateWall(context.Background(), generated.CreateWallParams{GymID: gym.ID, Name: "Second wall"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondImage, err := e.q.CreateWallImage(context.Background(), generated.CreateWallImageParams{WallID: secondWall.ID, StorageKey: "second-wall-image"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var secondHoldIDs []uuid.UUID
+	for i := 0; i < 2; i++ {
+		hold, err := e.q.CreateHold(context.Background(), generated.CreateHoldParams{WallImageID: secondImage.ID, Bbox: []byte(`{}`), Confidence: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		secondHoldIDs = append(secondHoldIDs, uuid.UUID(hold.ID.Bytes))
+	}
+	var secondWallRouteID uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes (wall_id, wall_image_id, created_by, name, hold_ids, hold_roles, status, tags)
+VALUES ($1, $2, $3, 'Second wall route', $4, '{}'::jsonb, 'published', '{}') RETURNING id`, secondWall.ID, secondImage.ID, shared.PgUUID(e.creatorID), secondHoldIDs).Scan(&secondWallRouteID); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.request(http.MethodGet, secondWallRouteID.String(), e.token, "").Code; got != http.StatusNotFound {
+		t.Fatalf("wrong-wall GET status = %d, want %d", got, http.StatusNotFound)
+	}
+
+	// Even when the URL's wall matches the route, the gym slug must scope it.
+	otherGym, err := e.q.CreateGym(context.Background(), generated.CreateGymParams{Name: "Other gym", Slug: "other-gym", OwnerID: shared.PgUUID(e.creatorID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherWall, err := e.q.CreateWall(context.Background(), generated.CreateWallParams{GymID: otherGym.ID, Name: "Foreign wall"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherImage, err := e.q.CreateWallImage(context.Background(), generated.CreateWallImageParams{WallID: otherWall.ID, StorageKey: "foreign-image"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var foreignHoldIDs []uuid.UUID
+	for i := 0; i < 2; i++ {
+		hold, err := e.q.CreateHold(context.Background(), generated.CreateHoldParams{WallImageID: otherImage.ID, Bbox: []byte(`{}`), Confidence: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		foreignHoldIDs = append(foreignHoldIDs, uuid.UUID(hold.ID.Bytes))
+	}
+	var foreignRouteID uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes (wall_id, wall_image_id, created_by, name, hold_ids, hold_roles, status, tags)
+VALUES ($1, $2, $3, 'Foreign route', $4, '{}'::jsonb, 'published', '{}') RETURNING id`, otherWall.ID, otherImage.ID, shared.PgUUID(e.creatorID), foreignHoldIDs).Scan(&foreignRouteID); err != nil {
+		t.Fatal(err)
+	}
+	foreignPath := fmt.Sprintf("/gyms/route-test/walls/%s/routes/%s", uuid.UUID(otherWall.ID.Bytes), foreignRouteID)
+	if got := e.requestPath(http.MethodGet, foreignPath, e.token, "").Code; got != http.StatusNotFound {
+		t.Fatalf("cross-gym GET status = %d, want %d", got, http.StatusNotFound)
 	}
 }
 

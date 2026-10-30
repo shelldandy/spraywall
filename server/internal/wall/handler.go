@@ -24,6 +24,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
+	"github.com/bowlinedandy/spraywall/server/internal/gymaccess"
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
 )
@@ -77,20 +78,15 @@ func isValidWallImageMode(mode string) bool {
 	return mode == "" || mode == "full" || mode == "partial"
 }
 
-func (h *Handler) clearPendingResetImages(ctx context.Context, wallID pgtype.UUID) error {
-	storageKeys, err := h.queries.DeletePendingResetImagesByWall(ctx, wallID)
-	if err != nil {
-		return fmt.Errorf("delete pending reset records: %w", err)
+func (h *Handler) deleteStorageObjectBestEffort(key, reason string) {
+	if h.storage == nil {
+		return
 	}
-	for _, key := range storageKeys {
-		if h.storage == nil {
-			continue
-		}
-		if err := h.storage.Delete(ctx, key); err != nil {
-			log.Printf("wall: delete pending reset image %q for wall %s: %v", key, wallID, err)
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := h.storage.Delete(ctx, key); err != nil {
+		log.Printf("wall: could not delete image object %q (%s): %v", key, reason, err)
 	}
-	return nil
 }
 
 const (
@@ -186,28 +182,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // and returns the gym and membership.  If the check fails it writes an HTTP
 // error and returns a non-nil error.
 func (h *Handler) requireGymMember(w http.ResponseWriter, r *http.Request) (generated.Gym, generated.GymMember, error) {
-	gymSlug := chi.URLParam(r, "gymSlug")
-	gym, err := h.queries.GetGymBySlug(r.Context(), gymSlug)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "gym not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return generated.Gym{}, generated.GymMember{}, err
-	}
-
-	member, err := user.EffectiveGymMember(r.Context(), h.queries, gym.ID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusForbidden, "not a member of this gym")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return generated.Gym{}, generated.GymMember{}, err
-	}
-
-	return gym, member, nil
+	return gymaccess.RequireGymMember(w, r, h.queries)
 }
 
 // ---------- endpoints ----------
@@ -619,35 +594,100 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.clearPendingResetImages(r.Context(), pgWallID); err != nil {
-		_ = h.storage.Delete(r.Context(), storageKey)
+	tx, err := h.pool.Begin(r.Context())
+	if err != nil {
+		h.deleteStorageObjectBestEffort(storageKey, "database transaction could not start")
+		writeError(w, http.StatusInternalServerError, "could not save image record")
+		return
+	}
+	rollbackUpload := func() {
+		if rollbackErr := tx.Rollback(context.Background()); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+			log.Printf("wall: rollback image upload %q: %v", storageKey, rollbackErr)
+		}
+		h.deleteStorageObjectBestEffort(storageKey, "database transaction rolled back")
+	}
+
+	// Serialize every upload/reset transition on the wall row. Storage upload
+	// and HEIC conversion have already completed, so this transaction stays short.
+	var lockedWall pgtype.UUID
+	if err := tx.QueryRow(r.Context(), `SELECT id FROM walls WHERE id=$1 AND gym_id=$2 FOR UPDATE`, pgWallID, gym.ID).Scan(&lockedWall); err != nil {
+		rollbackUpload()
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "wall not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not lock wall for upload")
+		}
+		return
+	}
+
+	txQueries := h.queries.WithTx(tx)
+	if mode == "partial" {
+		currentImage, imageErr := txQueries.GetActiveWallImage(r.Context(), pgWallID)
+		if errors.Is(imageErr, pgx.ErrNoRows) || (imageErr == nil && currentImage.ID != activeImage.ID) {
+			rollbackUpload()
+			writeError(w, http.StatusConflict, "active wall image changed during partial upload")
+			return
+		}
+		if imageErr != nil {
+			rollbackUpload()
+			writeError(w, http.StatusInternalServerError, "could not reload active image")
+			return
+		}
+	}
+
+	oldPendingKeys, err := txQueries.DeletePendingResetImagesByWall(r.Context(), pgWallID)
+	if err != nil {
+		rollbackUpload()
 		writeError(w, http.StatusInternalServerError, "could not clear pending reset")
 		return
 	}
 
 	var wallImage generated.WallImage
 	if mode == "partial" {
-		wallImage, err = h.queries.CreatePendingResetImage(r.Context(), generated.CreatePendingResetImageParams{
+		wallImage, err = txQueries.CreatePendingResetImage(r.Context(), generated.CreatePendingResetImageParams{
 			WallID: pgWallID, StorageKey: storageKey, ParentImageID: activeImage.ID,
 		})
 	} else {
-		// Preserve existing full-reset behavior after clearing any pending partial reset.
-		if err := h.queries.DeactivateWallImages(r.Context(), pgWallID); err != nil {
+		if err := txQueries.DeactivateWallImages(r.Context(), pgWallID); err != nil {
+			rollbackUpload()
 			writeError(w, http.StatusInternalServerError, "could not deactivate old images")
 			return
 		}
-		wallImage, err = h.queries.CreateWallImage(r.Context(), generated.CreateWallImageParams{WallID: pgWallID, StorageKey: storageKey})
+		wallImage, err = txQueries.CreateWallImage(r.Context(), generated.CreateWallImageParams{WallID: pgWallID, StorageKey: storageKey})
 	}
 	if err != nil {
+		rollbackUpload()
 		writeError(w, http.StatusInternalServerError, "could not save image record")
 		return
 	}
 
-	// Create detection job.
-	job, err := h.queries.CreateDetectionJob(r.Context(), wallImage.ID)
+	job, err := txQueries.CreateDetectionJob(r.Context(), wallImage.ID)
 	if err != nil {
+		rollbackUpload()
 		writeError(w, http.StatusInternalServerError, "could not create detection job")
 		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		// Commit errors are ambiguous: retain the object unless the primary DB
+		// confirms the new image row is absent.
+		checkCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		var exists bool
+		checkErr := h.pool.QueryRow(checkCtx, `SELECT EXISTS(SELECT 1 FROM wall_images WHERE id=$1 AND storage_key=$2)`, wallImage.ID, storageKey).Scan(&exists)
+		if checkErr == nil && !exists {
+			h.deleteStorageObjectBestEffort(storageKey, "commit failed and image row is absent")
+		} else {
+			log.Printf("wall: ambiguous image upload commit for %q (image=%s, rowExists=%v, checkErr=%v, commitErr=%v); retaining object for reconciliation", storageKey, shared.UUIDFromPg(wallImage.ID), exists, checkErr, err)
+		}
+		writeError(w, http.StatusInternalServerError, "could not commit image upload")
+		return
+	}
+
+	// Old objects are removed only after the DB commit is confirmed. Their
+	// cleanup is best-effort and must not turn a successful upload into failure.
+	for _, key := range oldPendingKeys {
+		h.deleteStorageObjectBestEffort(key, "superseded pending reset")
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{

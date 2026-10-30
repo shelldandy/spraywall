@@ -231,9 +231,13 @@ export default function ResetReviewPage() {
             </p>
           ))}
 
-        {data.detection_status !== "done" && (
+        {data.detection_status === "failed" ? (
+          <p className="error-text" role="alert">
+            Hold detection failed. This reset cannot be applied. Discard it and upload another photo.
+          </p>
+        ) : data.detection_status !== "done" ? (
           <p className="muted">Hold detection is still running. Apply will be available when it finishes.</p>
-        )}
+        ) : null}
         <button
           type="button"
           className="btn btn-primary btn-block"
@@ -248,7 +252,7 @@ export default function ResetReviewPage() {
           disabled={discard.isPending}
           onClick={() => void discardReset()}
         >
-          {discard.isPending ? "Discarding…" : "Discard reset"}
+          {discard.isPending ? "Discarding…" : data.detection_status === "failed" ? "Discard & re-upload" : "Discard reset"}
         </button>
       </main>
     </div>

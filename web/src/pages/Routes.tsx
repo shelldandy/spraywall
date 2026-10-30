@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from "react-router";
-import { useCircuits, useHolds, useRoutes, useWallDetail } from "../lib/hooks/queries";
+import { shouldLoadHolds, useCircuits, useHolds, useRoutes, useWallDetail } from "../lib/hooks/queries";
 import RouteList from "./RouteList";
 import styles from "./Routes.module.css";
 import { parseRouteTags } from "../lib/routeTags";
@@ -12,10 +12,11 @@ export default function RoutesPage() {
   const routesQuery = useRoutes(wallId, gymSlug);
   const circuitsQuery = useCircuits(wallId, gymSlug);
   const wallQuery = useWallDetail(wallId, gymSlug);
-  const holdsQuery = useHolds(wallId, wallQuery.data?.detection_status === "done", gymSlug);
+  const holdsEnabled = shouldLoadHolds(wallQuery.data?.detection_status, wallQuery.data?.user_role);
+  const holdsQuery = useHolds(wallId, holdsEnabled, gymSlug);
 
   const routes = routesQuery.data ?? [];
-  const holds = holdsQuery.data ?? [];
+  const holds = holdsEnabled ? holdsQuery.data ?? [] : [];
   const imageUrl = wallQuery.data?.image?.image_url ?? null;
 
   const fallbackParams = new URLSearchParams(params);

@@ -546,6 +546,18 @@ func (h *Handler) ApplyReset(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(context.Background())
 
+	// Match UploadImage's wall-first lock order so a reset application and a
+	// concurrent image upload serialize without holding S3 work in a transaction.
+	var lockedWall pgtype.UUID
+	if err := tx.QueryRow(r.Context(), `SELECT id FROM walls WHERE id=$1 FOR UPDATE`, shared.PgUUID(wallID)).Scan(&lockedWall); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "wall not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not lock wall")
+		}
+		return
+	}
+
 	lockedImages, err := tx.Query(r.Context(), `SELECT id FROM wall_images WHERE wall_id=$1 ORDER BY id FOR UPDATE`, shared.PgUUID(wallID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not lock wall images")

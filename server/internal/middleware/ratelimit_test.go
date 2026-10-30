@@ -77,6 +77,22 @@ func TestRateLimiterSeparatesIPs(t *testing.T) {
 	}
 }
 
+func TestSeparateRateLimitersDoNotShareCounters(t *testing.T) {
+	credentials := NewRateLimiter(1, time.Minute).Handler(okHandler())
+	refresh := NewRateLimiter(1, time.Minute).Handler(okHandler())
+	ip := "192.0.2.10:1234"
+
+	if got := rateLimitRequest(credentials, ip, "").Code; got != http.StatusNoContent {
+		t.Fatalf("first credential request status = %d, want %d", got, http.StatusNoContent)
+	}
+	if got := rateLimitRequest(credentials, ip, "").Code; got != http.StatusTooManyRequests {
+		t.Fatalf("over-limit credential request status = %d, want %d", got, http.StatusTooManyRequests)
+	}
+	if got := rateLimitRequest(refresh, ip, "").Code; got != http.StatusNoContent {
+		t.Fatalf("refresh request after credential limit status = %d, want %d", got, http.StatusNoContent)
+	}
+}
+
 func TestRateLimiterResetsAfterWindow(t *testing.T) {
 	handler := NewRateLimiter(1, 50*time.Millisecond).Handler(okHandler())
 	remoteAddr := "192.0.2.1:1234"

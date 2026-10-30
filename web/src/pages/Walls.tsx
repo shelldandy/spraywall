@@ -215,9 +215,11 @@ export default function WallsPage() {
           </div>
         ) : (
           <>
-            {gymsWithWallsQuery.isError && data.length === 0 && (
-              <p className={`error-text ${styles.empty}`}>
-                {gymsWithWallsQuery.error.message}
+            {gymsWithWallsQuery.isError && (
+              <p className={`error-text ${styles.listError}`} role="alert">
+                {data.length > 0
+                  ? `Could not refresh the wall list. Showing previously loaded data. ${gymsWithWallsQuery.error.message}`
+                  : gymsWithWallsQuery.error.message}
               </p>
             )}
             {!gymsWithWallsQuery.isError && data.length === 0 && (
