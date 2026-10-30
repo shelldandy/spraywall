@@ -10,8 +10,9 @@ permissions:
   packages: write
 
 jobs:
-  # Release Please tags with GITHUB_TOKEN, which doesn't trigger other workflows,
-  # so the image build reads its outputs here instead of listening for tag pushes.
+  # Release Please runs as a GitHub App so its PRs trigger CI without manual
+  # approval (GITHUB_TOKEN-created PRs don't). The image build still reads its
+  # outputs here rather than listening for tag pushes, keeping it in one run.
   release-please:
     runs-on: ubuntu-latest
     permissions:
@@ -21,8 +22,16 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.RELEASE_PLEASE_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+
       - id: release
         uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
   image:
     name: ${{ matrix.image }}${{ matrix.suffix }}
