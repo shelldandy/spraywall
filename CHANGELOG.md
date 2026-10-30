@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.3.0](https://github.com/shelldandy/spraywall/compare/v1.2.0...v1.3.0) (2026-10-30)
+
+
+### Features
+
+* activity feed for climbs and walls ([#45](https://github.com/shelldandy/spraywall/issues/45)) ([4f16127](https://github.com/shelldandy/spraywall/commit/4f16127295e5f0c170d82fd6535bb2a8e7f7f3b0))
+* add neobrutalist marketing site ([#51](https://github.com/shelldandy/spraywall/issues/51)) ([b42c09a](https://github.com/shelldandy/spraywall/commit/b42c09a03de41398ae083fe651cbf6cd889fce1c))
+* beta videos on climbs ([#46](https://github.com/shelldandy/spraywall/issues/46)) ([3b01948](https://github.com/shelldandy/spraywall/commit/3b019485b93a0e33feb421e4ca4af5c8991a10ee))
+* filter by beta video and sort by grade ([#48](https://github.com/shelldandy/spraywall/issues/48)) ([bba2706](https://github.com/shelldandy/spraywall/commit/bba270691151258e0f466dcfc8ecb97f56de4126))
+* simplify climb list filters and sort controls ([#50](https://github.com/shelldandy/spraywall/issues/50)) ([e25d4e1](https://github.com/shelldandy/spraywall/commit/e25d4e19aeda3415b6a607a43ec90962e30d6002))
+* **web:** allow deleting routes ([#54](https://github.com/shelldandy/spraywall/issues/54)) ([24a7596](https://github.com/shelldandy/spraywall/commit/24a75964f291c40d0fd607b6f528ed0cd51ef422))
+* **worker:** migrate hold segmentation to SAM 2.1 ([#52](https://github.com/shelldandy/spraywall/issues/52)) ([313b009](https://github.com/shelldandy/spraywall/commit/313b0099d94596fd17087b480d71df1e9ae7a801))
+
+
+### Bug Fixes
+
+* declutter mobile wall and climb views ([#47](https://github.com/shelldandy/spraywall/issues/47)) ([e18cd49](https://github.com/shelldandy/spraywall/commit/e18cd49f3c5bf7a736c554fe6113c13f1d1f252f))
+* harden detection and recovery flows ([#53](https://github.com/shelldandy/spraywall/issues/53)) ([17dd498](https://github.com/shelldandy/spraywall/commit/17dd498d3bfa799bf1681944139aa7d56ed3359b))
+* pre-select surviving holds when editing archived climbs ([#42](https://github.com/shelldandy/spraywall/issues/42)) ([824bf4c](https://github.com/shelldandy/spraywall/commit/824bf4c0326183e1c09c672e1ca8dc951b1c1c27))
+* use deterministic parent navigation ([#49](https://github.com/shelldandy/spraywall/issues/49)) ([2861460](https://github.com/shelldandy/spraywall/commit/2861460b0af00e4e298a5c9623276f5e5ac016bb))
+* **web:** keep horizontal scroll inside beta videos strip ([#55](https://github.com/shelldandy/spraywall/issues/55)) ([1ad7cd1](https://github.com/shelldandy/spraywall/commit/1ad7cd13a1ea6bbf9335847490213282c6653f14))
+
 ## [1.2.0](https://github.com/shelldandy/spraywall/compare/v1.1.1...v1.2.0) (2026-10-25)
 
 
