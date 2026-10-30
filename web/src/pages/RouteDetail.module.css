@@ -251,6 +251,12 @@
   font-size: 14px;
 }
 
+.deleteRoute {
+  align-self: flex-start;
+  margin-bottom: 24px;
+  color: var(--danger);
+}
+
 @media (max-width: 899px) {
   .pill {
     padding: 3px 10px;

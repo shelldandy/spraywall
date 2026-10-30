@@ -263,6 +263,22 @@ export function useUpdateRoute(gymSlug: string, wallId: string, routeId: string)
   });
 }
 
+export function useDeleteRoute(gymSlug: string, wallId: string, routeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, void>({
+    mutationFn: async () => {
+      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}`, { method: "DELETE" });
+      await ensureOkJson(res, "Failed to delete climb");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["circuits", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["activity", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["logbook"] });
+    },
+  });
+}
+
 // --- Circuits ---
 
 export function useCreateCircuit(gymSlug: string, wallId: string) {
