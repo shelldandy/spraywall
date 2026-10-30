@@ -2,6 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { get, set, del } from "idb-keyval";
 import { useAuthStore } from "./store/auth";
+import { queryRetryDelay } from "./api/refreshPolicy";
 
 const ONE_DAY = 1000 * 60 * 60 * 24;
 
@@ -12,6 +13,8 @@ export const queryClient = new QueryClient({
       gcTime: ONE_DAY,
       // Show cached data while offline instead of pausing with no data.
       networkMode: "offlineFirst",
+      // Honor Retry-After on transient refresh failures; otherwise use bounded backoff.
+      retryDelay: queryRetryDelay,
     },
     mutations: {
       // Writes need a network: fail fast with an error rather than silently pausing.

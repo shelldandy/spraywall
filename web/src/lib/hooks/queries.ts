@@ -3,7 +3,6 @@ import { API_BASE, apiFetch } from "../api/fetch";
 import type {
   AuthConfig,
   Gym,
-  Wall,
   WallDetail,
   Hold,
   Route,
@@ -16,10 +15,11 @@ import type {
   BetaVideoList,
 } from "../api/types";
 import { useAuthStore } from "../store/auth";
-
-export interface GymWithWalls extends Gym {
-  walls: Wall[];
-}
+import { fetchGymsWithWalls, type GymWithWalls } from "./gymWalls";
+import { isDetecting, POLL_INTERVAL_MS, wallDetailPollInterval } from "./polling";
+export type { GymWithWalls } from "./gymWalls";
+export { canEditWallHolds, shouldLoadHolds } from "./holdAvailability";
+export { isDetecting, POLL_INTERVAL_MS } from "./polling";
 
 export function useGyms() {
   return useQuery<Gym[]>({
@@ -35,24 +35,17 @@ export function useGyms() {
 export function useGymsWithWalls(enabled = true) {
   return useQuery<GymWithWalls[]>({
     queryKey: ["gyms-with-walls"],
-    queryFn: async () => {
-      const gymsRes = await apiFetch("/gyms");
-      if (!gymsRes.ok) throw new Error("Failed to fetch gyms");
-      const gyms: Gym[] = await gymsRes.json();
-      return Promise.all(
-        gyms.map(async (gym) => {
-          const res = await apiFetch(`/gyms/${gym.slug}/walls`);
-          const walls: Wall[] = res.ok ? await res.json() : [];
-          return { ...gym, walls };
-        }),
-      );
-    },
+    queryFn: () => fetchGymsWithWalls(apiFetch),
     enabled,
   });
 }
 
-export function useWallDetail(wallId: string, gymSlug?: string) {
-  const query = useQuery<WallDetail | null>({
+export function useWallDetail(
+  wallId: string,
+  gymSlug?: string,
+  options: { pollPendingReset?: boolean } = {},
+) {
+  return useQuery<WallDetail | null>({
     queryKey: ["wall-detail", wallId],
     queryFn: async () => {
       if (!gymSlug) return null;
@@ -60,17 +53,13 @@ export function useWallDetail(wallId: string, gymSlug?: string) {
       if (!res.ok) throw new Error("Failed to fetch wall");
       return res.json();
     },
-    refetchInterval: (query) => {
-      const status = query.state.data?.detection_status;
-      return status === "pending" || status === "processing" ? 3000 : false;
-    },
+    refetchInterval: (query) =>
+      wallDetailPollInterval(
+        query.state.data?.detection_status,
+        query.state.data?.pending_reset?.detection_status,
+        options.pollPendingReset,
+      ),
   });
-  return query;
-}
-
-export const POLL_INTERVAL_MS = 4000;
-export function isDetecting(status: string | null | undefined) {
-  return status === "pending" || status === "processing";
 }
 
 export function useResetDiff(gymSlug?: string, wallId?: string, imageId?: string) {

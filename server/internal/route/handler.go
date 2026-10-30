@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
+	"github.com/bowlinedandy/spraywall/server/internal/gymaccess"
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
 )
@@ -57,28 +58,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // and returns the gym and membership. If the check fails it writes an HTTP
 // error and returns a non-nil error.
 func (h *Handler) requireGymMember(w http.ResponseWriter, r *http.Request) (generated.Gym, generated.GymMember, error) {
-	gymSlug := chi.URLParam(r, "gymSlug")
-	gym, err := h.queries.GetGymBySlug(r.Context(), gymSlug)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "gym not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return generated.Gym{}, generated.GymMember{}, err
-	}
-
-	member, err := user.EffectiveGymMember(r.Context(), h.queries, gym.ID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusForbidden, "not a member of this gym")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return generated.Gym{}, generated.GymMember{}, err
-	}
-
-	return gym, member, nil
+	return gymaccess.RequireGymMember(w, r, h.queries)
 }
 
 // parseWallID extracts and parses the wallId URL param.
@@ -318,32 +298,11 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 
 // GetRoute handles GET /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}
 func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
-	gym, _, err := h.requireGymMember(w, r)
-	if err != nil {
+	scope, ok := h.scopedRoute(w, r)
+	if !ok {
 		return
 	}
-
-	routeUUID, err := parseRouteID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid route id")
-		return
-	}
-
-	rt, err := h.queries.GetRouteByID(r.Context(), shared.PgUUID(routeUUID))
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "route not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-
-	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
-	if err != nil || wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "route not found")
-		return
-	}
+	rt := scope.route
 
 	userID := user.GetUserID(r.Context())
 	summaries, err := h.summarizeRoutes(r.Context(), []generated.Route{rt}, shared.PgUUID(userID))
@@ -352,23 +311,18 @@ func (h *Handler) GetRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine legacy status.
-	activeImg, activeImgErr := h.queries.GetActiveWallImage(r.Context(), rt.WallID)
-	if activeImgErr != nil && !errors.Is(activeImgErr, pgx.ErrNoRows) {
-		writeError(w, http.StatusInternalServerError, "database error")
-		return
-	}
-	isLegacy := errors.Is(activeImgErr, pgx.ErrNoRows) || rt.WallImageID != activeImg.ID
-
+	// scopedRoute enforces requested wall/gym and draft-owner visibility while
+	// also resolving the active image used for legacy hold remapping.
+	isLegacy := scope.legacy
 	rt.Tags = nonNilRouteTags(rt.Tags)
 	response := routeResponse{Route: rt, HoldRoles: json.RawMessage(rt.HoldRoles), IsLegacy: isLegacy}
 	if isLegacy {
 		activeHoldIDs := []uuid.UUID{}
 		var activeHoldRoles json.RawMessage
-		if activeImgErr == nil {
+		if scope.activeImageFound {
 			var remapErr error
 			activeHoldIDs, activeHoldRoles, remapErr = remapToActive(
-				r.Context(), h.db, uuid.UUID(rt.WallImageID.Bytes), uuid.UUID(activeImg.ID.Bytes),
+				r.Context(), h.db, uuid.UUID(rt.WallImageID.Bytes), uuid.UUID(scope.activeImage.ID.Bytes),
 				uuidIDsFromPg(rt.HoldIds), json.RawMessage(rt.HoldRoles),
 			)
 			if remapErr != nil {

@@ -1,4 +1,5 @@
 import { logout } from "../queryClient";
+import { createSingleFlight, refreshSession } from "./refreshPolicy";
 import { useAuthStore } from "../store/auth";
 
 // The API is served from the same origin, proxied by nginx (prod) or Vite (dev).
@@ -18,29 +19,16 @@ async function request(url: string, init: RequestInit) {
   }
 }
 
-let refreshPromise: Promise<boolean> | null = null;
-
-async function refreshAccessToken(): Promise<boolean> {
+const refreshAccessToken = createSingleFlight(() => {
   const { refreshToken, setTokens } = useAuthStore.getState();
-  if (!refreshToken) return false;
-
-  try {
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-    if (!res.ok) {
-      await logout();
-      return false;
-    }
-    const data = await res.json();
-    setTokens(data.access_token, data.refresh_token);
-    return true;
-  } catch {
-    return false;
-  }
-}
+  return refreshSession(
+    refreshToken,
+    fetch,
+    (accessToken, nextRefreshToken) => setTokens(accessToken, nextRefreshToken),
+    logout,
+    `${API_BASE}/auth/refresh`,
+  );
+});
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
   const { accessToken } = useAuthStore.getState();
@@ -58,12 +46,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 
   if (res.status === 401 && useAuthStore.getState().refreshToken) {
     // Deduplicate concurrent refresh attempts
-    if (!refreshPromise) {
-      refreshPromise = refreshAccessToken().finally(() => {
-        refreshPromise = null;
-      });
-    }
-    const refreshed = await refreshPromise;
+    const refreshed = await refreshAccessToken();
     if (refreshed) {
       const { accessToken: newToken } = useAuthStore.getState();
       headers["Authorization"] = `Bearer ${newToken}`;

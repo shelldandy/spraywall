@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { useCircuits, useHolds, useRouteDetail, useRouteLogs, useRoutes, useWallDetail } from "../lib/hooks/queries";
+import { shouldLoadHolds, useCircuits, useHolds, useRouteDetail, useRouteLogs, useRoutes, useWallDetail } from "../lib/hooks/queries";
 import { useCreateCircuit, useCreateClimbLog, useDeleteClimbLog, useDeleteRouteRating, useSetRouteRating, useToggleCircuitRoute, useUpdateClimbLog } from "../lib/hooks/mutations";
 import type { Circuit, ClimbLog } from "../lib/api/types";
 import { formatCalendarDate } from "../lib/climbLogs";
@@ -37,7 +37,8 @@ export default function RouteDetailPage() {
   const routesQuery = useRoutes(wallId, gymSlug);
   const circuitsQuery = useCircuits(wallId, gymSlug);
   const wallQuery = useWallDetail(wallId, gymSlug);
-  const holdsQuery = useHolds(wallId, wallQuery.data?.detection_status === "done", gymSlug);
+  const holdsEnabled = shouldLoadHolds(wallQuery.data?.detection_status, wallQuery.data?.user_role);
+  const holdsQuery = useHolds(wallId, holdsEnabled, gymSlug);
   const logsQuery = useRouteLogs(routeId, gymSlug, wallId);
   const [addingLog, setAddingLog] = useState(false);
   const [editingLog, setEditingLog] = useState<ClimbLog | null>(null);
@@ -51,7 +52,7 @@ export default function RouteDetailPage() {
 
   const routeData = routeQuery.data;
   const wall = wallQuery.data;
-  const allHolds = holdsQuery.data;
+  const allHolds = holdsEnabled ? holdsQuery.data : undefined;
 
   const visibleHoldIds = useMemo(
     () => routeData?.is_legacy

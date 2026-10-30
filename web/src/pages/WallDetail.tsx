@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
-import { useCircuits, useHolds, useRoutes } from "../lib/hooks/queries";
+import { canEditWallHolds, isDetecting, shouldLoadHolds, useCircuits, useHolds, useRoutes, useWallDetail } from "../lib/hooks/queries";
 import { toast, toastError } from "../lib/toast";
 import { uploadWallImage } from "../lib/hooks/mutations";
-import type { Hold, HoldRoles, WallDetail } from "../lib/api/types";
+import type { Hold, HoldRoles } from "../lib/api/types";
 import { parseRouteTags } from "../lib/routeTags";
 import HoldOverlay from "../components/HoldOverlay";
 import WallImage from "../components/WallImage";
@@ -17,11 +17,6 @@ type HoldRole = "normal" | "start" | "hand" | "finish" | "foot";
 type CreateTool = "start" | "hand" | "finish" | "foot" | "erase";
 
 const THRESHOLDS = [0.1, 0.25, 0.5, 0.75, 0.9];
-const POLL_INTERVAL_MS = 4000;
-
-function isDetecting(status: string | null | undefined) {
-  return status === "pending" || status === "processing";
-}
 
 function initialRouteTags(rawTags: string | null) {
   if (!rawTags) return [];
@@ -66,7 +61,7 @@ export default function WallDetailPage() {
   const isCreateMode = isEditingRoute || searchParams.get("mode") === "create";
   const browseView = searchParams.get("view") === "activity" ? "activity" : "climbs";
 
-  const [isEditingHolds, setIsEditingHolds] = useState(false);
+  const [editingHoldsImageId, setEditingHoldsImageId] = useState<string | null>(null);
   const [isManagingWall, setIsManagingWall] = useState(false);
   const [editHoldMode, setEditHoldMode] = useState<"delete" | "add">("delete");
   const [holdToDelete, setHoldToDelete] = useState<string | null>(null);
@@ -82,21 +77,16 @@ export default function WallDetailPage() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Same key and fetcher as useWallDetail, plus polling while detection runs
-  // (the native app relied on its background sync engine for this).
-  const wallQuery = useQuery<WallDetail | null>({
-    queryKey: ["wall-detail", wallId],
-    queryFn: async () => {
-      if (!gymSlug) return null;
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}`);
-      if (!res.ok) throw new Error("Failed to fetch wall");
-      return res.json();
-    },
-    refetchInterval: (query) =>
-      (isDetecting(query.state.data?.detection_status) || isDetecting(query.state.data?.pending_reset?.detection_status)) ? POLL_INTERVAL_MS : false,
-  });
+  // This screen also polls when an incomplete partial reset is running.
+  const wallQuery = useWallDetail(wallId, gymSlug, { pollPendingReset: true });
 
-  const holdsQuery = useHolds(wallId, wallQuery.data?.detection_status === "done", gymSlug);
+  const wall = wallQuery.data;
+  const detectionStatus = wall?.detection_status;
+  const canEdit = wall?.user_role === "setter" || wall?.user_role === "admin";
+  const holdsEnabled = shouldLoadHolds(detectionStatus, wall?.user_role);
+  const canEditHolds = canEditWallHolds(detectionStatus, wall?.user_role, Boolean(wall?.image));
+  const isEditingHolds = editingHoldsImageId === wall?.image?.id && canEditHolds;
+  const holdsQuery = useHolds(wallId, holdsEnabled, gymSlug);
   const routesQuery = useRoutes(wallId, gymSlug);
   const circuitsQuery = useCircuits(wallId, gymSlug);
 
@@ -215,6 +205,7 @@ export default function WallDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
       queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
       setHoldSelections(new Map());
+      setEditingHoldsImageId(null);
     } catch (err) {
       toast(`Upload Error: ${err instanceof Error ? err.message : String(err)}`, "error");
     } finally {
@@ -223,7 +214,7 @@ export default function WallDetailPage() {
   };
 
   const exitEditMode = () => {
-    setIsEditingHolds(false);
+    setEditingHoldsImageId(null);
     setHoldToDelete(null);
     setHoldDeleteError(null);
   };
@@ -244,7 +235,6 @@ export default function WallDetailPage() {
     return () => document.body.classList.remove("wall-immersive");
   }, [isCreateMode, isEditingHolds, isManagingWall]);
 
-  const wall = wallQuery.data;
   useEffect(() => {
     if (!wall || !gymSlug) return;
     try {
@@ -252,13 +242,11 @@ export default function WallDetailPage() {
       window.dispatchEvent(new Event("spraywall:last-visited-wall"));
     } catch { /* Storage may be unavailable; navigation remains usable. */ }
   }, [gymSlug, wall, wallId]);
-  const holds = holdsQuery.data ?? [];
+  const holds = holdsEnabled ? holdsQuery.data ?? [] : [];
   const filteredHolds = holds.filter((h) => h.confidence >= confidenceThreshold);
   const selectedIds = new Set(holdSelections.keys());
   const filteredIds = new Set(filteredHolds.map((h) => h.id));
   const visibleSelectedIds = new Set([...selectedIds].filter((id) => filteredIds.has(id)));
-  const detectionStatus = wall?.detection_status;
-  const canEdit = wall?.user_role === "setter" || wall?.user_role === "admin";
 
   const openPartialReset = () => {
     if (!wall?.image) return;
@@ -520,6 +508,12 @@ export default function WallDetailPage() {
         )}
       </header>
 
+      {canEdit && wall?.image && detectionStatus === "failed" && (
+        <p className="error-text" role="alert">
+          Hold detection failed. You can continue by adding holds manually.
+        </p>
+      )}
+
       {canEdit && wall?.pending_reset && (
         <button
           type="button"
@@ -597,13 +591,13 @@ export default function WallDetailPage() {
             </>
           )}
 
-          {canEdit && detectionStatus === "done" && !isEditingHolds && (
+          {canEditHolds && !isEditingHolds && (
             <button
               type="button"
               className={`btn btn-block ${styles.editHoldsButton}`}
-              onClick={() => setIsEditingHolds(true)}
+              onClick={() => setEditingHoldsImageId(wall?.image?.id ?? null)}
             >
-              Edit Holds
+              {detectionStatus === "failed" ? "Edit Holds Manually" : "Edit Holds"}
             </button>
           )}
 

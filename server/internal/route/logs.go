@@ -44,8 +44,10 @@ type logInput struct {
 }
 
 type routeScope struct {
-	route  generated.Route
-	legacy bool
+	route            generated.Route
+	legacy           bool
+	activeImage      generated.WallImage
+	activeImageFound bool
 }
 
 func (h *Handler) scopedRoute(w http.ResponseWriter, r *http.Request) (routeScope, bool) {
@@ -92,7 +94,7 @@ func (h *Handler) scopedRoute(w http.ResponseWriter, r *http.Request) (routeScop
 		writeError(w, http.StatusInternalServerError, "database error")
 		return routeScope{}, false
 	}
-	return routeScope{route: rt, legacy: legacy}, true
+	return routeScope{route: rt, legacy: legacy, activeImage: image, activeImageFound: err == nil}, true
 }
 
 func (h *Handler) GetLogs(w http.ResponseWriter, r *http.Request) {
