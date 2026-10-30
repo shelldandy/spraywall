@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { shouldLoadHolds, useCircuits, useHolds, useRouteDetail, useRouteLogs, useRoutes, useWallDetail } from "../lib/hooks/queries";
-import { useCreateCircuit, useCreateClimbLog, useDeleteClimbLog, useDeleteRouteRating, useSetRouteRating, useToggleCircuitRoute, useUpdateClimbLog } from "../lib/hooks/mutations";
+import { useCreateCircuit, useCreateClimbLog, useDeleteClimbLog, useDeleteRoute, useDeleteRouteRating, useSetRouteRating, useToggleCircuitRoute, useUpdateClimbLog } from "../lib/hooks/mutations";
 import type { Circuit, ClimbLog } from "../lib/api/types";
 import { formatCalendarDate } from "../lib/climbLogs";
 import ClimbLogForm from "../components/ClimbLogForm";
@@ -75,6 +75,7 @@ export default function RouteDetailPage() {
   const createLog = useCreateClimbLog(gymSlug, wallId, routeId);
   const updateLog = useUpdateClimbLog(gymSlug, wallId, routeId);
   const deleteLog = useDeleteClimbLog(gymSlug, wallId, routeId);
+  const deleteRoute = useDeleteRoute(gymSlug, wallId, routeId);
   const setRating = useSetRouteRating(gymSlug, wallId, routeId);
   const deleteRating = useDeleteRouteRating(gymSlug, wallId, routeId);
   const history = logsQuery.data ?? [];
@@ -129,6 +130,16 @@ export default function RouteDetailPage() {
       ? "/logbook"
       : `/walls/${wallId}?${fallbackParams}`;
 
+  const removeRoute = async () => {
+    if (!window.confirm(`Delete "${routeData?.name ?? "this climb"}"? All sends, ratings, and beta videos on this climb will be permanently deleted.`)) return;
+    try {
+      await deleteRoute.mutateAsync();
+      navigate(backUrl, { replace: true });
+    } catch {
+      // The mutation error is rendered below the delete button.
+    }
+  };
+
   const editRoute = () => {
     const search = new URLSearchParams({
       gymSlug,
@@ -156,6 +167,7 @@ export default function RouteDetailPage() {
     ? "Unrated"
     : `★ ${routeData.rating_average.toFixed(1)} (${routeData.rating_count ?? 0})`;
   const isAuthor = routeData?.created_by === userId;
+  const canDelete = isAuthor || wall?.user_role === "setter" || wall?.user_role === "admin";
 
   return (
     <div className={`screen ${styles.screen}`}>
@@ -291,6 +303,13 @@ export default function RouteDetailPage() {
               <section className={styles.betaSection} aria-label="Beta videos">
                 <BetaVideos gymSlug={gymSlug} wallId={wallId} routeId={routeId} />
               </section>
+
+              {canDelete && <>
+                {deleteRoute.error && <p className="error-text" role="alert">{deleteRoute.error.message}</p>}
+                <button type="button" className={`btn btn-ghost ${styles.deleteRoute}`} onClick={() => void removeRoute()} disabled={deleteRoute.isPending}>
+                  {deleteRoute.isPending ? "Deleting…" : "Delete climb"}
+                </button>
+              </>}
 
               <FilterDrawer open={circuitDrawerOpen} title={creatingCircuit ? "New circuit" : "Circuits"} onBack={creatingCircuit ? returnToCircuitList : undefined} onClose={closeCircuitDrawer} triggerRef={circuitTriggerRef} showFooter={false}>
                 {creatingCircuit ? (
