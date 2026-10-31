@@ -85,16 +85,20 @@ func (q *Queries) GetInviteByToken(ctx context.Context, token string) (GetInvite
 	return i, err
 }
 
-const useInvite = `-- name: UseInvite :exec
-UPDATE invites SET used_at = now(), used_by = $2 WHERE id = $1
+const consumeInvite = `-- name: ConsumeInvite :execrows
+UPDATE invites SET used_at = now(), used_by = $2
+WHERE id = $1 AND used_at IS NULL AND expires_at > now()
 `
 
-type UseInviteParams struct {
+type ConsumeInviteParams struct {
 	ID     pgtype.UUID `json:"id"`
 	UsedBy pgtype.UUID `json:"used_by"`
 }
 
-func (q *Queries) UseInvite(ctx context.Context, arg UseInviteParams) error {
-	_, err := q.db.Exec(ctx, useInvite, arg.ID, arg.UsedBy)
-	return err
+func (q *Queries) ConsumeInvite(ctx context.Context, arg ConsumeInviteParams) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeInvite, arg.ID, arg.UsedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

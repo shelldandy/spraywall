@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,8 +22,9 @@ var errImmichDisabled = errors.New("immich links are disabled")
 var errImmichPasswordProtected = errors.New("immich share is password-protected or unavailable")
 
 type ImmichClient struct {
-	allowedHosts map[string]struct{}
-	httpClient   *http.Client
+	allowedHosts    map[string]struct{}
+	httpClient      *http.Client
+	mediaHTTPClient *http.Client
 }
 
 // NewImmichClient configures Immich share access. Host matching is exact,
@@ -35,16 +37,25 @@ func NewImmichClient(hosts []string) *ImmichClient {
 			allowed[host] = struct{}{}
 		}
 	}
+	checkRedirect := func(req *http.Request, via []*http.Request) error {
+		if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[len(via)-1].URL.Host) {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}
+	mediaTransport := http.DefaultTransport.(*http.Transport).Clone()
+	mediaTransport.DialContext = (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	mediaTransport.TLSHandshakeTimeout = 10 * time.Second
+	mediaTransport.ResponseHeaderTimeout = 20 * time.Second
 	return &ImmichClient{
 		allowedHosts: allowed,
 		httpClient: &http.Client{
-			Timeout: 20 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[len(via)-1].URL.Host) {
-					return http.ErrUseLastResponse
-				}
-				return nil
-			},
+			Timeout:       20 * time.Second,
+			CheckRedirect: checkRedirect,
+		},
+		mediaHTTPClient: &http.Client{
+			Transport:     mediaTransport,
+			CheckRedirect: checkRedirect,
 		},
 	}
 }
@@ -172,5 +183,5 @@ func (c *ImmichClient) mediaRequest(ctx context.Context, baseURL, path string, s
 			request.Header.Set(name, value)
 		}
 	}
-	return c.httpClient.Do(request)
+	return c.mediaHTTPClient.Do(request)
 }

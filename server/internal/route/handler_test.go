@@ -132,6 +132,8 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 				r.Post("/beta-videos", h.CreateBetaVideo)
 				r.Delete("/beta-videos/{videoId}", h.DeleteBetaVideo)
 				r.Put("/", h.UpdateRoute)
+				r.Delete("/", h.DeleteRoute)
+				r.Patch("/publish", h.PublishRoute)
 				r.Route("/logs", func(r chi.Router) {
 					r.Get("/", h.GetLogs)
 					r.Post("/", h.CreateLog)
@@ -295,6 +297,118 @@ func TestRouteTagHTTPContract(t *testing.T) {
 	}
 }
 
+func TestRouteHoldRolesAreValidatedOnCreateAndUpdate(t *testing.T) {
+	e := newRouteTestEnv(t)
+	for _, roles := range []string{
+		`{"start":123}`,
+		`{"start":["not-a-uuid"]}`,
+		`{"start":["` + uuid.NewString() + `"]}`,
+		fmt.Sprintf(`{"start":[%q],"finish":[%q]}`, e.holdIDs[0], e.holdIDs[0]),
+		`{"unknown":[]}`,
+	} {
+		body := fmt.Sprintf(`{"name":"Bad roles","hold_ids":[%q,%q],"hold_roles":%s}`, e.holdIDs[0], e.holdIDs[1], roles)
+		if rec := e.request(http.MethodPost, "", e.token, body); rec.Code != http.StatusBadRequest {
+			t.Errorf("create with hold_roles %s status = %d: %s", roles, rec.Code, rec.Body)
+		}
+	}
+	if count := e.routeCount(t); count != 0 {
+		t.Fatalf("invalid creates inserted %d routes", count)
+	}
+
+	roles := fmt.Sprintf(`{"start":[%q],"finish":[%q]}`, e.holdIDs[0], e.holdIDs[1])
+	body := fmt.Sprintf(`{"name":"Valid roles","hold_ids":[%q,%q],"hold_roles":%s}`, e.holdIDs[0], e.holdIDs[1], roles)
+	created := e.request(http.MethodPost, "", e.token, body)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create with valid roles: %d %s", created.Code, created.Body)
+	}
+	roleSpellings := []string{
+		strings.ReplaceAll(e.holdIDs[0].String(), "-", ""),
+		"{" + e.holdIDs[0].String() + "}",
+		"urn:uuid:" + e.holdIDs[0].String(),
+	}
+	var roleRouteIDs []string
+	for i, roleID := range roleSpellings {
+		roleJSON := fmt.Sprintf(`{"start":[%q]}`, roleID)
+		roleBody := fmt.Sprintf(`{"name":"Alternate role %d","hold_ids":[%q,%q],"hold_roles":%s}`, i, e.holdIDs[0], e.holdIDs[1], roleJSON)
+		roleCreated := e.request(http.MethodPost, "", e.token, roleBody)
+		if roleCreated.Code != http.StatusCreated {
+			t.Fatalf("create with accepted UUID spelling %q: %d %s", roleID, roleCreated.Code, roleCreated.Body)
+		}
+		var createdRoute routeTestResponse
+		if err := json.Unmarshal(roleCreated.Body.Bytes(), &createdRoute); err != nil {
+			t.Fatal(err)
+		}
+		roleRouteIDs = append(roleRouteIDs, createdRoute.ID)
+	}
+	var route routeTestResponse
+	if err := json.Unmarshal(created.Body.Bytes(), &route); err != nil {
+		t.Fatal(err)
+	}
+	before, err := e.pool.Query(context.Background(), `SELECT hold_roles FROM routes WHERE id=$1`, uuid.MustParse(route.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !before.Next() {
+		t.Fatal("created route disappeared")
+	}
+	var savedBefore []byte
+	if err := before.Scan(&savedBefore); err != nil {
+		t.Fatal(err)
+	}
+	before.Close()
+
+	invalidUpdate := fmt.Sprintf(`{"name":"Updated","hold_ids":[%q,%q],"hold_roles":{"start":123}}`, e.holdIDs[0], e.holdIDs[1])
+	if rec := e.request(http.MethodPut, route.ID, e.token, invalidUpdate); rec.Code != http.StatusBadRequest {
+		t.Fatalf("update with malformed roles status = %d: %s", rec.Code, rec.Body)
+	}
+	var savedAfter []byte
+	if err := e.pool.QueryRow(context.Background(), `SELECT hold_roles FROM routes WHERE id=$1`, uuid.MustParse(route.ID)).Scan(&savedAfter); err != nil {
+		t.Fatal(err)
+	}
+	if string(savedAfter) != string(savedBefore) {
+		t.Fatalf("invalid update changed roles from %s to %s", savedBefore, savedAfter)
+	}
+
+	var malformedID uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags)
+VALUES($1,(SELECT id FROM wall_images WHERE wall_id=$1 LIMIT 1),$2,'Malformed roles',$3,'{"start":123}'::jsonb,'published','{}') RETURNING id`, shared.PgUUID(e.wallID), shared.PgUUID(e.creatorID), []uuid.UUID(e.holdIDs)).Scan(&malformedID); err != nil {
+		t.Fatal(err)
+	}
+	_, file, _, _ := runtime.Caller(0)
+	migration, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "db", "migrations", "0022_repair_route_hold_roles.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	up, _, ok := strings.Cut(string(migration), "-- +goose Down")
+	if !ok {
+		t.Fatal("hold_roles migration has no Goose Down section")
+	}
+	up = strings.TrimPrefix(up, "-- +goose Up")
+	if _, err := e.pool.Exec(context.Background(), strings.TrimSpace(up)); err != nil {
+		t.Fatalf("repair malformed roles: %v", err)
+	}
+	var repaired []byte
+	if err := e.pool.QueryRow(context.Background(), `SELECT hold_roles FROM routes WHERE id=$1`, malformedID).Scan(&repaired); err != nil {
+		t.Fatal(err)
+	}
+	if repaired != nil {
+		t.Fatalf("malformed hold_roles after repair = %s, want SQL NULL", repaired)
+	}
+	for i, routeID := range roleRouteIDs {
+		var repairedRoles []byte
+		if err := e.pool.QueryRow(context.Background(), `SELECT hold_roles FROM routes WHERE id=$1`, uuid.MustParse(routeID)).Scan(&repairedRoles); err != nil {
+			t.Fatal(err)
+		}
+		var saved map[string][]string
+		if err := json.Unmarshal(repairedRoles, &saved); err != nil {
+			t.Fatal(err)
+		}
+		if len(saved["start"]) != 1 || saved["start"][0] != roleSpellings[i] {
+			t.Errorf("valid UUID role %q after repair = %s", roleSpellings[i], repairedRoles)
+		}
+	}
+}
+
 func TestGetRouteEnforcesRequestedWallAndDraftVisibility(t *testing.T) {
 	e := newRouteTestEnv(t)
 	published := e.create(t, "", "published")
@@ -334,11 +448,28 @@ func TestGetRouteEnforcesRequestedWallAndDraftVisibility(t *testing.T) {
 	}
 	var secondWallRouteID uuid.UUID
 	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes (wall_id, wall_image_id, created_by, name, hold_ids, hold_roles, status, tags)
-VALUES ($1, $2, $3, 'Second wall route', $4, '{}'::jsonb, 'published', '{}') RETURNING id`, secondWall.ID, secondImage.ID, shared.PgUUID(e.creatorID), secondHoldIDs).Scan(&secondWallRouteID); err != nil {
+VALUES ($1, $2, $3, 'Second wall route', $4, '{}'::jsonb, 'draft', '{}') RETURNING id`, secondWall.ID, secondImage.ID, shared.PgUUID(e.creatorID), secondHoldIDs).Scan(&secondWallRouteID); err != nil {
 		t.Fatal(err)
 	}
 	if got := e.request(http.MethodGet, secondWallRouteID.String(), e.token, "").Code; got != http.StatusNotFound {
 		t.Fatalf("wrong-wall GET status = %d, want %d", got, http.StatusNotFound)
+	}
+	wrongWallPath := fmt.Sprintf("/gyms/route-test/walls/%s/routes/%s", e.wallID, secondWallRouteID)
+	for _, action := range []struct{ method, suffix, body string }{
+		{http.MethodPut, "", `{}`},
+		{http.MethodPatch, "/publish", ""},
+		{http.MethodDelete, "", ""},
+	} {
+		if got := e.requestPath(action.method, wrongWallPath+action.suffix, e.token, action.body).Code; got != http.StatusNotFound {
+			t.Errorf("wrong-wall %s status = %d, want 404", action.method, got)
+		}
+	}
+	var untouchedName, untouchedStatus string
+	if err := e.pool.QueryRow(context.Background(), `SELECT name,status FROM routes WHERE id=$1`, secondWallRouteID).Scan(&untouchedName, &untouchedStatus); err != nil {
+		t.Fatal(err)
+	}
+	if untouchedName != "Second wall route" || untouchedStatus != "draft" {
+		t.Fatalf("wrong-wall write changed route to %q/%q", untouchedName, untouchedStatus)
 	}
 
 	// Even when the URL's wall matches the route, the gym slug must scope it.

@@ -37,3 +37,9 @@ export const useAuthStore = create<AuthState>()(
     { name: "spraywall-auth" },
   ),
 );
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key === "spraywall-auth") void useAuthStore.persist.rehydrate();
+  });
+}

@@ -3,6 +3,7 @@ import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persi
 import { get, set, del } from "idb-keyval";
 import { useAuthStore } from "./store/auth";
 import { queryRetryDelay } from "./api/refreshPolicy";
+import { withAuthLock } from "./api/refreshLock";
 
 const ONE_DAY = 1000 * 60 * 60 * 24;
 
@@ -41,9 +42,32 @@ export const persistOptions = {
   buster: "v2",
 };
 
-/** Log out: drop tokens and every cached response, in memory and in IndexedDB. */
-export async function logout() {
+export async function clearLocalSession() {
   useAuthStore.getState().clearTokens();
   queryClient.clear();
   await persister.removeClient();
+}
+
+/** Revoke the server token before dropping local auth state. */
+export async function logout() {
+  const clearAndRevoke = async () => {
+    await useAuthStore.persist.rehydrate();
+    const refreshToken = useAuthStore.getState().refreshToken;
+    useAuthStore.getState().clearTokens();
+    queryClient.clear();
+    try {
+      if (refreshToken) {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+      }
+    } catch {
+      // Local logout must still succeed when the server is unreachable.
+    }
+    await persister.removeClient();
+  };
+
+  await withAuthLock(clearAndRevoke);
 }

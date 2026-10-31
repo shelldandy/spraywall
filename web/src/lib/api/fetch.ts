@@ -1,5 +1,6 @@
-import { logout } from "../queryClient";
-import { createSingleFlight, refreshSession } from "./refreshPolicy";
+import { clearLocalSession } from "../queryClient";
+import { createSingleFlight, refreshSessionWithLock } from "./refreshPolicy";
+import { withAuthLock } from "./refreshLock";
 import { useAuthStore } from "../store/auth";
 
 // The API is served from the same origin, proxied by nginx (prod) or Vite (dev).
@@ -19,16 +20,18 @@ async function request(url: string, init: RequestInit) {
   }
 }
 
-const refreshAccessToken = createSingleFlight(() => {
-  const { refreshToken, setTokens } = useAuthStore.getState();
-  return refreshSession(
-    refreshToken,
+const refreshAccessToken = createSingleFlight((rejectedAccessToken: string | null) =>
+  refreshSessionWithLock(
+    rejectedAccessToken,
+    withAuthLock,
+    async () => { await useAuthStore.persist.rehydrate(); },
+    () => useAuthStore.getState(),
     fetch,
-    (accessToken, nextRefreshToken) => setTokens(accessToken, nextRefreshToken),
-    logout,
+    (accessToken, nextRefreshToken) => useAuthStore.getState().setTokens(accessToken, nextRefreshToken),
+    clearLocalSession,
     `${API_BASE}/auth/refresh`,
-  );
-});
+  ),
+);
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
   const { accessToken } = useAuthStore.getState();
@@ -46,7 +49,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 
   if (res.status === 401 && useAuthStore.getState().refreshToken) {
     // Deduplicate concurrent refresh attempts
-    const refreshed = await refreshAccessToken();
+    const refreshed = await refreshAccessToken(accessToken);
     if (refreshed) {
       const { accessToken: newToken } = useAuthStore.getState();
       headers["Authorization"] = `Bearer ${newToken}`;

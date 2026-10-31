@@ -8,8 +8,9 @@ import (
 )
 
 type visitor struct {
-	count    int
-	lastSeen time.Time
+	count       int
+	windowStart time.Time
+	lastSeen    time.Time
 }
 
 type RateLimiter struct {
@@ -52,25 +53,27 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 			}
 		}
 
+		now := time.Now()
 		rl.mu.Lock()
 		v, exists := rl.visitors[ip]
 		if !exists {
-			rl.visitors[ip] = &visitor{count: 1, lastSeen: time.Now()}
+			rl.visitors[ip] = &visitor{count: 1, windowStart: now, lastSeen: now}
 			rl.mu.Unlock()
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		if time.Since(v.lastSeen) > rl.window {
+		if now.Sub(v.windowStart) >= rl.window {
 			v.count = 1
-			v.lastSeen = time.Now()
+			v.windowStart = now
+			v.lastSeen = now
 			rl.mu.Unlock()
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		v.count++
-		v.lastSeen = time.Now()
+		v.lastSeen = now
 		if v.count > rl.limit {
 			rl.mu.Unlock()
 			w.Header().Set("Content-Type", "application/json")

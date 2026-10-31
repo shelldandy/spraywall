@@ -122,19 +122,20 @@ func main() {
 	// Auth routes
 	authLimiter := mw.NewRateLimiter(10, time.Minute)
 	refreshLimiter := mw.NewRateLimiter(60, time.Minute)
+	logoutLimiter := mw.NewRateLimiter(60, time.Minute)
 	r.Route("/auth", func(r chi.Router) {
 		// Polled by the login page; not rate limited.
 		r.Get("/config", oidc.ConfigHandler(passwordEnabled, oidcConfig))
 		// Refreshes happen in the background and may be shared by several
 		// devices behind one IP, so they have a separate larger allowance.
 		r.With(refreshLimiter.Handler).Post("/refresh", authHandler.Refresh)
+		r.With(logoutLimiter.Handler).Post("/logout", authHandler.Logout)
+		r.With(authHandler.Authenticate).Get("/me", authHandler.Me)
 
 		r.Group(func(r chi.Router) {
 			r.Use(authLimiter.Handler)
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)
-			r.Post("/logout", authHandler.Logout)
-			r.With(authHandler.Authenticate).Get("/me", authHandler.Me)
 
 			if oidcHandler != nil {
 				r.Get("/oidc/login", oidcHandler.Login)
@@ -148,6 +149,7 @@ func main() {
 	routeHandler := route.NewHandler(queries, pool)
 	routeHandler.SetImmichClient(route.NewImmichClient(strings.Split(os.Getenv("IMMICH_ALLOWED_HOSTS"), ",")))
 	wallHandler := wall.NewHandler(queries, storageClient, pool)
+	go wallHandler.RunStorageDeleteQueue(context.Background())
 	inviteHandler := invite.NewHandler(queries, pool)
 
 	// Public media proxies use unguessable UUIDs and work with native img/video elements.

@@ -2,7 +2,6 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { API_BASE, apiFetch } from "../api/fetch";
 import type {
   AuthConfig,
-  Gym,
   WallDetail,
   Hold,
   Route,
@@ -20,17 +19,6 @@ import { isDetecting, POLL_INTERVAL_MS, wallDetailPollInterval } from "./polling
 export type { GymWithWalls } from "./gymWalls";
 export { canEditWallHolds, shouldLoadHolds } from "./holdAvailability";
 export { isDetecting, POLL_INTERVAL_MS } from "./polling";
-
-export function useGyms() {
-  return useQuery<Gym[]>({
-    queryKey: ["gyms"],
-    queryFn: async () => {
-      const res = await apiFetch("/gyms");
-      if (!res.ok) throw new Error("Failed to fetch gyms");
-      return res.json();
-    },
-  });
-}
 
 export function useGymsWithWalls(enabled = true) {
   return useQuery<GymWithWalls[]>({
