@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/shelldandy/spraywall/compare/v1.3.0...v1.3.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* address repository audit findings ([#58](https://github.com/shelldandy/spraywall/issues/58)) ([598db0c](https://github.com/shelldandy/spraywall/commit/598db0cb98da7f2f8f95700a28b71a20dd3f0cfa))
+
 ## [1.3.0](https://github.com/shelldandy/spraywall/compare/v1.2.0...v1.3.0) (2026-10-30)
 
 
