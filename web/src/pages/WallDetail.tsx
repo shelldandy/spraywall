@@ -511,8 +511,8 @@ export default function WallDetailPage() {
                   <HoldOverlay
                     holds={holds}
                     selectedIds={isEditingHolds ? new Set() : selectedIds}
-                    onToggle={handleEditToggle}
-                    mode={isEditingHolds ? "edit" : undefined}
+                    onToggle={isEditingHolds ? handleEditToggle : () => {}}
+                    mode={isEditingHolds ? "edit" : "view"}
                     editHoldMode={editHoldMode}
                     holdToDelete={holdToDelete}
                     onBackgroundPress={editHoldMode === "add" ? addHold : undefined}

@@ -123,6 +123,34 @@ test("cross-tab lock reloads rotated tokens before refreshing", async () => {
   assert.deepEqual(tokens, { accessToken: "new-access", refreshToken: "new-refresh" });
 });
 
+test("stale refresh failure does not invalidate a newer session", async () => {
+  let tokens = { accessToken: "old-access", refreshToken: "old-refresh" };
+  let rehydrates = 0;
+  let invalidations = 0;
+  let attemptedRefreshToken;
+
+  const refreshed = await refreshSessionWithLock(
+    "old-access",
+    (task) => task(),
+    async () => {
+      rehydrates += 1;
+      if (rehydrates === 2) tokens = { accessToken: "new-access", refreshToken: "new-refresh" };
+    },
+    () => tokens,
+    async (_url, init) => {
+      attemptedRefreshToken = JSON.parse(init.body).refresh_token;
+      return refreshResponse(401, { error: "rotated elsewhere" });
+    },
+    () => assert.fail("invalid refresh must not store tokens"),
+    async () => { invalidations += 1; },
+  );
+
+  assert.equal(refreshed, false);
+  assert.equal(attemptedRefreshToken, "old-refresh");
+  assert.equal(invalidations, 0);
+  assert.deepEqual(tokens, { accessToken: "new-access", refreshToken: "new-refresh" });
+});
+
 test("concurrent refresh callers share one request and later calls can retry", async () => {
   let calls = 0;
   let respond;

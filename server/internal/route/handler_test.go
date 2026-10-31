@@ -374,6 +374,18 @@ func TestRouteHoldRolesAreValidatedOnCreateAndUpdate(t *testing.T) {
 VALUES($1,(SELECT id FROM wall_images WHERE wall_id=$1 LIMIT 1),$2,'Malformed roles',$3,'{"start":123}'::jsonb,'published','{}') RETURNING id`, shared.PgUUID(e.wallID), shared.PgUUID(e.creatorID), []uuid.UUID(e.holdIDs)).Scan(&malformedID); err != nil {
 		t.Fatal(err)
 	}
+	var invalidRoleIDs []uuid.UUID
+	for _, roles := range []string{
+		`{"unknown":[]}`,
+		fmt.Sprintf(`{"start":[%q]}`, uuid.NewString()),
+	} {
+		var id uuid.UUID
+		if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags)
+VALUES($1,(SELECT id FROM wall_images WHERE wall_id=$1 LIMIT 1),$2,'Invalid legacy roles',$3,$4::jsonb,'published','{}') RETURNING id`, shared.PgUUID(e.wallID), shared.PgUUID(e.creatorID), []uuid.UUID(e.holdIDs), roles).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		invalidRoleIDs = append(invalidRoleIDs, id)
+	}
 	_, file, _, _ := runtime.Caller(0)
 	migration, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "db", "migrations", "0022_repair_route_hold_roles.sql"))
 	if err != nil {
@@ -393,6 +405,15 @@ VALUES($1,(SELECT id FROM wall_images WHERE wall_id=$1 LIMIT 1),$2,'Malformed ro
 	}
 	if repaired != nil {
 		t.Fatalf("malformed hold_roles after repair = %s, want SQL NULL", repaired)
+	}
+	for _, id := range invalidRoleIDs {
+		var repairedRoles []byte
+		if err := e.pool.QueryRow(context.Background(), `SELECT hold_roles FROM routes WHERE id=$1`, id).Scan(&repairedRoles); err != nil {
+			t.Fatal(err)
+		}
+		if repairedRoles != nil {
+			t.Errorf("invalid legacy hold_roles after repair = %s, want SQL NULL", repairedRoles)
+		}
 	}
 	for i, routeID := range roleRouteIDs {
 		var repairedRoles []byte

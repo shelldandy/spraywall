@@ -41,7 +41,10 @@ export async function refreshSessionWithLock(
     await rehydrate();
     const current = getTokens();
     if (current.accessToken && current.accessToken !== rejectedAccessToken) return true;
-    return refreshSession(current.refreshToken, fetcher, onTokens, onInvalid, endpoint);
+    return refreshSession(current.refreshToken, fetcher, onTokens, async () => {
+      await rehydrate();
+      if (getTokens().refreshToken === current.refreshToken) await onInvalid();
+    }, endpoint);
   });
 }
 
