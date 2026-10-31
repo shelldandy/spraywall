@@ -185,6 +185,10 @@ func (h *Handler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if err := validateHoldRoles(body.HoldRoles, holdIDs); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	userID := user.GetUserID(r.Context())
 
@@ -343,6 +347,11 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	wallUUID, err := parseWallID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid wall id")
+		return
+	}
 
 	routeUUID, err := parseRouteID(r)
 	if err != nil {
@@ -362,7 +371,7 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
-	if err != nil || wall.GymID != gym.ID {
+	if err != nil || wall.GymID != gym.ID || rt.WallID != shared.PgUUID(wallUUID) {
 		writeError(w, http.StatusNotFound, "route not found")
 		return
 	}
@@ -440,6 +449,10 @@ func (h *Handler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if err := validateHoldRoles(body.HoldRoles, holdIDs); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	var grade pgtype.Text
 	if body.Grade != nil {
@@ -498,6 +511,11 @@ func (h *Handler) DeleteRoute(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	wallUUID, err := parseWallID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid wall id")
+		return
+	}
 
 	routeUUID, err := parseRouteID(r)
 	if err != nil {
@@ -517,7 +535,7 @@ func (h *Handler) DeleteRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
-	if err != nil || wall.GymID != gym.ID {
+	if err != nil || wall.GymID != gym.ID || rt.WallID != shared.PgUUID(wallUUID) {
 		writeError(w, http.StatusNotFound, "route not found")
 		return
 	}
@@ -545,6 +563,11 @@ func (h *Handler) PublishRoute(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	wallUUID, err := parseWallID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid wall id")
+		return
+	}
 
 	routeUUID, err := parseRouteID(r)
 	if err != nil {
@@ -564,7 +587,7 @@ func (h *Handler) PublishRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
-	if err != nil || wall.GymID != gym.ID {
+	if err != nil || wall.GymID != gym.ID || rt.WallID != shared.PgUUID(wallUUID) {
 		writeError(w, http.StatusNotFound, "route not found")
 		return
 	}

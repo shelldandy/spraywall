@@ -35,10 +35,14 @@ func newAuthEnv(t *testing.T, opts user.Options) *authEnv {
 	pool := testdb.New(t)
 	q := generated.New(pool)
 	authn := user.NewHandler(q, testJWTSecret, pool, opts)
-	walls := wall.NewHandler(q, nil, nil)
+	walls := wall.NewHandler(q, nil, pool)
 	invites := invite.NewHandler(q, pool)
 
 	r := chi.NewRouter()
+	r.Route("/gyms", func(r chi.Router) {
+		r.Use(authn.Authenticate)
+		r.Post("/", walls.CreateGym)
+	})
 	r.Route("/gyms/{gymSlug}", func(r chi.Router) {
 		r.Use(authn.Authenticate)
 		r.Delete("/", walls.DeleteGym)
@@ -113,6 +117,23 @@ func (e *authEnv) inviteCount(t *testing.T) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+func TestCreateGymRollsBackWhenOwnerMembershipFails(t *testing.T) {
+	env := newAuthEnv(t, user.Options{PasswordEnabled: true})
+	creator := env.createUser(t, "atomic-gym@example.com", generated.UserRoleClimber)
+	token := env.accessToken(t, creator)
+	if _, err := env.pool.Exec(context.Background(), `ALTER TABLE gym_members ADD CONSTRAINT reject_admin_members CHECK (role <> 'admin'::user_role)`); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := env.request(http.MethodPost, "/gyms", token, `{"name":"Atomic Gym","slug":"atomic-gym"}`)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("create gym status = %d, want 500: %s", rec.Code, rec.Body)
+	}
+	if env.gymExists(t, "atomic-gym") {
+		t.Fatal("gym row committed after owner membership failed")
+	}
 }
 
 func TestCurrentAdminTokenManagesAnyGym(t *testing.T) {

@@ -93,14 +93,28 @@ func TestSeparateRateLimitersDoNotShareCounters(t *testing.T) {
 	}
 }
 
-func TestRateLimiterResetsAfterWindow(t *testing.T) {
-	handler := NewRateLimiter(1, 50*time.Millisecond).Handler(okHandler())
+func TestRejectedRequestsDoNotExtendWindow(t *testing.T) {
+	limiter := NewRateLimiter(1, time.Minute)
+	handler := limiter.Handler(okHandler())
 	remoteAddr := "192.0.2.1:1234"
 
 	if got := rateLimitRequest(handler, remoteAddr, "").Code; got != http.StatusNoContent {
 		t.Fatalf("first request status = %d, want %d", got, http.StatusNoContent)
 	}
-	time.Sleep(75 * time.Millisecond)
+	limiter.mu.Lock()
+	windowStart := limiter.visitors["192.0.2.1"].windowStart
+	limiter.mu.Unlock()
+	for i := 0; i < 3; i++ {
+		if got := rateLimitRequest(handler, remoteAddr, "").Code; got != http.StatusTooManyRequests {
+			t.Fatalf("rejected request status = %d, want %d", got, http.StatusTooManyRequests)
+		}
+	}
+	limiter.mu.Lock()
+	if !limiter.visitors["192.0.2.1"].windowStart.Equal(windowStart) {
+		t.Fatal("rejected requests moved the window start")
+	}
+	limiter.visitors["192.0.2.1"].windowStart = time.Now().Add(-limiter.window)
+	limiter.mu.Unlock()
 	if got := rateLimitRequest(handler, remoteAddr, "").Code; got != http.StatusNoContent {
 		t.Fatalf("request after window status = %d, want %d", got, http.StatusNoContent)
 	}

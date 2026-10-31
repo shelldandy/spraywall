@@ -13,10 +13,8 @@ import RouteList from "./RouteList";
 import ActivityFeed from "../components/ActivityFeed";
 import styles from "./WallDetail.module.css";
 
-type HoldRole = "normal" | "start" | "hand" | "finish" | "foot";
+type HoldRole = "start" | "hand" | "finish" | "foot";
 type CreateTool = "start" | "hand" | "finish" | "foot" | "erase";
-
-const THRESHOLDS = [0.1, 0.25, 0.5, 0.75, 0.9];
 
 function initialRouteTags(rawTags: string | null) {
   if (!rawTags) return [];
@@ -73,7 +71,6 @@ export default function WallDetailPage() {
   const [createTool, setCreateTool] = useState<CreateTool>(isEditingRoute ? "hand" : "start");
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [imageAspectRatio, setImageAspectRatio] = useState<number>();
-  const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -89,19 +86,6 @@ export default function WallDetailPage() {
   const holdsQuery = useHolds(wallId, holdsEnabled, gymSlug);
   const routesQuery = useRoutes(wallId, gymSlug);
   const circuitsQuery = useCircuits(wallId, gymSlug);
-
-  const handleToggle = useCallback((holdId: string) => {
-    setHoldSelections((prev) => {
-      const next = new Map(prev);
-      const current = next.get(holdId);
-      if (!current) next.set(holdId, "normal");
-      else if (current === "normal") next.set(holdId, "start");
-      else if (current === "start") next.set(holdId, "finish");
-      else if (current === "finish") next.set(holdId, "foot");
-      else next.delete(holdId);
-      return next;
-    });
-  }, []);
 
   const handleCreateHold = useCallback(
     (holdId: string) => {
@@ -243,10 +227,7 @@ export default function WallDetailPage() {
     } catch { /* Storage may be unavailable; navigation remains usable. */ }
   }, [gymSlug, wall, wallId]);
   const holds = holdsEnabled ? holdsQuery.data ?? [] : [];
-  const filteredHolds = holds.filter((h) => h.confidence >= confidenceThreshold);
   const selectedIds = new Set(holdSelections.keys());
-  const filteredIds = new Set(filteredHolds.map((h) => h.id));
-  const visibleSelectedIds = new Set([...selectedIds].filter((id) => filteredIds.has(id)));
 
   const openPartialReset = () => {
     if (!wall?.image) return;
@@ -274,28 +255,13 @@ export default function WallDetailPage() {
     fileInputRef.current?.click();
   };
 
-  const visibleRoles = (): HoldRoles => ({
-    start: [...holdSelections.entries()]
-      .filter(([id, r]) => r === "start" && visibleSelectedIds.has(id))
-      .map(([id]) => id),
-    finish: [...holdSelections.entries()]
-      .filter(([id, r]) => r === "finish" && visibleSelectedIds.has(id))
-      .map(([id]) => id),
-    foot: [...holdSelections.entries()]
-      .filter(([id, r]) => r === "foot" && visibleSelectedIds.has(id))
-      .map(([id]) => id),
-  });
-
   const allSelectionRoles = (): HoldRoles => ({
     start: [...holdSelections.entries()].filter(([, role]) => role === "start").map(([id]) => id),
     finish: [...holdSelections.entries()].filter(([, role]) => role === "finish").map(([id]) => id),
     foot: [...holdSelections.entries()].filter(([, role]) => role === "foot").map(([id]) => id),
   });
 
-  const goToCreateRoute = (
-    holdIds: Set<string> = visibleSelectedIds,
-    roles: HoldRoles = visibleRoles(),
-  ) => {
+  const goToCreateRoute = (holdIds: Set<string>, roles: HoldRoles) => {
     const params = new URLSearchParams({
       wallId,
       gymSlug: gymSlug ?? "",
@@ -541,16 +507,15 @@ export default function WallDetailPage() {
           {wall?.image ? (
             <div className={styles.imageContainer}>
               <WallImage src={wall.image.image_url} alt={wall.wall.name}>
-                {(isEditingHolds || (!isManagingWall && filteredHolds.length > 0)) && (
+                {(isEditingHolds || (!isManagingWall && holds.length > 0)) && (
                   <HoldOverlay
-                    holds={isEditingHolds ? holds : filteredHolds}
+                    holds={holds}
                     selectedIds={isEditingHolds ? new Set() : selectedIds}
-                    onToggle={isEditingHolds ? handleEditToggle : handleToggle}
-                    mode={isEditingHolds ? "edit" : undefined}
+                    onToggle={isEditingHolds ? handleEditToggle : () => {}}
+                    mode={isEditingHolds ? "edit" : "view"}
                     editHoldMode={editHoldMode}
                     holdToDelete={holdToDelete}
                     onBackgroundPress={editHoldMode === "add" ? addHold : undefined}
-                    holdRoles={holdSelections.size > 0 ? visibleRoles() : null}
                   />
                 )}
               </WallImage>
@@ -640,40 +605,6 @@ export default function WallDetailPage() {
             ))}
 
           {isEditingHolds && holdDeleteError && <p className="error-text">{holdDeleteError}</p>}
-
-          {!isManagingWall && !isEditingHolds && detectionStatus === "done" && holds.length > 0 && (
-            <>
-              <div className={styles.threshold}>
-                <span className={styles.thresholdLabel}>Confidence threshold</span>
-                <div className={styles.thresholdButtons}>
-                  {THRESHOLDS.map((t) => (
-                    <button
-                      type="button"
-                      key={t}
-                      className={`${styles.chip} ${confidenceThreshold === t ? styles.chipActive : ""}`}
-                      onClick={() => setConfidenceThreshold(t)}
-                    >
-                      {Math.round(t * 100)}%
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <p className={`muted ${styles.holdCount}`}>
-                {filteredHolds.length} of {holds.length} hold{holds.length !== 1 ? "s" : ""} (
-                {"≥"} {Math.round(confidenceThreshold * 100)}%)
-              </p>
-            </>
-          )}
-
-          {!isManagingWall && !isEditingHolds && visibleSelectedIds.size >= 2 && (
-            <button
-              type="button"
-              className={`btn btn-block ${styles.createRouteButton}`}
-              onClick={() => goToCreateRoute()}
-            >
-              Create Route ({visibleSelectedIds.size} holds)
-            </button>
-          )}
 
         </main>
       ) : (

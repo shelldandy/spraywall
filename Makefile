@@ -29,7 +29,7 @@ lint:
 test:
 	cd server && go test ./...
 	cd web && npm test
-	cd worker && (python -c "import pytest" 2>/dev/null && python -m pytest -q || echo "pytest not available, skipping worker tests")
+	cd worker && if [ -x .venv/bin/python ] && .venv/bin/python -c "import pytest" 2>/dev/null; then .venv/bin/python -m pytest -q; elif python -c "import pytest" 2>/dev/null; then python -m pytest -q; else echo "pytest not available, skipping worker tests"; fi
 
 clean:
 	docker compose down -v

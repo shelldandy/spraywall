@@ -27,6 +27,27 @@ export function classifyRefreshResponse(
   return { kind: "retryable", retryAfterMs: parseRetryAfter(retryAfter, now) };
 }
 
+export async function refreshSessionWithLock(
+  rejectedAccessToken: string | null,
+  withLock: <T>(task: () => Promise<T>) => Promise<T>,
+  rehydrate: () => Promise<unknown>,
+  getTokens: () => { accessToken: string | null; refreshToken: string | null },
+  fetcher: (url: string, init: RequestInit) => Promise<Response>,
+  onTokens: (accessToken: string, refreshToken: string) => void,
+  onInvalid: () => Promise<unknown>,
+  endpoint = "/api/auth/refresh",
+): Promise<boolean> {
+  return withLock(async () => {
+    await rehydrate();
+    const current = getTokens();
+    if (current.accessToken && current.accessToken !== rejectedAccessToken) return true;
+    return refreshSession(current.refreshToken, fetcher, onTokens, async () => {
+      await rehydrate();
+      if (getTokens().refreshToken === current.refreshToken) await onInvalid();
+    }, endpoint);
+  });
+}
+
 export async function refreshSession(
   refreshToken: string | null,
   fetcher: (url: string, init: RequestInit) => Promise<Response>,
@@ -90,11 +111,11 @@ export function queryRetryDelay(attemptIndex: number, error: unknown): number {
   return Math.min(1000 * 2 ** attemptIndex, MAX_RETRY_DELAY_MS);
 }
 
-export function createSingleFlight<T>(task: () => Promise<T>): () => Promise<T> {
+export function createSingleFlight<T, A extends unknown[] = []>(task: (...args: A) => Promise<T>): (...args: A) => Promise<T> {
   let pending: Promise<T> | null = null;
-  return () => {
+  return (...args: A) => {
     if (!pending) {
-      pending = task().finally(() => {
+      pending = task(...args).finally(() => {
         pending = null;
       });
     }

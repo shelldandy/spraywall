@@ -70,6 +70,7 @@ type uploadTestEnv struct {
 	pool     *pgxpool.Pool
 	queries  *generated.Queries
 	storage  *uploadTestStorage
+	handler  *Handler
 	gymSlug  string
 	wallID   uuid.UUID
 	activeID uuid.UUID
@@ -114,13 +115,16 @@ func newUploadTestEnv(t *testing.T, storage *uploadTestStorage) *uploadTestEnv {
 	}
 	handler := NewHandler(queries, storage, pool)
 	router := chi.NewRouter()
+	router.Get("/images/*", handler.ServeImage)
 	router.Route("/gyms/{gymSlug}", func(r chi.Router) {
 		r.Use(auth.Authenticate)
+		r.Delete("/", handler.DeleteGym)
+		r.Delete("/walls/{wallId}", handler.DeleteWall)
 		r.Post("/walls/{wallId}/images", handler.UploadImage)
 		r.Post("/walls/{wallId}/resets/{imageId}/apply", handler.ApplyReset)
 	})
 	return &uploadTestEnv{
-		pool: pool, queries: queries, storage: storage, gymSlug: gym.Slug,
+		pool: pool, queries: queries, storage: storage, handler: handler, gymSlug: gym.Slug,
 		wallID: uuid.UUID(wallRow.ID.Bytes), activeID: uuid.UUID(active.ID.Bytes),
 		token: pair.AccessToken, router: router,
 	}

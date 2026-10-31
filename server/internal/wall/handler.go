@@ -86,6 +86,11 @@ func (h *Handler) deleteStorageObjectBestEffort(key, reason string) {
 	defer cancel()
 	if err := h.storage.Delete(ctx, key); err != nil {
 		log.Printf("wall: could not delete image object %q (%s): %v", key, reason, err)
+		queueCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, queueErr := h.pool.Exec(queueCtx, `INSERT INTO storage_deletions (storage_key) VALUES ($1)`, key); queueErr != nil {
+			log.Printf("wall: could not queue image delete %q: %v", key, queueErr)
+		}
 	}
 }
 
@@ -208,7 +213,15 @@ func (h *Handler) CreateGym(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gym, err := h.queries.CreateGym(r.Context(), generated.CreateGymParams{
+	tx, err := h.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not create gym")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	txq := h.queries.WithTx(tx)
+	gym, err := txq.CreateGym(r.Context(), generated.CreateGymParams{
 		Name:    body.Name,
 		Slug:    slug,
 		OwnerID: shared.PgUUID(userID),
@@ -223,13 +236,16 @@ func (h *Handler) CreateGym(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Auto-add creator as admin member.
-	if err := h.queries.CreateGymMember(r.Context(), generated.CreateGymMemberParams{
+	if err := txq.CreateGymMember(r.Context(), generated.CreateGymMemberParams{
 		GymID:  gym.ID,
 		UserID: shared.PgUUID(userID),
 		Role:   generated.UserRoleAdmin,
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not add owner as member")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not create gym")
 		return
 	}
 
@@ -930,23 +946,173 @@ func (h *Handler) DeleteHold(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func wallStorageKeys(ctx context.Context, tx pgx.Tx, wallID pgtype.UUID) ([]string, error) {
+	rows, err := tx.Query(ctx, `SELECT storage_key FROM wall_images WHERE wall_id=$1`, wallID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
+func queueStoredImages(ctx context.Context, tx pgx.Tx, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO storage_deletions (storage_key) SELECT unnest($1::text[])`, keys)
+	return err
+}
+
+func (h *Handler) deleteNextStoredImage(ctx context.Context) (bool, error) {
+	if h.storage == nil {
+		return false, errors.New("image storage is unavailable")
+	}
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	var id int64
+	var key string
+	var attempts int32
+	err = tx.QueryRow(ctx, `SELECT id, storage_key, attempts FROM storage_deletions
+		WHERE next_attempt_at <= clock_timestamp() ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED`).Scan(&id, &key, &attempts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	cleanupCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	err = h.storage.Delete(cleanupCtx, key)
+	cancel()
+	if err != nil {
+		// shortcut: fixed one-minute retries, add backoff if failures create sustained storage traffic.
+		if _, updateErr := tx.Exec(ctx, `UPDATE storage_deletions
+			SET attempts=attempts+1, next_attempt_at=clock_timestamp()+interval '1 minute' WHERE id=$1`, id); updateErr != nil {
+			return false, fmt.Errorf("record failed image delete: %w", updateErr)
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return false, commitErr
+		}
+		return true, fmt.Errorf("delete image %q on attempt %d: %w", key, attempts+1, err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM storage_deletions WHERE id=$1`, id); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// RunStorageDeleteQueue retries object deletes saved by wall and gym deletion.
+func (h *Handler) RunStorageDeleteQueue(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		didWork, err := h.deleteNextStoredImage(ctx)
+		if err != nil {
+			log.Printf("wall: storage delete queue: %v", err)
+		}
+		if didWork {
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 // DeleteGym handles DELETE /gyms/{gymSlug}
 func (h *Handler) DeleteGym(w http.ResponseWriter, r *http.Request) {
 	_, member, err := h.requireGymMember(w, r)
 	if err != nil {
 		return
 	}
-
 	if member.Role != generated.UserRoleAdmin {
 		writeError(w, http.StatusForbidden, "only gym admins can delete gyms")
 		return
 	}
 
-	if err := h.queries.DeleteGym(r.Context(), member.GymID); err != nil {
+	tx, err := h.pool.Begin(r.Context())
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not delete gym")
 		return
 	}
+	defer tx.Rollback(r.Context())
 
+	var gymID pgtype.UUID
+	if err := tx.QueryRow(r.Context(), `SELECT id FROM gyms WHERE id=$1 FOR UPDATE`, member.GymID).Scan(&gymID); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete gym")
+		return
+	}
+	walls, err := tx.Query(r.Context(), `SELECT id FROM walls WHERE gym_id=$1 ORDER BY id FOR UPDATE`, gymID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete gym")
+		return
+	}
+	for walls.Next() {
+		var id pgtype.UUID
+		if err := walls.Scan(&id); err != nil {
+			walls.Close()
+			writeError(w, http.StatusInternalServerError, "could not delete gym")
+			return
+		}
+	}
+	if err := walls.Err(); err != nil {
+		walls.Close()
+		writeError(w, http.StatusInternalServerError, "could not delete gym")
+		return
+	}
+	walls.Close()
+
+	rows, err := tx.Query(r.Context(), `SELECT wi.storage_key FROM wall_images wi JOIN walls w ON w.id=wi.wall_id WHERE w.gym_id=$1`, gymID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete gym")
+		return
+	}
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, "could not delete gym")
+			return
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		writeError(w, http.StatusInternalServerError, "could not delete gym")
+		return
+	}
+	rows.Close()
+
+	if err := queueStoredImages(r.Context(), tx, keys); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete gym")
+		return
+	}
+	if err := h.queries.WithTx(tx).DeleteGym(r.Context(), member.GymID); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete gym")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete gym")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -983,14 +1149,38 @@ func (h *Handler) DeleteWall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.queries.DeleteWall(r.Context(), generated.DeleteWallParams{
-		ID:    wall.ID,
-		GymID: gym.ID,
-	}); err != nil {
+	tx, err := h.pool.Begin(r.Context())
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not delete wall")
 		return
 	}
-
+	defer tx.Rollback(r.Context())
+	var lockedID pgtype.UUID
+	if err := tx.QueryRow(r.Context(), `SELECT id FROM walls WHERE id=$1 AND gym_id=$2 FOR UPDATE`, wall.ID, gym.ID).Scan(&lockedID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "wall not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "could not delete wall")
+		}
+		return
+	}
+	keys, err := wallStorageKeys(r.Context(), tx, wall.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete wall")
+		return
+	}
+	if err := queueStoredImages(r.Context(), tx, keys); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete wall")
+		return
+	}
+	if err := h.queries.WithTx(tx).DeleteWall(r.Context(), generated.DeleteWallParams{ID: wall.ID, GymID: gym.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete wall")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete wall")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -998,6 +1188,16 @@ func (h *Handler) DeleteWall(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ServeImage(w http.ResponseWriter, r *http.Request) {
 	key := chi.URLParam(r, "*")
 	if key == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	var referenced bool
+	if err := h.pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM wall_images WHERE storage_key=$1) OR EXISTS(SELECT 1 FROM users WHERE avatar_key=$1)`, key).Scan(&referenced); err != nil {
+		http.Error(w, "image unavailable", http.StatusInternalServerError)
+		return
+	}
+	if !referenced {
 		http.NotFound(w, r)
 		return
 	}

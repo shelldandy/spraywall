@@ -21,10 +21,14 @@ import (
 
 type Handler struct {
 	queries *db.Queries
-	pool    interface{ Begin(context.Context) (pgx.Tx, error) }
+	pool    interface {
+		Begin(context.Context) (pgx.Tx, error)
+	}
 }
 
-func NewHandler(queries *db.Queries, pool interface{ Begin(context.Context) (pgx.Tx, error) }) *Handler {
+func NewHandler(queries *db.Queries, pool interface {
+	Begin(context.Context) (pgx.Tx, error)
+}) *Handler {
 	return &Handler{queries: queries, pool: pool}
 }
 
@@ -181,22 +185,25 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	txq := h.queries.WithTx(tx)
 
-	err = txq.CreateGymMember(ctx, db.CreateGymMemberParams{
-		GymID:  invite.GymID,
-		UserID: shared.PgUUID(userID),
-		Role:   invite.Role,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to add gym member")
-		return
-	}
-
-	err = txq.UseInvite(ctx, db.UseInviteParams{
+	consumed, err := txq.ConsumeInvite(ctx, db.ConsumeInviteParams{
 		ID:     invite.ID,
 		UsedBy: shared.PgUUID(userID),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to mark invite as used")
+		return
+	}
+	if consumed != 1 {
+		writeError(w, http.StatusConflict, "invite has already been used or expired")
+		return
+	}
+
+	if err := txq.CreateGymMember(ctx, db.CreateGymMemberParams{
+		GymID:  invite.GymID,
+		UserID: shared.PgUUID(userID),
+		Role:   invite.Role,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to add gym member")
 		return
 	}
 

@@ -9,5 +9,6 @@ FROM invites i
 JOIN gyms g ON i.gym_id = g.id
 WHERE i.token = $1 AND i.used_at IS NULL AND i.expires_at > now();
 
--- name: UseInvite :exec
-UPDATE invites SET used_at = now(), used_by = $2 WHERE id = $1;
+-- name: ConsumeInvite :execrows
+UPDATE invites SET used_at = now(), used_by = $2
+WHERE id = $1 AND used_at IS NULL AND expires_at > now();
