@@ -187,6 +187,31 @@ func (h *Handler) CreateWall(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, wall)
 }
 
+// UpdateWall handles PATCH /walls/{wallId}.
+func (h *Handler) UpdateWall(w http.ResponseWriter, r *http.Request) {
+	wall, role, err := wallaccess.RequireWall(w, r, h.queries)
+	if err != nil {
+		return
+	}
+	if role != generated.UserRoleAdmin && role != generated.UserRoleSetter {
+		writeError(w, http.StatusForbidden, "only setters or admins can rename walls")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	updated, err := h.queries.UpdateWallName(r.Context(), generated.UpdateWallNameParams{ID: wall.ID, Name: strings.TrimSpace(body.Name)})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not rename wall")
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
+}
+
 // ListWalls handles GET /walls.
 func (h *Handler) ListWalls(w http.ResponseWriter, r *http.Request) {
 	walls, err := h.queries.ListWalls(r.Context())

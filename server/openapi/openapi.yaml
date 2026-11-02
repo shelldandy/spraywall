@@ -645,6 +645,32 @@ paths:
 
 
   /walls/{wallId}:
+    patch:
+      operationId: updateWall
+      summary: Rename a wall
+      tags: [Wall]
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/wallId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string}
+      responses:
+        "200":
+          description: Wall renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wall"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
     get:
       operationId: getWall
       summary: Get wall by ID

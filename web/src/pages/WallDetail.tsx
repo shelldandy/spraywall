@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api/fetch";
 import { canEditWallHolds, isDetecting, shouldLoadHolds, useCircuits, useHolds, useRoutes, useWallDetail } from "../lib/hooks/queries";
 import { toast, toastError } from "../lib/toast";
 import { uploadWallImage } from "../lib/hooks/mutations";
-import type { Hold, HoldRoles } from "../lib/api/types";
+import type { Hold, HoldRoles, Wall } from "../lib/api/types";
 import { parseRouteTags } from "../lib/routeTags";
 import HoldOverlay from "../components/HoldOverlay";
 import WallImage from "../components/WallImage";
 import RouteList from "./RouteList";
 import ActivityFeed from "../components/ActivityFeed";
 import styles from "./WallDetail.module.css";
+import wallFormStyles from "./Walls.module.css";
 
 type HoldRole = "start" | "hand" | "finish" | "foot";
 type CreateTool = "start" | "hand" | "finish" | "foot" | "erase";
@@ -60,6 +61,8 @@ export default function WallDetailPage() {
 
   const [editingHoldsImageId, setEditingHoldsImageId] = useState<string | null>(null);
   const [isManagingWall, setIsManagingWall] = useState(false);
+  const [showRenameForm, setShowRenameForm] = useState(false);
+  const [wallName, setWallName] = useState("");
   const [editHoldMode, setEditHoldMode] = useState<"delete" | "add">("delete");
   const [holdToDelete, setHoldToDelete] = useState<string | null>(null);
   const [deletingHoldId, setDeletingHoldId] = useState<string | null>(null);
@@ -85,6 +88,31 @@ export default function WallDetailPage() {
   const holdsQuery = useHolds(wallId, holdsEnabled);
   const routesQuery = useRoutes(wallId);
   const circuitsQuery = useCircuits(wallId);
+  const renameWall = useMutation<Wall, Error, string>({
+    mutationFn: async (name) => {
+      const response = await apiFetch(`/walls/${wallId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Failed to rename wall");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["wall-detail", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["walls"] });
+      setShowRenameForm(false);
+    },
+    onError: (error) => toast(error.message, "error"),
+  });
+
+  const submitRenameWall = (event: FormEvent) => {
+    event.preventDefault();
+    if (!wall || !wallName.trim() || wallName.trim() === wall.wall.name || renameWall.isPending) return;
+    renameWall.mutate(wallName.trim());
+  };
 
   const handleCreateHold = useCallback(
     (holdId: string) => {
@@ -521,6 +549,30 @@ export default function WallDetailPage() {
             </div>
           )}
 
+          {canEdit && isManagingWall && wall && (showRenameForm ? (
+            <form className={wallFormStyles.inlineForm} onSubmit={submitRenameWall}>
+              <input
+                className="input"
+                placeholder="Wall name"
+                value={wallName}
+                onChange={(event) => setWallName(event.target.value)}
+                autoFocus
+                enterKeyHint="go"
+              />
+              <div className={wallFormStyles.formButtons}>
+                <button type="button" className={`btn btn-ghost ${wallFormStyles.cancel}`} onClick={() => { setShowRenameForm(false); setWallName(""); }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={!wallName.trim() || wallName.trim() === wall.wall.name || renameWall.isPending}>
+                  {renameWall.isPending ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button type="button" className="btn btn-ghost btn-block" onClick={() => { setWallName(wall.wall.name); setShowRenameForm(true); }}>
+              Rename wall
+            </button>
+          ))}
           {canEdit && wall?.image && isManagingWall && (
             <button
               type="button"
