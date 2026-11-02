@@ -345,3 +345,19 @@ func (q *Queries) ListWalls(ctx context.Context) ([]ListWallsRow, error) {
 	}
 	return items, nil
 }
+
+const updateWallName = `-- name: UpdateWallName :one
+UPDATE walls SET name = $2 WHERE id = $1 RETURNING id, name, created_at
+`
+
+type UpdateWallNameParams struct {
+	ID   pgtype.UUID `json:"id"`
+	Name string      `json:"name"`
+}
+
+func (q *Queries) UpdateWallName(ctx context.Context, arg UpdateWallNameParams) (Wall, error) {
+	row := q.db.QueryRow(ctx, updateWallName, arg.ID, arg.Name)
+	var i Wall
+	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	return i, err
+}

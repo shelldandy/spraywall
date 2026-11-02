@@ -6,6 +6,9 @@ RETURNING *;
 -- name: GetWallByID :one
 SELECT * FROM walls WHERE id = $1;
 
+-- name: UpdateWallName :one
+UPDATE walls SET name = $2 WHERE id = $1 RETURNING *;
+
 -- name: ListWalls :many
 SELECT
     w.id,

@@ -40,6 +40,9 @@ func newAuthEnv(t *testing.T, opts user.Options) *authEnv {
 		r.Use(authn.Authenticate)
 		r.Post("/", walls.CreateWall)
 		r.Get("/", walls.ListWalls)
+		r.Route("/{wallId}", func(r chi.Router) {
+			r.Patch("/", walls.UpdateWall)
+		})
 		r.Get("/{wallId}", walls.GetWall)
 	})
 	r.With(authn.Authenticate).Post("/invites", invites.CreateInvite)
@@ -102,6 +105,44 @@ func TestWallsAreVisibleAndWallCreationRequiresSetter(t *testing.T) {
 		if rec := env.request(http.MethodGet, "/walls", token, ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Shared wall") {
 			t.Errorf("wall list for signed-in user: %d %s", rec.Code, rec.Body)
 		}
+	}
+}
+
+func TestWallRenameRequiresSetter(t *testing.T) {
+	env := newAuthEnv(t, user.Options{PasswordEnabled: true})
+	climber := env.createUser(t, "climber@example.com", generated.UserRoleClimber)
+	setter := env.createUser(t, "setter@example.com", generated.UserRoleSetter)
+	admin := env.createUser(t, "admin@example.com", generated.UserRoleAdmin)
+	climberToken, setterToken, adminToken := env.accessToken(t, climber), env.accessToken(t, setter), env.accessToken(t, admin)
+
+	wall, err := env.q.CreateWall(context.Background(), "Old name")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wallPath := "/walls/" + wall.ID.String()
+	if rec := env.request(http.MethodPatch, wallPath, climberToken, `{"name":"Forbidden"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("climber rename wall: %d %s", rec.Code, rec.Body)
+	}
+
+	for _, tc := range []struct {
+		token string
+		name  string
+	}{{setterToken, " Setter wall "}, {adminToken, "Admin wall"}} {
+		if rec := env.request(http.MethodPatch, wallPath, tc.token, `{"name":"`+tc.name+`"}`); rec.Code != http.StatusOK {
+			t.Fatalf("rename wall: %d %s", rec.Code, rec.Body)
+		}
+		if rec := env.request(http.MethodGet, "/walls", climberToken, ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), strings.TrimSpace(tc.name)) {
+			t.Fatalf("renamed wall missing from list: %d %s", rec.Code, rec.Body)
+		}
+	}
+
+	for _, name := range []string{"", "   "} {
+		if rec := env.request(http.MethodPatch, wallPath, setterToken, `{"name":"`+name+`"}`); rec.Code != http.StatusBadRequest {
+			t.Errorf("empty wall name status = %d: %s", rec.Code, rec.Body)
+		}
+	}
+	if rec := env.request(http.MethodPatch, "/walls/00000000-0000-0000-0000-000000000000", setterToken, `{"name":"Missing"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown wall status = %d: %s", rec.Code, rec.Body)
 	}
 }
 
