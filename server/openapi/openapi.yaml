@@ -203,8 +203,9 @@ paths:
 
         An unknown identity is linked to an existing account with the same email only when the
         provider reports the email as verified (otherwise `email_unverified`); if no account has
-        that email, a new one is created. When `OIDC_ADMIN_GROUP` is set, the user's role is set
-        to `admin` or `climber` from the groups claim on every login.
+        that email, a new one is created. When `OIDC_ADMIN_GROUP` is set, group members become
+        admins, unconfirmed admins outside the group become setters, confirmed admins outside it
+        become climbers, and other roles are preserved.
       tags: [Auth]
       parameters:
         - name: code
@@ -1255,18 +1256,18 @@ paths:
     post:
       operationId: createInvite
       summary: Create an instance invite
+      description: The role defaults to `climber`; admin invites are disabled when `OIDC_ADMIN_GROUP` is configured.
       tags: [Invite]
       security:
         - BearerAuth: []
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
               properties:
                 role: {type: string, enum: [climber, setter, admin]}
-              required: [role]
       responses:
         "201":
           description: Invite created

@@ -150,7 +150,7 @@ func main() {
 	routeHandler.SetImmichClient(route.NewImmichClient(strings.Split(os.Getenv("IMMICH_ALLOWED_HOSTS"), ",")))
 	wallHandler := wall.NewHandler(queries, storageClient, pool)
 	go wallHandler.RunStorageDeleteQueue(context.Background())
-	inviteHandler := invite.NewHandler(queries, pool)
+	inviteHandler := invite.NewHandler(queries, pool, oidcConfig.Enabled && oidcConfig.AdminGroup != "")
 
 	// Public media proxies use unguessable UUIDs and work with native img/video elements.
 	r.Get("/images/*", wallHandler.ServeImage)

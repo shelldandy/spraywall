@@ -33,7 +33,7 @@ func newAuthEnv(t *testing.T, opts user.Options) *authEnv {
 	q := generated.New(pool)
 	authn := user.NewHandler(q, testJWTSecret, pool, opts)
 	walls := wall.NewHandler(q, nil, pool)
-	invites := invite.NewHandler(q, pool)
+	invites := invite.NewHandler(q, pool, false)
 
 	r := chi.NewRouter()
 	r.Route("/walls", func(r chi.Router) {

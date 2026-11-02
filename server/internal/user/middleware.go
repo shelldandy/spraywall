@@ -100,11 +100,11 @@ func (h *Handler) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		// IssueTokens persists the demotion of an expired admin; until the
-		// next issuance, treat the account as a climber.
+		// Apply the same fallback used by IssueTokens before it is persisted.
 		role := string(u.Role)
-		if h.adminRoleExpired(u, time.Now()) {
-			role = string(generated.UserRoleClimber)
+		if fallback, demote := h.adminRoleDemotion(u, time.Now()); demote {
+			role = string(fallback)
+			u.Role = fallback
 		}
 
 		ctx := context.WithValue(r.Context(), UserIDKey, userID)

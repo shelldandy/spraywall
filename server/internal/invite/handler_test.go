@@ -55,7 +55,7 @@ CREATE TRIGGER delay_invite_acceptance BEFORE UPDATE OF used_at ON invites FOR E
 	}
 
 	auth := user.NewHandler(q, "invite-test-secret", pool, user.Options{PasswordEnabled: true})
-	handler := invite.NewHandler(q, pool)
+	handler := invite.NewHandler(q, pool, false)
 	router := chi.NewRouter()
 	router.Route("/invites/{token}", func(r chi.Router) {
 		r.Use(auth.Authenticate)
@@ -135,7 +135,7 @@ func TestAcceptInvitePromotesWithoutDemoting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := invite.NewHandler(q, pool)
+	handler := invite.NewHandler(q, pool, false)
 	router := chi.NewRouter()
 	router.Route("/invites/{token}", func(r chi.Router) {
 		r.Use(auth.Authenticate)
@@ -161,5 +161,51 @@ func TestAcceptInvitePromotesWithoutDemoting(t *testing.T) {
 	updated, err = q.GetUserByID(ctx, climber.ID)
 	if err != nil || updated.Role != generated.UserRoleSetter {
 		t.Fatalf("role after lower invite = %v, err=%v", updated.Role, err)
+	}
+}
+
+func TestCreateInviteDisablesAdminRoleWhenOIDCManagesAdmins(t *testing.T) {
+	ctx := context.Background()
+	pool := testdb.New(t)
+	q := generated.New(pool)
+	admin, err := q.CreateUser(ctx, generated.CreateUserParams{Email: "admin-invite@example.com", DisplayName: "Admin", Role: generated.UserRoleClimber})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err = q.SyncUserRole(ctx, generated.SyncUserRoleParams{ID: admin.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := user.NewHandler(q, "invite-test-secret", pool, user.Options{AdminRoleMaxAge: time.Hour})
+	pair, err := auth.IssueTokens(ctx, q, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := invite.NewHandler(q, pool, true)
+	router := chi.NewRouter()
+	router.With(auth.Authenticate).Post("/invites", handler.CreateInvite)
+
+	request := httptest.NewRequest(http.MethodPost, "/invites", strings.NewReader(`{"role":"admin"}`))
+	request.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "admin invites are disabled") {
+		t.Fatalf("admin invite response = %d %s", response.Code, response.Body)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/invites", strings.NewReader(`{"role":"setter"}`))
+	request.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("setter invite response = %d %s", response.Code, response.Body)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/invites", nil)
+	request.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || !strings.Contains(response.Body.String(), `"role":"climber"`) {
+		t.Fatalf("default climber invite response = %d %s", response.Code, response.Body)
 	}
 }

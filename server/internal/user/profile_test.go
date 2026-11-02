@@ -449,7 +449,7 @@ func TestAvatarUploadAndDelete(t *testing.T) {
 	}
 }
 
-func TestIssueTokensExpiresStaleAdmin(t *testing.T) {
+func TestIssueTokensAppliesManagedAdminFallbacks(t *testing.T) {
 	env := newProfileEnv(t, Options{PasswordEnabled: true, AdminRoleMaxAge: time.Hour})
 	ctx := context.Background()
 
@@ -465,26 +465,53 @@ func TestIssueTokensExpiresStaleAdmin(t *testing.T) {
 		t.Fatalf("recently confirmed admin was demoted: %s", u.Role)
 	}
 
-	// Admin never (or too long ago) confirmed by SSO, e.g. removed from the
-	// group but still refreshing tokens.
-	stale := env.createUser(t, "stale@example.com", "")
-	stale, err = env.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: stale.ID, Role: generated.UserRoleAdmin})
+	// An unconfirmed admin can set routes but needs an SSO group match for admin rights.
+	unconfirmed := env.createUser(t, "unconfirmed@example.com", "")
+	unconfirmed, err = env.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: unconfirmed.ID, Role: generated.UserRoleAdmin})
 	if err != nil {
 		t.Fatal(err)
 	}
-	tokens, err := env.h.IssueTokens(ctx, env.q, stale)
+	tokens, err := env.h.IssueTokens(ctx, env.q, unconfirmed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u, _ := env.q.GetUserByID(ctx, stale.ID); u.Role != generated.UserRoleClimber {
-		t.Fatalf("stale admin kept role %s", u.Role)
+	if u, _ := env.q.GetUserByID(ctx, unconfirmed.ID); u.Role != generated.UserRoleSetter {
+		t.Fatalf("unconfirmed admin role = %s, want setter", u.Role)
 	}
 	claims := jwt.MapClaims{}
 	if _, err := jwt.ParseWithClaims(tokens.AccessToken, claims, func(*jwt.Token) (any, error) { return []byte("secret"), nil }); err != nil {
 		t.Fatal(err)
 	}
+	if claims["role"] != "setter" {
+		t.Fatalf("access token role = %v, want setter", claims["role"])
+	}
+
+	// An admin confirmed earlier but now beyond the maximum age loses admin and setter rights.
+	stale := env.createUser(t, "stale@example.com", "")
+	stale, err = env.q.SyncUserRole(ctx, generated.SyncUserRoleParams{ID: stale.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.pool.Exec(ctx, `UPDATE users SET role_synced_at = now() - interval '2 hours' WHERE id = $1`, stale.ID); err != nil {
+		t.Fatal(err)
+	}
+	stale, err = env.q.GetUserByID(ctx, stale.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens, err = env.h.IssueTokens(ctx, env.q, stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := env.q.GetUserByID(ctx, stale.ID); u.Role != generated.UserRoleClimber {
+		t.Fatalf("expired confirmed admin role = %s, want climber", u.Role)
+	}
+	claims = jwt.MapClaims{}
+	if _, err := jwt.ParseWithClaims(tokens.AccessToken, claims, func(*jwt.Token) (any, error) { return []byte("secret"), nil }); err != nil {
+		t.Fatal(err)
+	}
 	if claims["role"] != "climber" {
-		t.Fatalf("access token role = %v", claims["role"])
+		t.Fatalf("access token role = %v, want climber", claims["role"])
 	}
 
 	// Without an IdP-managed admin group, admin roles never expire.

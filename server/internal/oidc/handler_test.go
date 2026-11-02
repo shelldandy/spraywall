@@ -563,6 +563,33 @@ func TestAdminGroupPromotesAndDemotes(t *testing.T) {
 	}
 }
 
+func TestUnconfirmedLegacyAdminWithoutGroupKeepsSetterRole(t *testing.T) {
+	env := newTestEnv(t, true, func(c *Config) { c.AdminGroup = "spraywall-admins" })
+	ctx := context.Background()
+	admin, err := env.q.CreateUser(ctx, generated.CreateUserParams{
+		Email: "legacy-admin@example.com", DisplayName: "Legacy Admin", Role: generated.UserRoleAdmin,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.q.CreateUserIdentity(ctx, generated.CreateUserIdentityParams{
+		UserID: admin.ID, Issuer: env.idp.issuer(), Subject: "legacy-admin", Email: admin.Email,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	res := parseSuccess(t, env.login(t, "/walls", &grant{claims: idClaims("legacy-admin", admin.Email, map[string]any{
+		"groups": []string{"users"},
+	})}))
+	if res.role != "setter" {
+		t.Fatalf("unconfirmed admin outside group got role %q, want setter", res.role)
+	}
+	updated, err := env.q.GetUserByID(ctx, admin.ID)
+	if err != nil || updated.Role != generated.UserRoleSetter {
+		t.Fatalf("stored role = %v, err=%v; want setter", updated.Role, err)
+	}
+}
+
 func TestRoleUntouchedWithoutAdminGroup(t *testing.T) {
 	env := newTestEnv(t, true, nil)
 	ctx := context.Background()

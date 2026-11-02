@@ -378,7 +378,7 @@ func (h *Handler) loginIdentity(ctx context.Context, id verifiedIdentity) (gener
 		// Always write, so role_synced_at records this confirmation.
 		u, err = q.SyncUserRole(ctx, generated.SyncUserRoleParams{
 			ID:   u.ID,
-			Role: roleForGroups(id.claims.Groups, h.cfg.AdminGroup, u.Role),
+			Role: roleForGroups(id.claims.Groups, h.cfg.AdminGroup, u.Role, u.RoleSyncedAt.Valid),
 		})
 		if err != nil {
 			return generated.User{}, nil, fmt.Errorf("sync role: %w", err)

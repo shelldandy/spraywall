@@ -95,12 +95,15 @@ func parseGroups(v any) (groups []string, ok bool) {
 	return nil, false
 }
 
-// roleForGroups maps admin-group membership without overwriting non-admin roles.
-func roleForGroups(groups []string, adminGroup string, current generated.UserRole) generated.UserRole {
+// roleForGroups maps admin-group membership while preserving an unconfirmed legacy admin's setter access.
+func roleForGroups(groups []string, adminGroup string, current generated.UserRole, wasSynced bool) generated.UserRole {
 	if slices.Contains(groups, adminGroup) {
 		return generated.UserRoleAdmin
 	}
 	if current == generated.UserRoleAdmin {
+		if !wasSynced {
+			return generated.UserRoleSetter
+		}
 		return generated.UserRoleClimber
 	}
 	return current

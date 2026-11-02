@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -23,12 +24,13 @@ type Handler struct {
 	pool    interface {
 		Begin(context.Context) (pgx.Tx, error)
 	}
+	adminRoleManagedByOIDC bool
 }
 
 func NewHandler(queries *db.Queries, pool interface {
 	Begin(context.Context) (pgx.Tx, error)
-}) *Handler {
-	return &Handler{queries: queries, pool: pool}
+}, adminRoleManagedByOIDC bool) *Handler {
+	return &Handler{queries: queries, pool: pool, adminRoleManagedByOIDC: adminRoleManagedByOIDC}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -56,13 +58,22 @@ func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Role string `json:"role"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
+	role := db.UserRoleClimber
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
 	}
-	role := db.UserRole(req.Role)
+	if req.Role != "" {
+		role = db.UserRole(req.Role)
+	}
 	if role != db.UserRoleAdmin && role != db.UserRoleSetter && role != db.UserRoleClimber {
 		writeError(w, http.StatusBadRequest, "invalid role")
+		return
+	}
+	if role == db.UserRoleAdmin && h.adminRoleManagedByOIDC {
+		writeError(w, http.StatusBadRequest, "admin invites are disabled when OIDC_ADMIN_GROUP is configured")
 		return
 	}
 

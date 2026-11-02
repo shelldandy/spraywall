@@ -151,15 +151,17 @@ func TestRoleForGroups(t *testing.T) {
 	cases := []struct {
 		name, groups  string
 		current, want generated.UserRole
+		wasSynced     bool
 	}{
-		{"admin group promotes", "spraywall-admins", generated.UserRoleSetter, generated.UserRoleAdmin},
-		{"removed admin is demoted", "users", generated.UserRoleAdmin, generated.UserRoleClimber},
-		{"setter is retained", "users", generated.UserRoleSetter, generated.UserRoleSetter},
-		{"climber is retained", "users", generated.UserRoleClimber, generated.UserRoleClimber},
+		{"admin group promotes", "spraywall-admins", generated.UserRoleSetter, generated.UserRoleAdmin, false},
+		{"unconfirmed admin becomes setter", "users", generated.UserRoleAdmin, generated.UserRoleSetter, false},
+		{"removed synced admin is demoted", "users", generated.UserRoleAdmin, generated.UserRoleClimber, true},
+		{"setter is retained", "users", generated.UserRoleSetter, generated.UserRoleSetter, true},
+		{"climber is retained", "users", generated.UserRoleClimber, generated.UserRoleClimber, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := roleForGroups([]string{tc.groups}, "spraywall-admins", tc.current); got != tc.want {
+			if got := roleForGroups([]string{tc.groups}, "spraywall-admins", tc.current, tc.wasSynced); got != tc.want {
 				t.Errorf("roleForGroups() = %s, want %s", got, tc.want)
 			}
 		})

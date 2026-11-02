@@ -31,12 +31,13 @@ type Config struct {
 	ProviderName string
 	Scopes       []string
 	GroupsClaim  string
-	// AdminGroup, when set, makes members of the group instance admins and
-	// demotes everyone else to climber on each OIDC login.
+	// AdminGroup, when set, makes group members instance admins. Previously
+	// confirmed admins outside the group become climbers; unconfirmed admins
+	// outside it are reduced to setters on their first role sync.
 	AdminGroup string
 	// AdminMaxAge is how long an SSO login keeps confirming admin rights;
-	// after that the account drops to climber until the next SSO login, so
-	// removal from AdminGroup takes effect even for long-lived sessions.
+	// after that, admins removed from AdminGroup become climbers, including
+	// in long-lived sessions.
 	AdminMaxAge time.Duration
 }
 
