@@ -8,11 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
-
 	"github.com/bowlinedandy/spraywall/server/db/generated"
 	routehandler "github.com/bowlinedandy/spraywall/server/internal/route"
-	"github.com/bowlinedandy/spraywall/server/internal/shared"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
 )
 
@@ -39,16 +36,9 @@ type betaVideoPageResponse struct {
 func betaMember(t *testing.T, e *routeTestEnv, name string, role generated.UserRole) string {
 	t.Helper()
 	created, err := e.q.CreateUser(t.Context(), generated.CreateUserParams{
-		Email: name + "@beta-test.example", DisplayName: name, Role: generated.UserRoleClimber,
+		Email: name + "@beta-test.example", DisplayName: name, Role: role,
 	})
 	if err != nil {
-		t.Fatal(err)
-	}
-	gymID := shared.PgUUID(uuid.Nil)
-	if err := e.pool.QueryRow(t.Context(), `SELECT gym_id FROM walls WHERE id=$1`, shared.PgUUID(e.wallID)).Scan(&gymID); err != nil {
-		t.Fatal(err)
-	}
-	if err := e.q.CreateGymMember(t.Context(), generated.CreateGymMemberParams{GymID: gymID, UserID: created.ID, Role: role}); err != nil {
 		t.Fatal(err)
 	}
 	auth := user.NewHandler(e.q, routeTestJWTSecret, e.pool, user.Options{})

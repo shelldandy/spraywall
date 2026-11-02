@@ -7,7 +7,6 @@ import type { ActivityItem } from "../lib/api/types";
 import styles from "./ActivityFeed.module.css";
 
 interface ActivityFeedProps {
-  gymSlug: string;
   wallId: string;
   routeId?: string;
   showRoute: boolean;
@@ -19,8 +18,8 @@ const outcomeVerbs: Record<ActivityItem["outcome"], string> = {
   flash: "flashed",
 };
 
-export default function ActivityFeed({ gymSlug, wallId, routeId, showRoute }: ActivityFeedProps) {
-  const query = useActivity({ gymSlug, wallId, routeId });
+export default function ActivityFeed({ wallId, routeId, showRoute }: ActivityFeedProps) {
+  const query = useActivity({ wallId, routeId });
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
 
   if (query.isLoading) {
@@ -41,7 +40,7 @@ export default function ActivityFeed({ gymSlug, wallId, routeId, showRoute }: Ac
           const dateChanged = index === 0 || items[index - 1].climbed_on !== item.climbed_on;
           const date = calendarParts(item.climbed_on);
           const name = showRoute ? (
-            <Link to={`/routes/${item.route_id}?${new URLSearchParams({ wallId, gymSlug })}`}>
+            <Link to={`/routes/${item.route_id}?${new URLSearchParams({ wallId })}`}>
               {item.route_name}
             </Link>
           ) : item.route_name;

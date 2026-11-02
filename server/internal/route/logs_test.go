@@ -73,8 +73,14 @@ func TestClimbLogsProgressRatingAndPrivateHistory(t *testing.T) {
 	if logbookRec.Code != http.StatusOK || json.Unmarshal(logbookRec.Body.Bytes(), &logbook) != nil || len(logbook) != 3 {
 		t.Fatalf("logbook response: %d %s", logbookRec.Code, logbookRec.Body)
 	}
-	if logbook[0]["climbed_on"] != "2025-02-04" || logbook[0]["outcome"] != "send" || logbook[0]["wall_id"] == nil || logbook[0]["gym_slug"] != "route-test" {
+	if logbook[0]["climbed_on"] != "2025-02-04" || logbook[0]["outcome"] != "send" || logbook[0]["wall_id"] == nil {
 		t.Fatalf("logbook ordering/navigation data: %#v", logbook[0])
+	}
+	if _, ok := logbook[0]["gym_id"]; ok {
+		t.Fatalf("logbook should not expose a gym id: %#v", logbook[0])
+	}
+	if _, ok := logbook[0]["gym_slug"]; ok {
+		t.Fatalf("logbook should not expose a gym slug: %#v", logbook[0])
 	}
 
 	for _, vote := range []struct {

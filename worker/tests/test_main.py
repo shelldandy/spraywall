@@ -75,17 +75,7 @@ def db():
 
 def create_job(db: WorkerDatabase, storage_key="test.jpg") -> str:
     with db.connect() as conn, conn.cursor() as cur:
-        cur.execute(
-            "INSERT INTO users(email, password_hash, display_name) VALUES (%s, '', 'worker test') RETURNING id",
-            (f"{uuid.uuid4()}@example.test",),
-        )
-        owner_id = cur.fetchone()[0]
-        cur.execute(
-            "INSERT INTO gyms(name, slug, owner_id) VALUES ('Worker test gym', %s, %s) RETURNING id",
-            (f"worker-{uuid.uuid4().hex[:8]}", owner_id),
-        )
-        gym_id = cur.fetchone()[0]
-        cur.execute("INSERT INTO walls(gym_id, name) VALUES (%s, 'Test wall') RETURNING id", (gym_id,))
+        cur.execute("INSERT INTO walls(name) VALUES ('Test wall') RETURNING id")
         wall_id = cur.fetchone()[0]
         cur.execute(
             "INSERT INTO wall_images(wall_id, storage_key, is_active, reset_kind) "

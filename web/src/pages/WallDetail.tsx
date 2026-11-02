@@ -46,7 +46,6 @@ function initialSelections(editHoldIds: string | null, editHoldRoles: string | n
 export default function WallDetailPage() {
   const { wallId = "" } = useParams<{ wallId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const gymSlug = searchParams.get("gymSlug") ?? undefined;
   const editRouteId = searchParams.get("editRouteId");
   const editName = searchParams.get("editName");
   const editGrade = searchParams.get("editGrade");
@@ -75,7 +74,7 @@ export default function WallDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // This screen also polls when an incomplete partial reset is running.
-  const wallQuery = useWallDetail(wallId, gymSlug, { pollPendingReset: true });
+  const wallQuery = useWallDetail(wallId, { pollPendingReset: true });
 
   const wall = wallQuery.data;
   const detectionStatus = wall?.detection_status;
@@ -83,9 +82,9 @@ export default function WallDetailPage() {
   const holdsEnabled = shouldLoadHolds(detectionStatus, wall?.user_role);
   const canEditHolds = canEditWallHolds(detectionStatus, wall?.user_role, Boolean(wall?.image));
   const isEditingHolds = editingHoldsImageId === wall?.image?.id && canEditHolds;
-  const holdsQuery = useHolds(wallId, holdsEnabled, gymSlug);
-  const routesQuery = useRoutes(wallId, gymSlug);
-  const circuitsQuery = useCircuits(wallId, gymSlug);
+  const holdsQuery = useHolds(wallId, holdsEnabled);
+  const routesQuery = useRoutes(wallId);
+  const circuitsQuery = useCircuits(wallId);
 
   const handleCreateHold = useCallback(
     (holdId: string) => {
@@ -123,7 +122,7 @@ export default function WallDetailPage() {
       old ? old.filter((h) => h.id !== holdId) : old,
     );
     try {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds/${holdId}`, {
+      const res = await apiFetch(`/walls/${wallId}/holds/${holdId}`, {
         method: "DELETE",
       });
       if (!res.ok) {
@@ -160,7 +159,7 @@ export default function WallDetailPage() {
     const y = Math.max(0, normY - size / 2);
     const bbox = { x, y, w: Math.min(size, 1 - x), h: Math.min(size, 1 - y) };
     try {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds`, {
+      const res = await apiFetch(`/walls/${wallId}/holds`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bbox }),
@@ -180,7 +179,7 @@ export default function WallDetailPage() {
 
     setUploading(true);
     try {
-      const res = await uploadWallImage(gymSlug ?? "", wallId, file);
+      const res = await uploadWallImage(wallId, file);
       if (!res.ok) {
         const err = await res.text();
         throw new Error(err || "Upload failed");
@@ -220,29 +219,25 @@ export default function WallDetailPage() {
   }, [isCreateMode, isEditingHolds, isManagingWall]);
 
   useEffect(() => {
-    if (!wall || !gymSlug) return;
+    if (!wall) return;
     try {
-      localStorage.setItem("spraywall:last-visited-wall", JSON.stringify({ wallId, gymSlug, name: wall.wall.name }));
+      localStorage.setItem("spraywall:last-visited-wall", JSON.stringify({ wallId, name: wall.wall.name }));
       window.dispatchEvent(new Event("spraywall:last-visited-wall"));
     } catch { /* Storage may be unavailable; navigation remains usable. */ }
-  }, [gymSlug, wall, wallId]);
+  }, [wall, wallId]);
   const holds = holdsEnabled ? holdsQuery.data ?? [] : [];
   const selectedIds = new Set(holdSelections.keys());
 
   const openPartialReset = () => {
     if (!wall?.image) return;
-    const cameraParams = new URLSearchParams({
-      gymSlug: gymSlug ?? "",
-      old: wall.image.image_url,
-    });
+    const cameraParams = new URLSearchParams({ old: wall.image.image_url });
     navigate(`/walls/${wallId}/camera?${cameraParams}`);
   };
 
   const openResetReview = () => {
     const imageId = wall?.pending_reset?.image_id;
     if (!imageId) return;
-    const resetParams = new URLSearchParams({ gymSlug: gymSlug ?? "" });
-    navigate(`/walls/${wallId}/reset/${imageId}?${resetParams}`);
+    navigate(`/walls/${wallId}/reset/${imageId}`);
   };
 
   const chooseFullResetImage = () => {
@@ -264,7 +259,6 @@ export default function WallDetailPage() {
   const goToCreateRoute = (holdIds: Set<string>, roles: HoldRoles) => {
     const params = new URLSearchParams({
       wallId,
-      gymSlug: gymSlug ?? "",
       holdIds: JSON.stringify(Array.from(holdIds)),
       holdRoles: JSON.stringify(roles),
     });
@@ -280,6 +274,7 @@ export default function WallDetailPage() {
 
   const setBrowseView = (view: "climbs" | "activity") => {
     const next = new URLSearchParams(searchParams);
+    next.delete("gymSlug");
     if (view === "activity") next.set("view", "activity");
     else next.delete("view");
     setSearchParams(next);
@@ -287,10 +282,10 @@ export default function WallDetailPage() {
 
   const closeCreateMode = () => {
     if (isEditingRoute) {
-      navigate(`/routes/${editRouteId}?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`, { replace: true });
+      navigate(`/routes/${editRouteId}?${new URLSearchParams({ wallId })}`, { replace: true });
       return;
     }
-    navigate(`/walls/${wallId}?${new URLSearchParams({ gymSlug: gymSlug ?? "" })}`, { replace: true });
+    navigate(`/walls/${wallId}`, { replace: true });
   };
 
   const statusBadge = () => {
@@ -617,10 +612,10 @@ export default function WallDetailPage() {
               </button>
               <button type="button" className={browseView === "activity" ? styles.viewActive : ""} aria-pressed={browseView === "activity"} onClick={() => setBrowseView("activity")}>Activity</button>
             </div>
-            <Link className={`btn btn-ghost ${styles.manageWallButton}`} to={`/circuits?${new URLSearchParams({ wallId, gymSlug: gymSlug ?? "" })}`}>Circuits</Link>
+            <Link className={`btn btn-ghost ${styles.manageWallButton}`} to={`/circuits?${new URLSearchParams({ wallId })}`}>Circuits</Link>
           </div>
           {browseView === "activity" ? (
-            <ActivityFeed gymSlug={gymSlug ?? ""} wallId={wallId} showRoute />
+            <ActivityFeed wallId={wallId} showRoute />
           ) : routesQuery.isLoading ? (
             <div className={styles.loader}>
               <div className="spinner" />
@@ -635,7 +630,6 @@ export default function WallDetailPage() {
               circuits={circuitsQuery.data ?? []}
               circuitsLoaded={circuitsQuery.isSuccess}
               wallId={wallId}
-              gymSlug={gymSlug ?? ""}
             />
           ) : (
             <div className={styles.emptyClimbs}>

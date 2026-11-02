@@ -37,7 +37,7 @@ type activityTestPage struct {
 }
 
 func activityWallPath(wallID uuid.UUID) string {
-	return fmt.Sprintf("/gyms/route-test/walls/%s/activity", wallID)
+	return fmt.Sprintf("/walls/%s/activity", wallID)
 }
 
 func (e *routeTestEnv) requestWallActivity(wallID uuid.UUID, token, query string) *httptest.ResponseRecorder {
@@ -136,7 +136,7 @@ VALUES($1,$2,'attempt','2025-03-04','draft note') RETURNING id`, shared.PgUUID(d
 	}
 }
 
-func TestActivityMembershipAndGymScoping(t *testing.T) {
+func TestActivityVisibleToSignedInUsersAndScopedToWall(t *testing.T) {
 	e := newRouteTestEnv(t)
 	rt := e.create(t, "", "published")
 	if rec := e.requestSubpath(http.MethodPost, rt.ID, "/logs", e.token, `{"outcome":"send","climbed_on":"2025-03-02"}`); rec.Code != http.StatusCreated {
@@ -151,48 +151,27 @@ func TestActivityMembershipAndGymScoping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec := e.requestWallActivity(e.wallID, strangerTokens.AccessToken, ""); rec.Code != http.StatusForbidden {
-		t.Fatalf("non-member wall activity status %d: %s", rec.Code, rec.Body)
+	if rec := e.requestWallActivity(e.wallID, strangerTokens.AccessToken, ""); rec.Code != http.StatusOK {
+		t.Fatalf("signed-in wall activity status %d: %s", rec.Code, rec.Body)
 	}
-	if rec := e.requestSubpath(http.MethodGet, rt.ID, "/activity", strangerTokens.AccessToken, ""); rec.Code != http.StatusForbidden {
-		t.Fatalf("non-member route activity status %d: %s", rec.Code, rec.Body)
+	if rec := e.requestSubpath(http.MethodGet, rt.ID, "/activity", strangerTokens.AccessToken, ""); rec.Code != http.StatusOK {
+		t.Fatalf("signed-in route activity status %d: %s", rec.Code, rec.Body)
 	}
 
-	foreignGym, err := e.q.CreateGym(t.Context(), generated.CreateGymParams{Name: "Foreign gym", Slug: "activity-foreign", OwnerID: shared.PgUUID(e.creatorID)})
+	foreignWall, err := e.q.CreateWall(t.Context(), "Other wall")
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreignWall, err := e.q.CreateWall(t.Context(), generated.CreateWallParams{GymID: foreignGym.ID, Name: "Foreign wall"})
-	if err != nil {
-		t.Fatal(err)
+	foreignActivity := e.requestWallActivity(uuid.UUID(foreignWall.ID.Bytes), e.token, "")
+	if foreignActivity.Code != http.StatusOK {
+		t.Fatalf("instance member should see wall activity: %d %s", foreignActivity.Code, foreignActivity.Body)
 	}
-	foreignImage, err := e.q.CreateWallImage(t.Context(), generated.CreateWallImageParams{WallID: foreignWall.ID, StorageKey: "foreign-image"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	foreignHolds := make([]uuid.UUID, 2)
-	for i := range foreignHolds {
-		hold, err := e.q.CreateHold(t.Context(), generated.CreateHoldParams{WallImageID: foreignImage.ID, Bbox: []byte(`{}`), Confidence: 1})
-		if err != nil {
-			t.Fatal(err)
-		}
-		foreignHolds[i] = uuid.UUID(hold.ID.Bytes)
-	}
-	var foreignRouteID uuid.UUID
-	if err := e.pool.QueryRow(t.Context(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags)
-VALUES($1,$2,$3,'Foreign route',$4,'{}'::jsonb,'published','{}'::text[]) RETURNING id`, foreignWall.ID, foreignImage.ID, shared.PgUUID(e.creatorID), foreignHolds).Scan(&foreignRouteID); err != nil {
-		t.Fatal(err)
-	}
-	wrongWall := e.requestWallActivity(uuid.UUID(foreignWall.ID.Bytes), e.token, "")
-	if wrongWall.Code != http.StatusNotFound {
-		t.Fatalf("wall from another gym should be 404: %d %s", wrongWall.Code, wrongWall.Body)
-	}
-	wrongRouteReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/gyms/route-test/walls/%s/routes/%s/activity", foreignWall.ID.String(), foreignRouteID), nil)
+	wrongRouteReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/walls/%s/routes/%s/activity", foreignWall.ID.String(), rt.ID), nil)
 	wrongRouteReq.Header.Set("Authorization", "Bearer "+e.token)
 	wrongRoute := httptest.NewRecorder()
 	e.router.ServeHTTP(wrongRoute, wrongRouteReq)
 	if wrongRoute.Code != http.StatusNotFound {
-		t.Fatalf("route from another gym should be 404: %d %s", wrongRoute.Code, wrongRoute.Body)
+		t.Fatalf("route on another wall should be 404: %d %s", wrongRoute.Code, wrongRoute.Body)
 	}
 }
 

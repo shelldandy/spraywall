@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import ResetDiffOverlay from "../components/ResetDiffOverlay";
 import { resetHoldColors, type HoldColor } from "../components/resetHoldColors";
 import WallImage from "../components/WallImage";
@@ -16,17 +16,15 @@ import styles from "./ResetReview.module.css";
 
 export default function ResetReviewPage() {
   const { wallId = "", imageId = "" } = useParams();
-  const [params] = useSearchParams();
-  const gymSlug = params.get("gymSlug") ?? undefined;
   const navigate = useNavigate();
 
-  const diff = useResetDiff(gymSlug, wallId, imageId);
-  const wall = useWallDetail(wallId, gymSlug);
-  const match = useMatchResetHold(gymSlug ?? "", wallId, imageId);
-  const restore = useRestoreResetHold(gymSlug ?? "", wallId, imageId);
-  const deleteHold = useDeleteResetHold(gymSlug ?? "", wallId, imageId);
-  const apply = useApplyReset(gymSlug ?? "", wallId, imageId);
-  const discard = useDiscardReset(gymSlug ?? "", wallId, imageId);
+  const diff = useResetDiff(wallId, imageId);
+  const wall = useWallDetail(wallId);
+  const match = useMatchResetHold(wallId, imageId);
+  const restore = useRestoreResetHold(wallId, imageId);
+  const deleteHold = useDeleteResetHold(wallId, imageId);
+  const apply = useApplyReset(wallId, imageId);
+  const discard = useDiscardReset(wallId, imageId);
 
   const [showNew, setShowNew] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -73,7 +71,7 @@ export default function ResetReviewPage() {
     { color: "removed", label: "Removed", count: data.removed_holds.length },
   ];
 
-  const wallUrl = `/walls/${wallId}?gymSlug=${gymSlug ?? ""}`;
+  const wallUrl = `/walls/${wallId}`;
   const clearSelection = () => setSelection(null);
   const finish = async () => {
     try {

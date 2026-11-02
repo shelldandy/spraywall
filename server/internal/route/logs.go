@@ -20,6 +20,7 @@ import (
 	"github.com/bowlinedandy/spraywall/server/db/generated"
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
+	"github.com/bowlinedandy/spraywall/server/internal/wallaccess"
 )
 
 type txBeginner interface {
@@ -51,13 +52,8 @@ type routeScope struct {
 }
 
 func (h *Handler) scopedRoute(w http.ResponseWriter, r *http.Request) (routeScope, bool) {
-	gym, _, err := h.requireGymMember(w, r)
+	wall, _, err := wallaccess.RequireWall(w, r, h.queries)
 	if err != nil {
-		return routeScope{}, false
-	}
-	wallID, err := parseWallID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid wall id")
 		return routeScope{}, false
 	}
 	routeID, err := parseRouteID(r)
@@ -74,12 +70,7 @@ func (h *Handler) scopedRoute(w http.ResponseWriter, r *http.Request) (routeScop
 		}
 		return routeScope{}, false
 	}
-	if rt.WallID != shared.PgUUID(wallID) {
-		writeError(w, http.StatusNotFound, "route not found")
-		return routeScope{}, false
-	}
-	wall, err := h.queries.GetWallByID(r.Context(), rt.WallID)
-	if err != nil || wall.GymID != gym.ID {
+	if rt.WallID != wall.ID {
 		writeError(w, http.StatusNotFound, "route not found")
 		return routeScope{}, false
 	}
@@ -482,7 +473,7 @@ func (h *Handler) GetLegacyLogbook(w http.ResponseWriter, r *http.Request) {
 			"logged_at": loggedAt, "sent_at": loggedAt, "climbed_on": entry.ClimbedOn.Time.Format("2006-01-02"),
 			"outcome": entry.Outcome, "attempts": nullableInt(entry.Attempts), "notes": notes,
 			"route_name": entry.RouteName, "route_grade": grade, "wall_id": entry.WallID.String(),
-			"wall_name": entry.WallName, "gym_id": entry.GymID.String(), "gym_slug": entry.GymSlug,
+			"wall_name": entry.WallName,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

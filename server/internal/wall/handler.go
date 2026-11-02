@@ -11,7 +11,6 @@ import (
 	"math"
 	"net/http"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -19,14 +18,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
-	"github.com/bowlinedandy/spraywall/server/internal/gymaccess"
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
+	"github.com/bowlinedandy/spraywall/server/internal/wallaccess"
 )
 
 // WallImageStorage contains the object-store operations used by wall handlers.
@@ -36,7 +34,7 @@ type WallImageStorage interface {
 	Delete(context.Context, string) error
 }
 
-// Handler holds dependencies for gym/wall HTTP handlers.
+// Handler holds dependencies for wall HTTP handlers.
 type Handler struct {
 	queries *generated.Queries
 	storage WallImageStorage
@@ -49,21 +47,6 @@ func NewHandler(queries *generated.Queries, storageClient WallImageStorage, pool
 }
 
 // ---------- helpers ----------
-
-var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
-
-var validSlugRe = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
-
-func slugify(s string) string {
-	slug := strings.ToLower(strings.TrimSpace(s))
-	slug = slugRe.ReplaceAllString(slug, "-")
-	slug = strings.Trim(slug, "-")
-	return slug
-}
-
-func isValidSlug(s string) bool {
-	return validSlugRe.MatchString(s)
-}
 
 func isHEIC(filename, contentType string) bool {
 	filename = strings.ToLower(filename)
@@ -182,189 +165,13 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// requireGymMember loads the gym by slug, verifies the caller is a member
-// (instance admins count as admins of every gym),
-// and returns the gym and membership.  If the check fails it writes an HTTP
-// error and returns a non-nil error.
-func (h *Handler) requireGymMember(w http.ResponseWriter, r *http.Request) (generated.Gym, generated.GymMember, error) {
-	return gymaccess.RequireGymMember(w, r, h.queries)
-}
-
-// ---------- endpoints ----------
-
-// CreateGym handles POST /gyms
-func (h *Handler) CreateGym(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
-		return
-	}
-
-	userID := user.GetUserID(r.Context())
-	slug := body.Slug
-	if slug == "" {
-		slug = slugify(body.Name)
-	}
-	if slug == "" || !isValidSlug(slug) {
-		writeError(w, http.StatusBadRequest, "invalid slug")
-		return
-	}
-
-	tx, err := h.pool.Begin(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create gym")
-		return
-	}
-	defer tx.Rollback(r.Context())
-
-	txq := h.queries.WithTx(tx)
-	gym, err := txq.CreateGym(r.Context(), generated.CreateGymParams{
-		Name:    body.Name,
-		Slug:    slug,
-		OwnerID: shared.PgUUID(userID),
-	})
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			writeError(w, http.StatusConflict, "gym slug already taken")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "could not create gym")
-		return
-	}
-
-	if err := txq.CreateGymMember(r.Context(), generated.CreateGymMemberParams{
-		GymID:  gym.ID,
-		UserID: shared.PgUUID(userID),
-		Role:   generated.UserRoleAdmin,
-	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not add owner as member")
-		return
-	}
-	if err := tx.Commit(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create gym")
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, gym)
-}
-
-// ListGyms handles GET /gyms. Instance admins (by current account role) see
-// every gym.
-func (h *Handler) ListGyms(w http.ResponseWriter, r *http.Request) {
-	if user.GetUserRole(r.Context()) == string(generated.UserRoleAdmin) {
-		all, err := h.queries.ListAllGymsAsAdmin(r.Context())
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "could not list gyms")
-			return
-		}
-		gyms := make([]generated.ListGymsByUserRow, 0, len(all))
-		for _, g := range all {
-			gyms = append(gyms, generated.ListGymsByUserRow(g))
-		}
-		writeJSON(w, http.StatusOK, gyms)
-		return
-	}
-
-	userID := user.GetUserID(r.Context())
-	gyms, err := h.queries.ListGymsByUser(r.Context(), shared.PgUUID(userID))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not list gyms")
-		return
-	}
-	if gyms == nil {
-		gyms = []generated.ListGymsByUserRow{}
-	}
-	writeJSON(w, http.StatusOK, gyms)
-}
-
-// GetGym handles GET /gyms/{gymSlug}
-func (h *Handler) GetGym(w http.ResponseWriter, r *http.Request) {
-	gym, _, err := h.requireGymMember(w, r)
-	if err != nil {
-		return
-	}
-	writeJSON(w, http.StatusOK, gym)
-}
-
-// AddMember handles POST /gyms/{gymSlug}/members
-func (h *Handler) AddMember(w http.ResponseWriter, r *http.Request) {
-	gym, member, err := h.requireGymMember(w, r)
-	if err != nil {
-		return
-	}
-
-	// Only gym admins can add members.
-	if member.Role != generated.UserRoleAdmin {
-		writeError(w, http.StatusForbidden, "only gym admins can add members")
-		return
-	}
-
-	var body struct {
-		Email string `json:"email"`
-		Role  string `json:"role"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Email == "" {
-		writeError(w, http.StatusBadRequest, "email is required")
-		return
-	}
-
-	role := generated.UserRole(body.Role)
-	if role != generated.UserRoleAdmin && role != generated.UserRoleSetter && role != generated.UserRoleClimber {
-		role = generated.UserRoleClimber
-	}
-
-	// Look up user by email.
-	targetUser, err := h.queries.GetUserByEmail(r.Context(), body.Email)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "user not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-
-	if err := h.queries.CreateGymMember(r.Context(), generated.CreateGymMemberParams{
-		GymID:  gym.ID,
-		UserID: targetUser.ID,
-		Role:   role,
-	}); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			writeError(w, http.StatusConflict, "user is already a member")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "could not add member")
-		return
-	}
-
-	member, err = h.queries.GetGymMember(r.Context(), generated.GetGymMemberParams{
-		GymID:  gym.ID,
-		UserID: targetUser.ID,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not fetch created member")
-		return
-	}
-	writeJSON(w, http.StatusCreated, member)
-}
-
-// CreateWall handles POST /gyms/{gymSlug}/walls
+// CreateWall handles POST /walls.
 func (h *Handler) CreateWall(w http.ResponseWriter, r *http.Request) {
-	gym, member, err := h.requireGymMember(w, r)
-	if err != nil {
-		return
-	}
-
-	if member.Role != generated.UserRoleAdmin && member.Role != generated.UserRoleSetter {
+	role := generated.UserRole(user.GetUserRole(r.Context()))
+	if role != generated.UserRoleAdmin && role != generated.UserRoleSetter {
 		writeError(w, http.StatusForbidden, "only setters or admins can create walls")
 		return
 	}
-
 	var body struct {
 		Name string `json:"name"`
 	}
@@ -372,46 +179,28 @@ func (h *Handler) CreateWall(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-
-	wall, err := h.queries.CreateWall(r.Context(), generated.CreateWallParams{
-		GymID: gym.ID,
-		Name:  body.Name,
-	})
+	wall, err := h.queries.CreateWall(r.Context(), body.Name)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create wall")
 		return
 	}
-
 	writeJSON(w, http.StatusCreated, wall)
 }
 
-// ListWalls handles GET /gyms/{gymSlug}/walls
+// ListWalls handles GET /walls.
 func (h *Handler) ListWalls(w http.ResponseWriter, r *http.Request) {
-	gym, _, err := h.requireGymMember(w, r)
-	if err != nil {
-		return
-	}
-
-	walls, err := h.queries.ListWallsByGym(r.Context(), gym.ID)
+	walls, err := h.queries.ListWalls(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list walls")
 		return
 	}
-
 	type wallListItem struct {
 		generated.Wall
 		PreviewImageURL *string `json:"preview_image_url"`
 	}
 	items := make([]wallListItem, 0, len(walls))
 	for _, wall := range walls {
-		item := wallListItem{
-			Wall: generated.Wall{
-				ID:        wall.ID,
-				GymID:     wall.GymID,
-				Name:      wall.Name,
-				CreatedAt: wall.CreatedAt,
-			},
-		}
+		item := wallListItem{Wall: generated.Wall{ID: wall.ID, Name: wall.Name, CreatedAt: wall.CreatedAt}}
 		if wall.PreviewStorageKey != "" {
 			url := "/images/" + wall.PreviewStorageKey
 			item.PreviewImageURL = &url
@@ -421,34 +210,12 @@ func (h *Handler) ListWalls(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
-// GetWall handles GET /gyms/{gymSlug}/walls/{wallId}
+// GetWall handles GET /walls/{wallId}
 func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
-	gym, member, err := h.requireGymMember(w, r)
+	wall, role, err := wallaccess.RequireWall(w, r, h.queries)
 	if err != nil {
 		return
 	}
-
-	wallIDStr := chi.URLParam(r, "wallId")
-	wallUUID, err := uuid.Parse(wallIDStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid wall id")
-		return
-	}
-
-	wall, err := h.queries.GetWallByID(r.Context(), shared.PgUUID(wallUUID))
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "wall not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-	if wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "wall not found")
-		return
-	}
-
 	type imageInfo struct {
 		ID        string             `json:"id"`
 		ImageURL  string             `json:"image_url"`
@@ -470,7 +237,7 @@ func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
 		UserRole        string            `json:"user_role"`
 	}
 
-	detail := wallDetail{Wall: wall, UserRole: string(member.Role)}
+	detail := wallDetail{Wall: wall, UserRole: string(role)}
 
 	// Try to get the active image and its detection status.
 	img, err := h.queries.GetActiveWallImage(r.Context(), wall.ID)
@@ -488,7 +255,7 @@ func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if member.Role == generated.UserRoleAdmin || member.Role == generated.UserRoleSetter {
+	if role == generated.UserRoleAdmin || role == generated.UserRoleSetter {
 		pending, pendingErr := h.queries.GetPendingResetImage(r.Context(), wall.ID)
 		if pendingErr == nil {
 			pendingInfo := &pendingResetInfo{
@@ -507,40 +274,18 @@ func (h *Handler) GetWall(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
-// UploadImage handles POST /gyms/{gymSlug}/walls/{wallId}/images
+// UploadImage handles POST /walls/{wallId}/images
 func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
-	gym, member, err := h.requireGymMember(w, r)
+	wall, role, err := wallaccess.RequireWall(w, r, h.queries)
 	if err != nil {
 		return
 	}
-
-	if member.Role != generated.UserRoleAdmin && member.Role != generated.UserRoleSetter {
+	if role != generated.UserRoleAdmin && role != generated.UserRoleSetter {
 		writeError(w, http.StatusForbidden, "only setters or admins can upload images")
 		return
 	}
-
-	wallIDStr := chi.URLParam(r, "wallId")
-	wallUUID, err := uuid.Parse(wallIDStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid wall id")
-		return
-	}
-	pgWallID := shared.PgUUID(wallUUID)
-
-	// Verify wall exists and belongs to this gym.
-	wall, err := h.queries.GetWallByID(r.Context(), pgWallID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "wall not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-	if wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "wall not found")
-		return
-	}
+	wallIDStr := uuid.UUID(wall.ID.Bytes).String()
+	pgWallID := wall.ID
 
 	// Limit the complete multipart request; ParseMultipartForm's argument only
 	// controls the in-memory threshold before parts spill to disk.
@@ -626,7 +371,7 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	// Serialize every upload/reset transition on the wall row. Storage upload
 	// and HEIC conversion have already completed, so this transaction stays short.
 	var lockedWall pgtype.UUID
-	if err := tx.QueryRow(r.Context(), `SELECT id FROM walls WHERE id=$1 AND gym_id=$2 FOR UPDATE`, pgWallID, gym.ID).Scan(&lockedWall); err != nil {
+	if err := tx.QueryRow(r.Context(), `SELECT id FROM walls WHERE id=$1 FOR UPDATE`, pgWallID).Scan(&lockedWall); err != nil {
 		rollbackUpload()
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "wall not found")
@@ -712,31 +457,10 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetHolds handles GET /gyms/{gymSlug}/walls/{wallId}/holds
+// GetHolds handles GET /walls/{wallId}/holds
 func (h *Handler) GetHolds(w http.ResponseWriter, r *http.Request) {
-	gym, _, err := h.requireGymMember(w, r)
+	wall, _, err := wallaccess.RequireWall(w, r, h.queries)
 	if err != nil {
-		return
-	}
-
-	wallIDStr := chi.URLParam(r, "wallId")
-	wallUUID, err := uuid.Parse(wallIDStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid wall id")
-		return
-	}
-
-	wall, err := h.queries.GetWallByID(r.Context(), shared.PgUUID(wallUUID))
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "wall not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-	if wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "wall not found")
 		return
 	}
 
@@ -780,36 +504,14 @@ func (h *Handler) GetHolds(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-// CreateHold handles POST /gyms/{gymSlug}/walls/{wallId}/holds
+// CreateHold handles POST /walls/{wallId}/holds
 func (h *Handler) CreateHold(w http.ResponseWriter, r *http.Request) {
-	gym, member, err := h.requireGymMember(w, r)
+	wall, role, err := wallaccess.RequireWall(w, r, h.queries)
 	if err != nil {
 		return
 	}
-
-	if member.Role != generated.UserRoleAdmin && member.Role != generated.UserRoleSetter {
+	if role != generated.UserRoleAdmin && role != generated.UserRoleSetter {
 		writeError(w, http.StatusForbidden, "only setters or admins can add holds")
-		return
-	}
-
-	wallIDStr := chi.URLParam(r, "wallId")
-	wallUUID, err := uuid.Parse(wallIDStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid wall id")
-		return
-	}
-
-	wall, err := h.queries.GetWallByID(r.Context(), shared.PgUUID(wallUUID))
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "wall not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-	if wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "wall not found")
 		return
 	}
 
@@ -881,36 +583,14 @@ func (h *Handler) CreateHold(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, resp)
 }
 
-// DeleteHold handles DELETE /gyms/{gymSlug}/walls/{wallId}/holds/{holdId}
+// DeleteHold handles DELETE /walls/{wallId}/holds/{holdId}
 func (h *Handler) DeleteHold(w http.ResponseWriter, r *http.Request) {
-	gym, member, err := h.requireGymMember(w, r)
+	wall, role, err := wallaccess.RequireWall(w, r, h.queries)
 	if err != nil {
 		return
 	}
-
-	if member.Role != generated.UserRoleAdmin && member.Role != generated.UserRoleSetter {
+	if role != generated.UserRoleAdmin && role != generated.UserRoleSetter {
 		writeError(w, http.StatusForbidden, "only setters or admins can delete holds")
-		return
-	}
-
-	wallIDStr := chi.URLParam(r, "wallId")
-	wallUUID, err := uuid.Parse(wallIDStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid wall id")
-		return
-	}
-
-	wall, err := h.queries.GetWallByID(r.Context(), shared.PgUUID(wallUUID))
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "wall not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-	if wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "wall not found")
 		return
 	}
 
@@ -1016,7 +696,7 @@ func (h *Handler) deleteNextStoredImage(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// RunStorageDeleteQueue retries object deletes saved by wall and gym deletion.
+// RunStorageDeleteQueue retries queued image object deletes.
 func (h *Handler) RunStorageDeleteQueue(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -1036,116 +716,14 @@ func (h *Handler) RunStorageDeleteQueue(ctx context.Context) {
 	}
 }
 
-// DeleteGym handles DELETE /gyms/{gymSlug}
-func (h *Handler) DeleteGym(w http.ResponseWriter, r *http.Request) {
-	_, member, err := h.requireGymMember(w, r)
-	if err != nil {
-		return
-	}
-	if member.Role != generated.UserRoleAdmin {
-		writeError(w, http.StatusForbidden, "only gym admins can delete gyms")
-		return
-	}
-
-	tx, err := h.pool.Begin(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete gym")
-		return
-	}
-	defer tx.Rollback(r.Context())
-
-	var gymID pgtype.UUID
-	if err := tx.QueryRow(r.Context(), `SELECT id FROM gyms WHERE id=$1 FOR UPDATE`, member.GymID).Scan(&gymID); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete gym")
-		return
-	}
-	walls, err := tx.Query(r.Context(), `SELECT id FROM walls WHERE gym_id=$1 ORDER BY id FOR UPDATE`, gymID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete gym")
-		return
-	}
-	for walls.Next() {
-		var id pgtype.UUID
-		if err := walls.Scan(&id); err != nil {
-			walls.Close()
-			writeError(w, http.StatusInternalServerError, "could not delete gym")
-			return
-		}
-	}
-	if err := walls.Err(); err != nil {
-		walls.Close()
-		writeError(w, http.StatusInternalServerError, "could not delete gym")
-		return
-	}
-	walls.Close()
-
-	rows, err := tx.Query(r.Context(), `SELECT wi.storage_key FROM wall_images wi JOIN walls w ON w.id=wi.wall_id WHERE w.gym_id=$1`, gymID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete gym")
-		return
-	}
-	var keys []string
-	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			rows.Close()
-			writeError(w, http.StatusInternalServerError, "could not delete gym")
-			return
-		}
-		keys = append(keys, key)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		writeError(w, http.StatusInternalServerError, "could not delete gym")
-		return
-	}
-	rows.Close()
-
-	if err := queueStoredImages(r.Context(), tx, keys); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete gym")
-		return
-	}
-	if err := h.queries.WithTx(tx).DeleteGym(r.Context(), member.GymID); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete gym")
-		return
-	}
-	if err := tx.Commit(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete gym")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// DeleteWall handles DELETE /gyms/{gymSlug}/walls/{wallId}
+// DeleteWall handles DELETE /walls/{wallId}
 func (h *Handler) DeleteWall(w http.ResponseWriter, r *http.Request) {
-	gym, member, err := h.requireGymMember(w, r)
+	wall, role, err := wallaccess.RequireWall(w, r, h.queries)
 	if err != nil {
 		return
 	}
-
-	if member.Role != generated.UserRoleAdmin && member.Role != generated.UserRoleSetter {
+	if role != generated.UserRoleAdmin && role != generated.UserRoleSetter {
 		writeError(w, http.StatusForbidden, "only setters or admins can delete walls")
-		return
-	}
-
-	wallIDStr := chi.URLParam(r, "wallId")
-	wallUUID, err := uuid.Parse(wallIDStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid wall id")
-		return
-	}
-
-	wall, err := h.queries.GetWallByID(r.Context(), shared.PgUUID(wallUUID))
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "wall not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-	if wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "wall not found")
 		return
 	}
 
@@ -1156,7 +734,7 @@ func (h *Handler) DeleteWall(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var lockedID pgtype.UUID
-	if err := tx.QueryRow(r.Context(), `SELECT id FROM walls WHERE id=$1 AND gym_id=$2 FOR UPDATE`, wall.ID, gym.ID).Scan(&lockedID); err != nil {
+	if err := tx.QueryRow(r.Context(), `SELECT id FROM walls WHERE id=$1 FOR UPDATE`, wall.ID).Scan(&lockedID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "wall not found")
 		} else {
@@ -1173,7 +751,7 @@ func (h *Handler) DeleteWall(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not delete wall")
 		return
 	}
-	if err := h.queries.WithTx(tx).DeleteWall(r.Context(), generated.DeleteWallParams{ID: wall.ID, GymID: gym.ID}); err != nil {
+	if err := h.queries.WithTx(tx).DeleteWall(r.Context(), wall.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not delete wall")
 		return
 	}

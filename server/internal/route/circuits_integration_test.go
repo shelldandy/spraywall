@@ -31,7 +31,7 @@ type circuitHTTP struct {
 }
 
 func circuitRequest(e *routeTestEnv, method, suffix, token, body string) *httptest.ResponseRecorder {
-	path := fmt.Sprintf("/gyms/route-test/walls/%s/circuits", e.wallID)
+	path := fmt.Sprintf("/walls/%s/circuits", e.wallID)
 	if suffix != "" {
 		path += "/" + suffix
 	}
@@ -260,15 +260,11 @@ func TestCircuitAppendRequiresRouteAndRespectsLimit(t *testing.T) {
 func TestCircuitWallMismatchIsNotFound(t *testing.T) {
 	e := newRouteTestEnv(t)
 	c := circuitCreate(t, e, e.token, "Mismatch", true, nil)
-	gym, err := e.q.GetGymBySlug(context.Background(), "route-test")
+	wall, err := e.q.CreateWall(context.Background(), "Second wall")
 	if err != nil {
 		t.Fatal(err)
 	}
-	wall, err := e.q.CreateWall(context.Background(), generated.CreateWallParams{GymID: gym.ID, Name: "Second wall"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/gyms/route-test/walls/%s/circuits/%s", uuid.UUID(wall.ID.Bytes), c.ID), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/walls/%s/circuits/%s", uuid.UUID(wall.ID.Bytes), c.ID), nil)
 	req.Header.Set("Authorization", "Bearer "+e.token)
 	rec := httptest.NewRecorder()
 	e.router.ServeHTTP(rec, req)
@@ -280,11 +276,7 @@ func TestCircuitWallMismatchIsNotFound(t *testing.T) {
 func TestCircuitRejectsRouteFromAnotherWallAtomically(t *testing.T) {
 	e := newRouteTestEnv(t)
 	published := e.create(t, "", "published")
-	gym, err := e.q.GetGymBySlug(context.Background(), "route-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	wall, err := e.q.CreateWall(context.Background(), generated.CreateWallParams{GymID: gym.ID, Name: "Other circuit wall"})
+	wall, err := e.q.CreateWall(context.Background(), "Other circuit wall")
 	if err != nil {
 		t.Fatal(err)
 	}

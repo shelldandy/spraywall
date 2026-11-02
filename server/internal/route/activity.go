@@ -2,7 +2,6 @@ package route
 
 import (
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -10,12 +9,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/bowlinedandy/spraywall/server/db/generated"
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
+	"github.com/bowlinedandy/spraywall/server/internal/wallaccess"
 )
 
 const (
@@ -54,31 +53,12 @@ type activityCursor struct {
 	id        uuid.UUID
 }
 
-// WallActivity handles GET /gyms/{gymSlug}/walls/{wallId}/activity.
+// WallActivity handles GET /walls/{wallId}/activity.
 func (h *Handler) WallActivity(w http.ResponseWriter, r *http.Request) {
-	gym, _, err := h.requireGymMember(w, r)
+	wall, _, err := wallaccess.RequireWall(w, r, h.queries)
 	if err != nil {
 		return
 	}
-	wallID, err := parseWallID(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid wall id")
-		return
-	}
-	wall, err := h.queries.GetWallByID(r.Context(), shared.PgUUID(wallID))
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "wall not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "database error")
-		}
-		return
-	}
-	if wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "wall not found")
-		return
-	}
-
 	limit, cursor, ok := parseActivityPage(w, r)
 	if !ok {
 		return
@@ -91,7 +71,7 @@ func (h *Handler) WallActivity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, page)
 }
 
-// RouteActivity handles GET /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/activity.
+// RouteActivity handles GET /walls/{wallId}/routes/{routeId}/activity.
 func (h *Handler) RouteActivity(w http.ResponseWriter, r *http.Request) {
 	scope, ok := h.scopedRoute(w, r)
 	if !ok {

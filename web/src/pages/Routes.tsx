@@ -7,13 +7,11 @@ import { parseRouteTags } from "../lib/routeTags";
 export default function RoutesPage() {
   const [params] = useSearchParams();
   const wallId = params.get("wallId") ?? "";
-  const gymSlug = params.get("gymSlug") ?? undefined;
-
-  const routesQuery = useRoutes(wallId, gymSlug);
-  const circuitsQuery = useCircuits(wallId, gymSlug);
-  const wallQuery = useWallDetail(wallId, gymSlug);
+  const routesQuery = useRoutes(wallId);
+  const circuitsQuery = useCircuits(wallId);
+  const wallQuery = useWallDetail(wallId);
   const holdsEnabled = shouldLoadHolds(wallQuery.data?.detection_status, wallQuery.data?.user_role);
-  const holdsQuery = useHolds(wallId, holdsEnabled, gymSlug);
+  const holdsQuery = useHolds(wallId, holdsEnabled);
 
   const routes = routesQuery.data ?? [];
   const holds = holdsEnabled ? holdsQuery.data ?? [] : [];
@@ -21,7 +19,7 @@ export default function RoutesPage() {
 
   const fallbackParams = new URLSearchParams(params);
   fallbackParams.set("wallId", wallId);
-  fallbackParams.set("gymSlug", gymSlug ?? "");
+  fallbackParams.delete("gymSlug");
   fallbackParams.delete("tag");
   for (const tag of parseRouteTags(params.getAll("tag"))) fallbackParams.append("tag", tag);
   const backUrl = `/walls/${wallId}?${fallbackParams}`;
@@ -51,7 +49,6 @@ export default function RoutesPage() {
             holds={holds}
             imageUrl={imageUrl}
             wallId={wallId}
-            gymSlug={gymSlug ?? ""}
             circuits={circuitsQuery.data ?? []}
             circuitsLoaded={circuitsQuery.isSuccess}
           />

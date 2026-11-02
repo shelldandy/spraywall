@@ -16,6 +16,7 @@ import (
 	"github.com/bowlinedandy/spraywall/server/db/generated"
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
 	"github.com/bowlinedandy/spraywall/server/internal/user"
+	"github.com/bowlinedandy/spraywall/server/internal/wallaccess"
 )
 
 type circuit struct {
@@ -49,27 +50,12 @@ type hiddenCircuitRoute struct {
 	visibleBefore int
 }
 
-func (h *Handler) circuitWall(w http.ResponseWriter, r *http.Request) (pgtype.UUID, pgtype.UUID, generated.GymMember, bool) {
-	gym, member, err := h.requireGymMember(w, r)
+func (h *Handler) circuitWall(w http.ResponseWriter, r *http.Request) (pgtype.UUID, generated.UserRole, bool) {
+	wall, role, err := wallaccess.RequireWall(w, r, h.queries)
 	if err != nil {
-		return pgtype.UUID{}, pgtype.UUID{}, generated.GymMember{}, false
+		return pgtype.UUID{}, "", false
 	}
-	id, err := parseWallID(r)
-	if err != nil {
-		writeError(w, 400, "invalid wall id")
-		return pgtype.UUID{}, pgtype.UUID{}, generated.GymMember{}, false
-	}
-	wallID := shared.PgUUID(id)
-	wall, err := h.queries.GetWallByID(r.Context(), wallID)
-	if errors.Is(err, pgx.ErrNoRows) || err == nil && wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "wall not found")
-		return pgtype.UUID{}, pgtype.UUID{}, generated.GymMember{}, false
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "database error")
-		return pgtype.UUID{}, pgtype.UUID{}, generated.GymMember{}, false
-	}
-	return gym.ID, wallID, member, true
+	return wall.ID, role, true
 }
 
 func (h *Handler) loadCircuit(r *http.Request, id uuid.UUID) (circuitRow, error) {
@@ -100,35 +86,35 @@ func (h *Handler) circuitJSON(r *http.Request, c circuitRow, owner bool) (circui
 	return out, rows.Err()
 }
 func mustUUID(s string) pgtype.UUID { id, _ := uuid.Parse(s); return shared.PgUUID(id) }
-func (h *Handler) circuitScope(w http.ResponseWriter, r *http.Request) (circuitRow, pgtype.UUID, generated.GymMember, bool) {
-	_, wall, member, ok := h.circuitWall(w, r)
+func (h *Handler) circuitScope(w http.ResponseWriter, r *http.Request) (circuitRow, pgtype.UUID, generated.UserRole, bool) {
+	wall, role, ok := h.circuitWall(w, r)
 	if !ok {
-		return circuitRow{}, wall, member, false
+		return circuitRow{}, wall, role, false
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "circuitId"))
 	if err != nil {
 		writeError(w, 400, "invalid circuit id")
-		return circuitRow{}, wall, member, false
+		return circuitRow{}, wall, role, false
 	}
 	c, err := h.loadCircuit(r, id)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && c.wall != uuidString(wall) {
 		writeError(w, 404, "circuit not found")
-		return c, wall, member, false
+		return c, wall, role, false
 	}
 	if err != nil {
 		writeError(w, 500, "database error")
-		return c, wall, member, false
+		return c, wall, role, false
 	}
 	uid := user.GetUserID(r.Context())
 	if !c.shared && c.creator != uid.String() {
 		writeError(w, 404, "circuit not found")
-		return c, wall, member, false
+		return c, wall, role, false
 	}
-	return c, wall, member, true
+	return c, wall, role, true
 }
 func uuidString(id pgtype.UUID) string { return uuid.UUID(id.Bytes).String() }
 func (h *Handler) ListCircuits(w http.ResponseWriter, r *http.Request) {
-	_, wall, _, ok := h.circuitWall(w, r)
+	wall, _, ok := h.circuitWall(w, r)
 	if !ok {
 		return
 	}
@@ -182,7 +168,7 @@ func validateCircuitStyle(color, emoji string) (string, string, bool) {
 }
 
 func (h *Handler) CreateCircuit(w http.ResponseWriter, r *http.Request) {
-	_, wall, _, ok := h.circuitWall(w, r)
+	wall, _, ok := h.circuitWall(w, r)
 	if !ok {
 		return
 	}
@@ -359,12 +345,12 @@ func (h *Handler) PatchCircuit(w http.ResponseWriter, r *http.Request) {
 	h.GetCircuit(w, r)
 }
 func (h *Handler) DeleteCircuit(w http.ResponseWriter, r *http.Request) {
-	c, _, member, ok := h.circuitScope(w, r)
+	c, _, role, ok := h.circuitScope(w, r)
 	if !ok {
 		return
 	}
-	if c.creator != user.GetUserID(r.Context()).String() && member.Role != generated.UserRoleAdmin {
-		writeError(w, 403, "only the circuit owner or gym admin can delete a visible circuit")
+	if c.creator != user.GetUserID(r.Context()).String() && role != generated.UserRoleAdmin {
+		writeError(w, 403, "only the circuit owner or an admin can delete a visible circuit")
 		return
 	}
 	if err := h.queries.DeleteCircuit(r.Context(), mustUUID(c.id)); err != nil {

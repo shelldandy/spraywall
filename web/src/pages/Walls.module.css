@@ -19,28 +19,6 @@
   white-space: nowrap;
 }
 
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.headerActions :global(.btn) {
-  padding: 6px 8px;
-}
-
-/* Keep the wordmark and actions on one line on narrow phones. */
-@media (max-width: 480px) {
-  .headerActions :global(.btn) {
-    padding: 6px 4px;
-    font-size: 14px;
-  }
-}
-
-.logout {
-  color: var(--danger);
-}
-
 .loader {
   display: flex;
   justify-content: center;
@@ -48,43 +26,22 @@
 }
 
 .empty {
-  text-align: center;
-  color: var(--text-faint);
   margin-top: 40px;
+  color: var(--text-faint);
+  text-align: center;
 }
 
 .listError {
   margin: 0 0 16px;
 }
 
-.gymSection {
-  margin-bottom: 24px;
-}
-
-.gymHeader {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 4px;
-}
-
-.gymName {
-  flex: 1;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .wallGrid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .wallTile {
@@ -168,10 +125,10 @@
 }
 
 .inlineForm {
-  margin-top: 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 8px;
 }
 
 .formButtons {
@@ -181,29 +138,8 @@
 }
 
 .cancel {
-  color: var(--text-faint);
   padding: 10px 16px;
-}
-
-.createGym {
-  margin-top: 8px;
-  padding: 14px;
-}
-
-.gymForm {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 16px;
-  border-radius: var(--radius);
-  background: var(--bg-elevated);
-}
-
-.formTitle {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 4px;
+  color: var(--text-faint);
 }
 
 @media (min-width: 600px) {

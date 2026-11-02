@@ -1,15 +1,14 @@
 -- name: CreateWall :one
-INSERT INTO walls (gym_id, name)
-VALUES ($1, $2)
+INSERT INTO walls (name)
+VALUES ($1)
 RETURNING *;
 
 -- name: GetWallByID :one
 SELECT * FROM walls WHERE id = $1;
 
--- name: ListWallsByGym :many
+-- name: ListWalls :many
 SELECT
     w.id,
-    w.gym_id,
     w.name,
     w.created_at,
     COALESCE(active_image.storage_key, '') AS preview_storage_key
@@ -21,7 +20,6 @@ LEFT JOIN LATERAL (
     ORDER BY created_at DESC
     LIMIT 1
 ) active_image ON true
-WHERE w.gym_id = $1
 ORDER BY w.name;
 
 -- name: CreateWallImage :one
@@ -68,4 +66,4 @@ RETURNING *;
 DELETE FROM holds WHERE id = $1 AND wall_image_id = $2 RETURNING id;
 
 -- name: DeleteWall :exec
-DELETE FROM walls WHERE id = $1 AND gym_id = $2;
+DELETE FROM walls WHERE id = $1;

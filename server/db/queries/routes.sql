@@ -50,8 +50,8 @@ ORDER BY climbed_on, logged_at, id;
 
 -- name: ListUserClimbLogs :many
 SELECT l.id, l.route_id, l.user_id, l.logged_at, l.climbed_on, l.outcome, l.attempts, l.notes,
-       r.name AS route_name, r.grade AS route_grade, w.id AS wall_id, w.name AS wall_name, w.gym_id, g.slug AS gym_slug
-FROM climb_logs l JOIN routes r ON r.id = l.route_id JOIN walls w ON w.id = r.wall_id JOIN gyms g ON g.id = w.gym_id
+       r.name AS route_name, r.grade AS route_grade, w.id AS wall_id, w.name AS wall_name
+FROM climb_logs l JOIN routes r ON r.id = l.route_id JOIN walls w ON w.id = r.wall_id
 WHERE l.user_id = $1 ORDER BY l.climbed_on DESC, l.logged_at DESC, l.id DESC;
 
 -- name: LockUserForClimbLogs :one

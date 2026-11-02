@@ -158,7 +158,6 @@ async function requestStream(deviceId?: string, includeVideoSize = true): Promis
 export default function WallCameraPage() {
   const { wallId = "" } = useParams();
   const [params] = useSearchParams();
-  const gymSlug = params.get("gymSlug") ?? "";
   const oldImage = params.get("old") ?? "";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -317,13 +316,13 @@ export default function WallCameraPage() {
   const upload = async (image: Blob) => {
     setBusy(true);
     try {
-      const response = await uploadWallImage(gymSlug, wallId, image, "partial");
+      const response = await uploadWallImage(wallId, image, "partial");
       if (!response.ok) throw new Error(await response.text());
 
       await queryClient.invalidateQueries({ queryKey: ["wall-detail", wallId] });
       await queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
       await queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
-      navigate(`/walls/${wallId}?gymSlug=${gymSlug}`);
+      navigate(`/walls/${wallId}`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Upload failed", "error");
     } finally {
@@ -370,7 +369,7 @@ export default function WallCameraPage() {
 
   return (
     <main className={styles.camera}>
-      <Link className="btn btn-ghost" to={`/walls/${wallId}?gymSlug=${gymSlug}`}>
+      <Link className="btn btn-ghost" to={`/walls/${wallId}`}>
         Cancel
       </Link>
       <div ref={stageRef} className={styles.stage}>

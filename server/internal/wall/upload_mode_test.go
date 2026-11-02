@@ -71,7 +71,6 @@ type uploadTestEnv struct {
 	queries  *generated.Queries
 	storage  *uploadTestStorage
 	handler  *Handler
-	gymSlug  string
 	wallID   uuid.UUID
 	activeID uuid.UUID
 	token    string
@@ -84,23 +83,12 @@ func newUploadTestEnv(t *testing.T, storage *uploadTestStorage) *uploadTestEnv {
 	pool := testdb.New(t)
 	queries := generated.New(pool)
 	setter, err := queries.CreateUser(ctx, generated.CreateUserParams{
-		Email: uuid.NewString() + "@example.com", DisplayName: "Setter", Role: generated.UserRoleClimber,
+		Email: uuid.NewString() + "@example.com", DisplayName: "Setter", Role: generated.UserRoleSetter,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	gym, err := queries.CreateGym(ctx, generated.CreateGymParams{
-		Name: "Upload test gym", Slug: "upload-" + uuid.NewString()[:8], OwnerID: setter.ID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := queries.CreateGymMember(ctx, generated.CreateGymMemberParams{
-		GymID: gym.ID, UserID: setter.ID, Role: generated.UserRoleSetter,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	wallRow, err := queries.CreateWall(ctx, generated.CreateWallParams{GymID: gym.ID, Name: "Wall"})
+	wallRow, err := queries.CreateWall(ctx, "Wall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,15 +104,14 @@ func newUploadTestEnv(t *testing.T, storage *uploadTestStorage) *uploadTestEnv {
 	handler := NewHandler(queries, storage, pool)
 	router := chi.NewRouter()
 	router.Get("/images/*", handler.ServeImage)
-	router.Route("/gyms/{gymSlug}", func(r chi.Router) {
+	router.Route("/walls", func(r chi.Router) {
 		r.Use(auth.Authenticate)
-		r.Delete("/", handler.DeleteGym)
-		r.Delete("/walls/{wallId}", handler.DeleteWall)
-		r.Post("/walls/{wallId}/images", handler.UploadImage)
-		r.Post("/walls/{wallId}/resets/{imageId}/apply", handler.ApplyReset)
+		r.Delete("/{wallId}", handler.DeleteWall)
+		r.Post("/{wallId}/images", handler.UploadImage)
+		r.Post("/{wallId}/resets/{imageId}/apply", handler.ApplyReset)
 	})
 	return &uploadTestEnv{
-		pool: pool, queries: queries, storage: storage, handler: handler, gymSlug: gym.Slug,
+		pool: pool, queries: queries, storage: storage, handler: handler,
 		wallID: uuid.UUID(wallRow.ID.Bytes), activeID: uuid.UUID(active.ID.Bytes),
 		token: pair.AccessToken, router: router,
 	}
@@ -141,7 +128,7 @@ func (e *uploadTestEnv) upload(mode string) *httptest.ResponseRecorder {
 	_ = writer.WriteField("mode", mode)
 	_ = writer.Close()
 
-	path := fmt.Sprintf("/gyms/%s/walls/%s/images", e.gymSlug, e.wallID)
+	path := fmt.Sprintf("/walls/%s/images", e.wallID)
 	request := httptest.NewRequest(http.MethodPost, path, &body)
 	request.Header.Set("Authorization", "Bearer "+e.token)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
@@ -151,7 +138,7 @@ func (e *uploadTestEnv) upload(mode string) *httptest.ResponseRecorder {
 }
 
 func (e *uploadTestEnv) applyReset(imageID uuid.UUID) *httptest.ResponseRecorder {
-	path := fmt.Sprintf("/gyms/%s/walls/%s/resets/%s/apply", e.gymSlug, e.wallID, imageID)
+	path := fmt.Sprintf("/walls/%s/resets/%s/apply", e.wallID, imageID)
 	request := httptest.NewRequest(http.MethodPost, path, nil)
 	request.Header.Set("Authorization", "Bearer "+e.token)
 	response := httptest.NewRecorder()
@@ -344,23 +331,12 @@ func TestFullUploadClearsPendingPartialReset(t *testing.T) {
 	setter, err := queries.CreateUser(ctx, generated.CreateUserParams{
 		Email:       uuid.NewString() + "@example.com",
 		DisplayName: "Setter",
-		Role:        generated.UserRoleClimber,
+		Role:        generated.UserRoleSetter,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	gym, err := queries.CreateGym(ctx, generated.CreateGymParams{
-		Name: "Upload test gym", Slug: "upload-" + uuid.NewString()[:8], OwnerID: setter.ID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := queries.CreateGymMember(ctx, generated.CreateGymMemberParams{
-		GymID: gym.ID, UserID: setter.ID, Role: generated.UserRoleSetter,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	wall, err := queries.CreateWall(ctx, generated.CreateWallParams{GymID: gym.ID, Name: "Wall"})
+	wall, err := queries.CreateWall(ctx, "Wall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,9 +357,9 @@ func TestFullUploadClearsPendingPartialReset(t *testing.T) {
 	}
 	handler := NewHandler(queries, storage, pool)
 	router := chi.NewRouter()
-	router.Route("/gyms/{gymSlug}", func(r chi.Router) {
+	router.Route("/walls", func(r chi.Router) {
 		r.Use(auth.Authenticate)
-		r.Post("/walls/{wallId}/images", handler.UploadImage)
+		r.Post("/{wallId}/images", handler.UploadImage)
 	})
 
 	var body bytes.Buffer
@@ -403,7 +379,7 @@ func TestFullUploadClearsPendingPartialReset(t *testing.T) {
 	}
 
 	wallID := uuid.UUID(wall.ID.Bytes)
-	request := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/gyms/%s/walls/%s/images", gym.Slug, wallID), &body)
+	request := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/walls/%s/images", wallID), &body)
 	request.Header.Set("Authorization", "Bearer "+pair.AccessToken)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	response := httptest.NewRecorder()

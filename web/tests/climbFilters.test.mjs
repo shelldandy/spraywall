@@ -33,7 +33,7 @@ test("combines grade, style, progress, and unrounded community stars", () => {
 });
 
 test("normalizes malformed and repeated URL values while preserving unrelated params", () => {
-  const params = new URLSearchParams("tag=crimpy&tag=bad&tag=crimpy&minGrade=v5&maxGrade=V3&progress=bogus&progress=projects&minStars=9&minStars=4.0&wallId=w&gymSlug=g");
+  const params = new URLSearchParams("tag=crimpy&tag=bad&tag=crimpy&minGrade=v5&maxGrade=V3&progress=bogus&progress=projects&minStars=9&minStars=4.0&wallId=w&other=value");
   const filters = parseRouteFilters(params);
   assert.deepEqual(filters, { tags: ["crimpy"], minGrade: "V5", maxGrade: null, progress: "projects", minStars: 4, circuit: null, hasBeta: false });
   const normalized = writeRouteFilters(new URLSearchParams(params), filters);
@@ -41,7 +41,7 @@ test("normalizes malformed and repeated URL values while preserving unrelated pa
   assert.deepEqual(normalized.getAll("progress"), ["projects"]);
   assert.equal(normalized.get("minStars"), "4");
   assert.equal(normalized.get("wallId"), "w");
-  assert.equal(normalized.get("gymSlug"), "g");
+  assert.equal(normalized.get("other"), "value");
   assert.equal(hasRouteFilters(filters), true);
   assert.equal(hasRouteFilters(parseRouteFilters(new URLSearchParams("x=1"))), false);
   assert.equal(hasRouteFilters(parseRouteFilters(new URLSearchParams("sort=grade_asc"))), false);

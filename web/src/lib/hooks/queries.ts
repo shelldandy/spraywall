@@ -14,33 +14,24 @@ import type {
   BetaVideoList,
 } from "../api/types";
 import { useAuthStore } from "../store/auth";
-import { fetchGymsWithWalls, type GymWithWalls } from "./gymWalls";
+import { useWalls } from "./walls";
 import { isDetecting, POLL_INTERVAL_MS, wallDetailPollInterval } from "./polling";
-export type { GymWithWalls } from "./gymWalls";
+export { useWalls };
 export { canEditWallHolds, shouldLoadHolds } from "./holdAvailability";
 export { isDetecting, POLL_INTERVAL_MS } from "./polling";
 
-export function useGymsWithWalls(enabled = true) {
-  return useQuery<GymWithWalls[]>({
-    queryKey: ["gyms-with-walls"],
-    queryFn: () => fetchGymsWithWalls(apiFetch),
-    enabled,
-  });
-}
-
 export function useWallDetail(
   wallId: string,
-  gymSlug?: string,
   options: { pollPendingReset?: boolean } = {},
 ) {
   return useQuery<WallDetail | null>({
     queryKey: ["wall-detail", wallId],
     queryFn: async () => {
-      if (!gymSlug) return null;
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}`);
+      const res = await apiFetch(`/walls/${wallId}`);
       if (!res.ok) throw new Error("Failed to fetch wall");
       return res.json();
     },
+    enabled: Boolean(wallId),
     refetchInterval: (query) =>
       wallDetailPollInterval(
         query.state.data?.detection_status,
@@ -50,106 +41,103 @@ export function useWallDetail(
   });
 }
 
-export function useResetDiff(gymSlug?: string, wallId?: string, imageId?: string) {
+export function useResetDiff(wallId?: string, imageId?: string) {
   return useQuery<ResetDiff>({
     queryKey: ["reset-diff", wallId, imageId],
     queryFn: async () => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/resets/${imageId}`);
+      const res = await apiFetch(`/walls/${wallId}/resets/${imageId}`);
       if (!res.ok) throw new Error("Failed to fetch reset review");
       return res.json();
     },
-    enabled: Boolean(gymSlug && wallId && imageId),
+    enabled: Boolean(wallId && imageId),
     refetchInterval: (query) => isDetecting(query.state.data?.detection_status) ? POLL_INTERVAL_MS : false,
   });
 }
 
-export function useHolds(wallId: string, enabled = true, gymSlug?: string) {
+export function useHolds(wallId: string, enabled = true) {
   return useQuery<Hold[]>({
     queryKey: ["holds", wallId],
     queryFn: async () => {
-      if (!gymSlug) return [];
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/holds`);
+      const res = await apiFetch(`/walls/${wallId}/holds`);
       if (!res.ok) throw new Error("Failed to fetch holds");
       return res.json();
     },
-    enabled,
+    enabled: Boolean(wallId && enabled),
   });
 }
 
-export function useRoutes(wallId: string, gymSlug?: string) {
+export function useRoutes(wallId: string) {
   const userId = useAuthStore((s) => s.userId);
   return useQuery<Route[]>({
     queryKey: ["routes", wallId, userId],
     queryFn: async () => {
-      if (!gymSlug) return [];
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes`);
+      const res = await apiFetch(`/walls/${wallId}/routes`);
       if (!res.ok) throw new Error("Failed to fetch routes");
       return res.json();
     },
+    enabled: Boolean(wallId),
   });
 }
 
-export function useCircuits(wallId: string, gymSlug?: string) {
+export function useCircuits(wallId: string) {
   const userId = useAuthStore((s) => s.userId);
   return useQuery<Circuit[]>({
     queryKey: ["circuits", wallId, userId],
     queryFn: async () => {
-      if (!gymSlug) return [];
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits`);
+      const res = await apiFetch(`/walls/${wallId}/circuits`);
       if (!res.ok) throw new Error("Failed to fetch circuits");
       return res.json();
     },
-    enabled: Boolean(wallId && gymSlug),
+    enabled: Boolean(wallId),
   });
 }
 
-export function useRouteDetail(routeId: string, gymSlug?: string, wallId?: string) {
+export function useRouteDetail(routeId: string, wallId?: string) {
   const userId = useAuthStore((s) => s.userId);
   return useQuery<Route | null>({
     queryKey: ["route-detail", routeId, userId],
     queryFn: async () => {
-      if (!gymSlug || !wallId) return null;
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}`);
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}`);
       if (!res.ok) throw new Error("Failed to fetch route");
       return res.json();
     },
+    enabled: Boolean(routeId && wallId),
   });
 }
 
-export function useRouteLogs(routeId: string, gymSlug?: string, wallId?: string) {
+export function useRouteLogs(routeId: string, wallId?: string) {
   const userId = useAuthStore((s) => s.userId);
   return useQuery<ClimbLog[]>({
     queryKey: ["climb-logs", routeId, userId],
     queryFn: async () => {
-      if (!gymSlug || !wallId) return [];
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/logs`);
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}/logs`);
       if (!res.ok) throw new Error("Failed to fetch climb history");
       return res.json();
     },
-    enabled: Boolean(routeId && gymSlug && wallId),
+    enabled: Boolean(routeId && wallId),
   });
 }
 
-export function useBetaVideos({ gymSlug, wallId, routeId }: { gymSlug: string; wallId: string; routeId: string }) {
+export function useBetaVideos({ wallId, routeId }: { wallId: string; routeId: string }) {
   return useQuery<BetaVideoList>({
     queryKey: ["beta-videos", routeId],
     queryFn: async () => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/beta-videos`);
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}/beta-videos`);
       if (!res.ok) throw new Error("Failed to fetch beta videos");
       return res.json();
     },
-    enabled: Boolean(gymSlug && wallId && routeId),
+    enabled: Boolean(wallId && routeId),
   });
 }
 
-export function useActivity({ gymSlug, wallId, routeId }: { gymSlug: string; wallId: string; routeId?: string }) {
+export function useActivity({ wallId, routeId }: { wallId: string; routeId?: string }) {
   const userId = useAuthStore((s) => s.userId);
   return useInfiniteQuery({
     queryKey: ["activity", wallId, routeId ?? "wall", userId],
     queryFn: async ({ pageParam }) => {
       const endpoint = routeId
-        ? `/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/activity`
-        : `/gyms/${gymSlug}/walls/${wallId}/activity`;
+        ? `/walls/${wallId}/routes/${routeId}/activity`
+        : `/walls/${wallId}/activity`;
       const search = new URLSearchParams();
       if (pageParam) search.set("cursor", pageParam);
       const res = await apiFetch(`${endpoint}${search.size ? `?${search}` : ""}`);
@@ -158,7 +146,7 @@ export function useActivity({ gymSlug, wallId, routeId }: { gymSlug: string; wal
     },
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.next_cursor,
-    enabled: Boolean(gymSlug && wallId),
+    enabled: Boolean(wallId),
   });
 }
 

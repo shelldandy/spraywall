@@ -35,7 +35,6 @@ interface RouteListProps {
   holds: Hold[];
   imageUrl: string | null;
   wallId: string;
-  gymSlug: string;
   selectedRouteId?: string;
   circuits?: Circuit[];
   circuitsLoaded?: boolean;
@@ -74,7 +73,6 @@ export default function RouteList({
   holds,
   imageUrl,
   wallId,
-  gymSlug,
   selectedRouteId,
   circuits = [],
   circuitsLoaded = true,
@@ -214,7 +212,7 @@ export default function RouteList({
             {circuits.some((circuit) => circuit.is_owner) && <><h3 className={styles.circuitGroup}>Yours</h3>{circuits.filter((circuit) => circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} style={{ borderColor: circuit.id === activeCircuit?.id ? circuitColor(circuit.color) : undefined }} aria-pressed={circuit.id === activeCircuit?.id} onClick={() => updateCircuit(circuit.id)}><CircuitBadge circuit={circuit} /></button>)}</>}
             {circuits.some((circuit) => !circuit.is_owner) && <><h3 className={styles.circuitGroup}>Shared</h3>{circuits.filter((circuit) => !circuit.is_owner).map((circuit) => <button key={circuit.id} type="button" className={`${styles.gradeOption} ${circuit.id === activeCircuit?.id ? styles.gradeOptionSelected : ""}`} style={{ borderColor: circuit.id === activeCircuit?.id ? circuitColor(circuit.color) : undefined }} aria-pressed={circuit.id === activeCircuit?.id} onClick={() => updateCircuit(circuit.id)}><CircuitBadge circuit={circuit} /></button>)}</>}
           </div>
-          <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
+          <Link to={`/circuits?${new URLSearchParams({ wallId })}`}>Manage circuits</Link>
         </section>
       </FilterDrawer>
       <FilterDrawer open={sortOpen} title="Sort" onClose={() => setSortOpen(false)} onClear={() => updateSort("newest")} matchingCount={matchingRoutes.length} triggerRef={sortTriggerRef}>
@@ -236,7 +234,7 @@ export default function RouteList({
           {matchingRoutes.map((route) => {
             const linkParams = writeRouteSort(writeRouteFilters(new URLSearchParams(searchParams), filters), sort);
             linkParams.set("wallId", wallId);
-            linkParams.set("gymSlug", gymSlug);
+            linkParams.delete("gymSlug");
             return (
               <li key={route.id}>
                 <Link

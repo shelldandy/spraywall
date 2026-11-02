@@ -52,6 +52,19 @@
   color: var(--text-faint);
 }
 
+.inviteRole,
+.inviteLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.inviteLink :global(.input) {
+  min-width: 0;
+  flex: 1;
+}
+
 .back {
   margin-top: auto;
   align-self: center;

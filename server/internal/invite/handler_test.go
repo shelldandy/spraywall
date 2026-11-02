@@ -24,45 +24,38 @@ func TestInviteCanOnlyBeAcceptedOnceConcurrently(t *testing.T) {
 	ctx := context.Background()
 	pool := testdb.New(t)
 	q := generated.New(pool)
-	createUser := func(email string) generated.User {
+	createUser := func(email string, role generated.UserRole) generated.User {
 		t.Helper()
-		u, err := q.CreateUser(ctx, generated.CreateUserParams{Email: email, DisplayName: "Test", Role: generated.UserRoleClimber})
+		u, err := q.CreateUser(ctx, generated.CreateUserParams{Email: email, DisplayName: "Test", Role: role})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return u
 	}
-	owner := createUser("invite-owner-" + uuid.NewString() + "@example.com")
-	first := createUser("invite-first-" + uuid.NewString() + "@example.com")
-	second := createUser("invite-second-" + uuid.NewString() + "@example.com")
-	gym, err := q.CreateGym(ctx, generated.CreateGymParams{Name: "Invite test", Slug: "invite-" + uuid.NewString()[:8], OwnerID: owner.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := q.CreateGymMember(ctx, generated.CreateGymMemberParams{GymID: gym.ID, UserID: owner.ID, Role: generated.UserRoleAdmin}); err != nil {
-		t.Fatal(err)
-	}
+	owner := createUser("invite-owner-"+uuid.NewString()+"@example.com", generated.UserRoleAdmin)
+	first := createUser("invite-first-"+uuid.NewString()+"@example.com", generated.UserRoleClimber)
+	second := createUser("invite-second-"+uuid.NewString()+"@example.com", generated.UserRoleClimber)
 	inv, err := q.CreateInvite(ctx, generated.CreateInviteParams{
-		GymID: gym.ID, Token: uuid.NewString(), CreatedBy: owner.ID,
-		Role: generated.UserRoleAdmin, ExpiresAt: shared.PgTimestamptz(time.Now().Add(time.Hour)),
+		Token: uuid.NewString(), CreatedBy: owner.ID, Role: generated.UserRoleAdmin,
+		ExpiresAt: shared.PgTimestamptz(time.Now().Add(time.Hour)),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Hold both acceptances after their invite lookup so they contend on the consume operation.
+	// Both handlers read the unused invite before the first consume can commit.
 	trigger := fmt.Sprintf(`CREATE FUNCTION delay_invite_acceptance() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.gym_id = '%s'::uuid THEN PERFORM pg_sleep(0.3); END IF;
+  IF OLD.id = '%s'::uuid THEN PERFORM pg_sleep(0.3); END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER delay_invite_acceptance BEFORE INSERT ON gym_members FOR EACH ROW EXECUTE FUNCTION delay_invite_acceptance();`, shared.UUIDFromPg(gym.ID))
+CREATE TRIGGER delay_invite_acceptance BEFORE UPDATE OF used_at ON invites FOR EACH ROW EXECUTE FUNCTION delay_invite_acceptance();`, shared.UUIDFromPg(inv.ID))
 	if _, err := pool.Exec(ctx, trigger); err != nil {
 		t.Fatal(err)
 	}
 
 	auth := user.NewHandler(q, "invite-test-secret", pool, user.Options{PasswordEnabled: true})
-	handler := invite.NewHandler(q, pool)
+	handler := invite.NewHandler(q, pool, false)
 	router := chi.NewRouter()
 	router.Route("/invites/{token}", func(r chi.Router) {
 		r.Use(auth.Authenticate)
@@ -76,7 +69,6 @@ CREATE TRIGGER delay_invite_acceptance BEFORE INSERT ON gym_members FOR EACH ROW
 		}
 		tokens[i] = pair.AccessToken
 	}
-
 	start := make(chan struct{})
 	statuses := make(chan int, 2)
 	var wg sync.WaitGroup
@@ -109,11 +101,111 @@ CREATE TRIGGER delay_invite_acceptance BEFORE INSERT ON gym_members FOR EACH ROW
 	if success != 1 || conflict != 1 {
 		t.Fatalf("accept outcomes: %d successes, %d conflicts; want one each", success, conflict)
 	}
-	var invitedMembers int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM gym_members WHERE gym_id=$1`, gym.ID).Scan(&invitedMembers); err != nil {
+	var admins int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE role='admin'`).Scan(&admins); err != nil {
 		t.Fatal(err)
 	}
-	if invitedMembers != 2 {
-		t.Fatalf("gym has %d members, want owner and one invitee", invitedMembers)
+	if admins != 2 {
+		t.Fatalf("admin users = %d, want owner and accepted invitee", admins)
+	}
+}
+
+func TestAcceptInvitePromotesWithoutDemoting(t *testing.T) {
+	ctx := context.Background()
+	pool := testdb.New(t)
+	q := generated.New(pool)
+	admin, err := q.CreateUser(ctx, generated.CreateUserParams{Email: "admin@example.com", DisplayName: "Admin", Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	climber, err := q.CreateUser(ctx, generated.CreateUserParams{Email: "climber@example.com", DisplayName: "Climber", Role: generated.UserRoleClimber})
+	if err != nil {
+		t.Fatal(err)
+	}
+	makeInvite := func(role generated.UserRole) string {
+		t.Helper()
+		invite, err := q.CreateInvite(ctx, generated.CreateInviteParams{Token: uuid.NewString(), CreatedBy: admin.ID, Role: role, ExpiresAt: shared.PgTimestamptz(time.Now().Add(time.Hour))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return invite.Token
+	}
+	auth := user.NewHandler(q, "invite-test-secret", pool, user.Options{PasswordEnabled: true})
+	pair, err := auth.IssueTokens(ctx, q, climber)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := invite.NewHandler(q, pool, false)
+	router := chi.NewRouter()
+	router.Route("/invites/{token}", func(r chi.Router) {
+		r.Use(auth.Authenticate)
+		r.Post("/accept", handler.AcceptInvite)
+	})
+	accept := func(token string) int {
+		request := httptest.NewRequest(http.MethodPost, "/invites/"+token+"/accept", nil)
+		request.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response.Code
+	}
+	if status := accept(makeInvite(generated.UserRoleSetter)); status != http.StatusOK {
+		t.Fatalf("accept setter invite: %d", status)
+	}
+	updated, err := q.GetUserByID(ctx, climber.ID)
+	if err != nil || updated.Role != generated.UserRoleSetter {
+		t.Fatalf("promoted role = %v, err=%v", updated.Role, err)
+	}
+	if status := accept(makeInvite(generated.UserRoleClimber)); status != http.StatusOK {
+		t.Fatalf("accept climber invite as setter: %d", status)
+	}
+	updated, err = q.GetUserByID(ctx, climber.ID)
+	if err != nil || updated.Role != generated.UserRoleSetter {
+		t.Fatalf("role after lower invite = %v, err=%v", updated.Role, err)
+	}
+}
+
+func TestCreateInviteDisablesAdminRoleWhenOIDCManagesAdmins(t *testing.T) {
+	ctx := context.Background()
+	pool := testdb.New(t)
+	q := generated.New(pool)
+	admin, err := q.CreateUser(ctx, generated.CreateUserParams{Email: "admin-invite@example.com", DisplayName: "Admin", Role: generated.UserRoleClimber})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err = q.SyncUserRole(ctx, generated.SyncUserRoleParams{ID: admin.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := user.NewHandler(q, "invite-test-secret", pool, user.Options{AdminRoleMaxAge: time.Hour})
+	pair, err := auth.IssueTokens(ctx, q, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := invite.NewHandler(q, pool, true)
+	router := chi.NewRouter()
+	router.With(auth.Authenticate).Post("/invites", handler.CreateInvite)
+
+	request := httptest.NewRequest(http.MethodPost, "/invites", strings.NewReader(`{"role":"admin"}`))
+	request.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "admin invites are disabled") {
+		t.Fatalf("admin invite response = %d %s", response.Code, response.Body)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/invites", strings.NewReader(`{"role":"setter"}`))
+	request.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("setter invite response = %d %s", response.Code, response.Body)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/invites", nil)
+	request.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || !strings.Contains(response.Body.String(), `"role":"climber"`) {
+		t.Fatalf("default climber invite response = %d %s", response.Code, response.Body)
 	}
 }

@@ -39,8 +39,8 @@ type Options struct {
 	// OIDCIssuer and OIDCProviderName label linked identities in /auth/me.
 	OIDCIssuer       string
 	OIDCProviderName string
-	// AdminRoleMaxAge, when non-zero, demotes admins whose role was last
-	// confirmed by an SSO login longer ago than this (see oidc.Config).
+	// AdminRoleMaxAge, when non-zero, gives unconfirmed admins setter access
+	// and demotes previously confirmed admins after this age (see oidc.Config).
 	AdminRoleMaxAge time.Duration
 }
 
@@ -346,8 +346,8 @@ func SameIssuer(a, b string) bool {
 func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u generated.User) (*TokenPair, error) {
 	userID := uuidFromPg(u.ID)
 
-	if h.adminRoleExpired(u, time.Now()) {
-		demoted, err := q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: generated.UserRoleClimber})
+	if role, demote := h.adminRoleDemotion(u, time.Now()); demote {
+		demoted, err := q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: role})
 		if err != nil {
 			return nil, err
 		}
@@ -395,13 +395,18 @@ func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u gener
 	}, nil
 }
 
-// adminRoleExpired reports whether u's admin role is no longer backed by a
-// recent SSO login. Only applies when the IdP manages admins.
-func (h *Handler) adminRoleExpired(u generated.User, now time.Time) bool {
+// adminRoleDemotion returns the effective fallback for admins under SSO role management.
+func (h *Handler) adminRoleDemotion(u generated.User, now time.Time) (generated.UserRole, bool) {
 	if h.opts.AdminRoleMaxAge <= 0 || u.Role != generated.UserRoleAdmin {
-		return false
+		return "", false
 	}
-	return !u.RoleSyncedAt.Valid || now.Sub(u.RoleSyncedAt.Time) > h.opts.AdminRoleMaxAge
+	if !u.RoleSyncedAt.Valid {
+		return generated.UserRoleSetter, true
+	}
+	if now.Sub(u.RoleSyncedAt.Time) > h.opts.AdminRoleMaxAge {
+		return generated.UserRoleClimber, true
+	}
+	return "", false
 }
 
 func hashToken(token string) string {

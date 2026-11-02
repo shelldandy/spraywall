@@ -32,18 +32,11 @@ func newResetTestEnv(t *testing.T) *resetTestEnv {
 	t.Helper()
 	pool := testdb.New(t)
 	q := generated.New(pool)
-	u, err := q.CreateUser(context.Background(), generated.CreateUserParams{Email: uuid.NewString() + "@example.com", DisplayName: "Setter", Role: generated.UserRoleClimber})
+	u, err := q.CreateUser(context.Background(), generated.CreateUserParams{Email: uuid.NewString() + "@example.com", DisplayName: "Setter", Role: generated.UserRoleSetter})
 	if err != nil {
 		t.Fatal(err)
 	}
-	gym, err := q.CreateGym(context.Background(), generated.CreateGymParams{Name: "Reset gym", Slug: "reset-" + uuid.NewString()[:8], OwnerID: u.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := q.CreateGymMember(context.Background(), generated.CreateGymMemberParams{GymID: gym.ID, UserID: u.ID, Role: generated.UserRoleSetter}); err != nil {
-		t.Fatal(err)
-	}
-	wallRow, err := q.CreateWall(context.Background(), generated.CreateWallParams{GymID: gym.ID, Name: "Wall"})
+	wallRow, err := q.CreateWall(context.Background(), "Wall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +65,11 @@ func newResetTestEnv(t *testing.T) *resetTestEnv {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
-	r.Route("/gyms/{gymSlug}", func(r chi.Router) {
+	r.Route("/walls", func(r chi.Router) {
 		r.Use(auth.Authenticate)
 		h := wall.NewHandler(q, nil, pool)
-		r.Get("/walls/{wallId}", h.GetWall)
-		r.Route("/walls/{wallId}/resets/{imageId}", func(r chi.Router) {
+		r.Get("/{wallId}", h.GetWall)
+		r.Route("/{wallId}/resets/{imageId}", func(r chi.Router) {
 			r.Get("/", h.GetReset)
 			r.Put("/matches", h.UpdateResetMatch)
 			r.Delete("/holds/{holdId}", h.DeleteResetHold)
@@ -89,9 +82,7 @@ func newResetTestEnv(t *testing.T) *resetTestEnv {
 }
 
 func (e *resetTestEnv) requestWall() *httptest.ResponseRecorder {
-	var slug string
-	_ = e.pool.QueryRow(context.Background(), `SELECT slug FROM gyms LIMIT 1`).Scan(&slug)
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/gyms/%s/walls/%s", slug, e.wallID), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/walls/%s", e.wallID), nil)
 	req.Header.Set("Authorization", "Bearer "+e.token)
 	rec := httptest.NewRecorder()
 	e.router.ServeHTTP(rec, req)
@@ -99,11 +90,7 @@ func (e *resetTestEnv) requestWall() *httptest.ResponseRecorder {
 }
 
 func (e *resetTestEnv) request(method, suffix, body string) *httptest.ResponseRecorder {
-	path := fmt.Sprintf("/gyms/%s/walls/%s/resets/%s%s", "reset-test", e.wallID, e.pendingID, suffix)
-	// Look up actual slug for the isolated test gym.
-	var slug string
-	_ = e.pool.QueryRow(context.Background(), `SELECT slug FROM gyms LIMIT 1`).Scan(&slug)
-	path = strings.Replace(path, "/gyms/reset-test/", "/gyms/"+slug+"/", 1)
+	path := fmt.Sprintf("/walls/%s/resets/%s%s", e.wallID, e.pendingID, suffix)
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+e.token)
 	rec := httptest.NewRecorder()
@@ -129,26 +116,26 @@ func TestResetDiffRestoreMatchApplyPreservesLegacyHistory(t *testing.T) {
 	}
 	var keptRoute, legacyRoute, nullRolesRoute, nullArrayRoute, circuit uuid.UUID
 	roles := fmt.Sprintf(`{"start":[%q],"finish":[%q],"foot":[%q]}`, e.oldHold, e.oldHold, e.oldHold)
-	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT owner_id FROM gyms LIMIT 1),'kept',$3,$4,'published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{e.oldHold}, []byte(roles)).Scan(&keptRoute); err != nil {
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT id FROM users LIMIT 1),'kept',$3,$4,'published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{e.oldHold}, []byte(roles)).Scan(&keptRoute); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT owner_id FROM gyms LIMIT 1),'legacy',$3,'{}','published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{missingOld}).Scan(&legacyRoute); err != nil {
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT id FROM users LIMIT 1),'legacy',$3,'{}','published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{missingOld}).Scan(&legacyRoute); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT owner_id FROM gyms LIMIT 1),'null roles',$3,NULL,'published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{e.oldHold}).Scan(&nullRolesRoute); err != nil {
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT id FROM users LIMIT 1),'null roles',$3,NULL,'published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{e.oldHold}).Scan(&nullRolesRoute); err != nil {
 		t.Fatal(err)
 	}
 	nullArrayRoles := fmt.Sprintf(`{"start":null,"finish":[%q]}`, e.oldHold)
-	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT owner_id FROM gyms LIMIT 1),'null role array',$3,$4,'published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{e.oldHold}, []byte(nullArrayRoles)).Scan(&nullArrayRoute); err != nil {
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes(wall_id,wall_image_id,created_by,name,hold_ids,hold_roles,status,tags) VALUES($1,$2,(SELECT id FROM users LIMIT 1),'null role array',$3,$4,'published','{}') RETURNING id`, e.wallID, e.activeID, []uuid.UUID{e.oldHold}, []byte(nullArrayRoles)).Scan(&nullArrayRoute); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.pool.QueryRow(context.Background(), `INSERT INTO circuits(wall_id,created_by,name) VALUES($1,(SELECT owner_id FROM gyms LIMIT 1),'Circuit') RETURNING id`, e.wallID).Scan(&circuit); err != nil {
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO circuits(wall_id,created_by,name) VALUES($1,(SELECT id FROM users LIMIT 1),'Circuit') RETURNING id`, e.wallID).Scan(&circuit); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.pool.Exec(context.Background(), `INSERT INTO circuit_routes(circuit_id,route_id,position) VALUES($1,$2,0)`, circuit, keptRoute); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.pool.Exec(context.Background(), `INSERT INTO climb_logs(route_id,user_id,outcome,climbed_on) VALUES($1,(SELECT owner_id FROM gyms LIMIT 1),'send',CURRENT_DATE)`, keptRoute); err != nil {
+	if _, err := e.pool.Exec(context.Background(), `INSERT INTO climb_logs(route_id,user_id,outcome,climbed_on) VALUES($1,(SELECT id FROM users LIMIT 1),'send',CURRENT_DATE)`, keptRoute); err != nil {
 		t.Fatal(err)
 	}
 
