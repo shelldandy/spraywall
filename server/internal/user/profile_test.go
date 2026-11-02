@@ -16,7 +16,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,52 +26,6 @@ import (
 )
 
 // ---------- pure logic ----------
-
-type fakeMemberGetter struct {
-	member generated.GymMember
-	err    error
-}
-
-func (f fakeMemberGetter) GetGymMember(context.Context, generated.GetGymMemberParams) (generated.GymMember, error) {
-	return f.member, f.err
-}
-
-func ctxAs(userID uuid.UUID, role string) context.Context {
-	ctx := context.WithValue(context.Background(), UserIDKey, userID)
-	return context.WithValue(ctx, UserRoleKey, role)
-}
-
-func TestEffectiveGymMember(t *testing.T) {
-	gymID := pgUUID(uuid.New())
-	userID := uuid.New()
-	setter := generated.GymMember{GymID: gymID, UserID: pgUUID(userID), Role: generated.UserRoleSetter}
-	dbErr := errors.New("connection reset")
-
-	cases := []struct {
-		name     string
-		role     string
-		getter   fakeMemberGetter
-		wantRole generated.UserRole
-		wantErr  error
-	}{
-		{"admin without membership", "admin", fakeMemberGetter{err: pgx.ErrNoRows}, generated.UserRoleAdmin, nil},
-		{"admin with lower membership", "admin", fakeMemberGetter{member: setter}, generated.UserRoleAdmin, nil},
-		{"admin with db error", "admin", fakeMemberGetter{err: dbErr}, "", dbErr},
-		{"climber without membership", "climber", fakeMemberGetter{err: pgx.ErrNoRows}, "", pgx.ErrNoRows},
-		{"climber with membership", "climber", fakeMemberGetter{member: setter}, generated.UserRoleSetter, nil},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			m, err := EffectiveGymMember(ctxAs(userID, c.role), c.getter, gymID)
-			if !errors.Is(err, c.wantErr) {
-				t.Fatalf("err = %v, want %v", err, c.wantErr)
-			}
-			if err == nil && (m.Role != c.wantRole || m.GymID != gymID || m.UserID != pgUUID(userID)) {
-				t.Fatalf("member = %+v, want role %s", m, c.wantRole)
-			}
-		})
-	}
-}
 
 func TestHasLoginMethod(t *testing.T) {
 	cases := []struct {

@@ -20,8 +20,8 @@ import WallImage from "../components/WallImage";
 import styles from "./RouteDetail.module.css";
 import RouteList from "./RouteList";
 
-function CircuitToggle({ circuit, gymSlug, wallId, routeId }: { circuit: Circuit; gymSlug: string; wallId: string; routeId: string }) {
-  const toggle = useToggleCircuitRoute(gymSlug, wallId, circuit.id);
+function CircuitToggle({ circuit, wallId, routeId }: { circuit: Circuit; wallId: string; routeId: string }) {
+  const toggle = useToggleCircuitRoute(wallId, circuit.id);
   const included = circuit.route_ids.includes(routeId);
   return <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0" }}><input type="checkbox" checked={included} disabled={toggle.isPending} onChange={(event) => toggle.mutate({ route_id: routeId, included: event.target.checked })} /><CircuitBadge circuit={circuit} /></label>;
 }
@@ -30,18 +30,17 @@ export default function RouteDetailPage() {
   const { routeId = "" } = useParams();
   const [params] = useSearchParams();
   const wallId = params.get("wallId") ?? "";
-  const gymSlug = params.get("gymSlug") ?? "";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const userId = useAuthStore((s) => s.userId);
 
-  const routeQuery = useRouteDetail(routeId, gymSlug, wallId);
-  const routesQuery = useRoutes(wallId, gymSlug);
-  const circuitsQuery = useCircuits(wallId, gymSlug);
-  const wallQuery = useWallDetail(wallId, gymSlug);
+  const routeQuery = useRouteDetail(routeId, wallId);
+  const routesQuery = useRoutes(wallId);
+  const circuitsQuery = useCircuits(wallId);
+  const wallQuery = useWallDetail(wallId);
   const holdsEnabled = shouldLoadHolds(wallQuery.data?.detection_status, wallQuery.data?.user_role);
-  const holdsQuery = useHolds(wallId, holdsEnabled, gymSlug);
-  const logsQuery = useRouteLogs(routeId, gymSlug, wallId);
+  const holdsQuery = useHolds(wallId, holdsEnabled);
+  const logsQuery = useRouteLogs(routeId, wallId);
   const [addingLog, setAddingLog] = useState(false);
   const [editingLog, setEditingLog] = useState<ClimbLog | null>(null);
   const [logDrawerOpen, setLogDrawerOpen] = useState(false);
@@ -74,12 +73,12 @@ export default function RouteDetailPage() {
     [allHolds, routeHoldIds],
   );
 
-  const createLog = useCreateClimbLog(gymSlug, wallId, routeId);
-  const updateLog = useUpdateClimbLog(gymSlug, wallId, routeId);
-  const deleteLog = useDeleteClimbLog(gymSlug, wallId, routeId);
-  const deleteRoute = useDeleteRoute(gymSlug, wallId, routeId);
-  const setRating = useSetRouteRating(gymSlug, wallId, routeId);
-  const deleteRating = useDeleteRouteRating(gymSlug, wallId, routeId);
+  const createLog = useCreateClimbLog(wallId, routeId);
+  const updateLog = useUpdateClimbLog(wallId, routeId);
+  const deleteLog = useDeleteClimbLog(wallId, routeId);
+  const deleteRoute = useDeleteRoute(wallId, routeId);
+  const setRating = useSetRouteRating(wallId, routeId);
+  const deleteRating = useDeleteRouteRating(wallId, routeId);
   const history = logsQuery.data ?? [];
   const logSubmitting = createLog.isPending || updateLog.isPending;
   const resetRoute = Boolean(routeData?.is_legacy || routeData?.status === "draft");
@@ -95,7 +94,7 @@ export default function RouteDetailPage() {
   const isLoading = routeQuery.isLoading || wallQuery.isLoading || holdsQuery.isLoading;
   const routes = routesQuery.data ?? [];
   const circuits = circuitsQuery.data ?? [];
-  const createCircuit = useCreateCircuit(gymSlug, wallId);
+  const createCircuit = useCreateCircuit(wallId);
   const returnToCircuitList = () => {
     createCircuit.reset();
     setCreatingCircuit(false);
@@ -123,11 +122,11 @@ export default function RouteDetailPage() {
   fallbackParams.delete("wallId");
   fallbackParams.delete("circuit");
   fallbackParams.delete("from");
-  fallbackParams.set("gymSlug", gymSlug);
+  fallbackParams.delete("gymSlug");
   fallbackParams.delete("tag");
   for (const tag of parseRouteTags(params.getAll("tag"))) fallbackParams.append("tag", tag);
   const backUrl = params.has("circuit")
-    ? `/circuits?${new URLSearchParams({ wallId, gymSlug })}`
+    ? `/circuits?${new URLSearchParams({ wallId })}`
     : params.get("from") === "logbook"
       ? "/logbook"
       : `/walls/${wallId}?${fallbackParams}`;
@@ -145,7 +144,6 @@ export default function RouteDetailPage() {
 
   const editRoute = () => {
     const search = new URLSearchParams({
-      gymSlug,
       editRouteId: routeId,
       editHoldIds: JSON.stringify(visibleHoldIds),
       editHoldRoles: visibleHoldRoles ? JSON.stringify(visibleHoldRoles) : "",
@@ -212,7 +210,6 @@ export default function RouteDetailPage() {
               holds={allRouteHolds}
               imageUrl={imageUrl}
               wallId={wallId}
-              gymSlug={gymSlug}
               selectedRouteId={routeId}
               circuits={circuits}
               circuitsLoaded={circuitsQuery.isSuccess}
@@ -300,11 +297,11 @@ export default function RouteDetailPage() {
 
               <section className={styles.activitySection} aria-label="Activity">
                 <h2>Activity</h2>
-                <ActivityFeed gymSlug={gymSlug} wallId={wallId} routeId={routeId} showRoute={false} />
+                <ActivityFeed wallId={wallId} routeId={routeId} showRoute={false} />
               </section>
 
               <section className={styles.betaSection} aria-label="Beta videos">
-                <BetaVideos gymSlug={gymSlug} wallId={wallId} routeId={routeId} />
+                <BetaVideos wallId={wallId} routeId={routeId} />
               </section>
 
               {canDelete && <>
@@ -322,9 +319,9 @@ export default function RouteDetailPage() {
                   </section>
                 ) : (
                   <section className={styles.drawerSection} aria-label="Add route to a circuit">
-                    {circuits.filter((circuit) => circuit.is_owner).map((circuit) => <CircuitToggle key={circuit.id} circuit={circuit} gymSlug={gymSlug} wallId={wallId} routeId={routeId} />)}
+                    {circuits.filter((circuit) => circuit.is_owner).map((circuit) => <CircuitToggle key={circuit.id} circuit={circuit} wallId={wallId} routeId={routeId} />)}
                     <button type="button" className="btn btn-primary" onClick={openCircuitCreate}>+ New circuit</button>
-                    <Link to={`/circuits?${new URLSearchParams({ wallId, gymSlug })}`}>Manage circuits</Link>
+                    <Link to={`/circuits?${new URLSearchParams({ wallId })}`}>Manage circuits</Link>
                     {createCircuit.error && <p className="error-text" role="alert">{createCircuit.error.message}</p>}
                   </section>
                 )}

@@ -1,13 +1,11 @@
 -- name: CreateInvite :one
-INSERT INTO invites (gym_id, token, created_by, role, expires_at)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO invites (token, created_by, role, expires_at)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: GetInviteByToken :one
-SELECT i.*, g.name AS gym_name, g.slug AS gym_slug
-FROM invites i
-JOIN gyms g ON i.gym_id = g.id
-WHERE i.token = $1 AND i.used_at IS NULL AND i.expires_at > now();
+SELECT * FROM invites
+WHERE token = $1 AND used_at IS NULL AND expires_at > now();
 
 -- name: ConsumeInvite :execrows
 UPDATE invites SET used_at = now(), used_by = $2

@@ -189,17 +189,13 @@ func betaVideoCanDelete(owner string, permission betaVideoPermission) bool {
 	return owner == permission.userID.String() || permission.role == generated.UserRoleSetter || permission.role == generated.UserRoleAdmin
 }
 
-// RouteBetaVideos handles GET /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/beta-videos.
+// RouteBetaVideos handles GET /walls/{wallId}/routes/{routeId}/beta-videos.
 func (h *Handler) RouteBetaVideos(w http.ResponseWriter, r *http.Request) {
 	scope, ok := h.scopedRoute(w, r)
 	if !ok {
 		return
 	}
-	_, member, err := h.requireGymMember(w, r)
-	if err != nil {
-		return
-	}
-	viewer := betaVideoPermission{userID: user.GetUserID(r.Context()), role: member.Role}
+	viewer := betaVideoPermission{userID: user.GetUserID(r.Context()), role: generated.UserRole(user.GetUserRole(r.Context()))}
 	rows, err := h.db.Query(r.Context(), `
 SELECT v.id::text, v.source, v.url, v.external_id, v.climber_handle, v.created_at,
        v.immich_base_url, v.immich_share_key, v.immich_share_slug, v.immich_asset_id,
@@ -263,14 +259,10 @@ func scanBetaVideo(row betaVideoRow, permission betaVideoPermission) (BetaVideo,
 	return item, nil
 }
 
-// CreateBetaVideo handles POST /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/beta-videos.
+// CreateBetaVideo handles POST /walls/{wallId}/routes/{routeId}/beta-videos.
 func (h *Handler) CreateBetaVideo(w http.ResponseWriter, r *http.Request) {
 	scope, ok := h.scopedRoute(w, r)
 	if !ok {
-		return
-	}
-	_, _, err := h.requireGymMember(w, r)
-	if err != nil {
 		return
 	}
 	var body struct {
@@ -385,16 +377,13 @@ FROM beta_videos v JOIN users u ON u.id=v.user_id WHERE v.id=$1`, id)
 	return scanBetaVideo(row, permission)
 }
 
-// DeleteBetaVideo handles DELETE /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/beta-videos/{videoId}.
+// DeleteBetaVideo handles DELETE /walls/{wallId}/routes/{routeId}/beta-videos/{videoId}.
 func (h *Handler) DeleteBetaVideo(w http.ResponseWriter, r *http.Request) {
 	scope, ok := h.scopedRoute(w, r)
 	if !ok {
 		return
 	}
-	_, member, err := h.requireGymMember(w, r)
-	if err != nil {
-		return
-	}
+	role := generated.UserRole(user.GetUserRole(r.Context()))
 	videoID, err := uuid.Parse(chi.URLParam(r, "videoId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid video id")
@@ -410,7 +399,7 @@ func (h *Handler) DeleteBetaVideo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	permission := betaVideoPermission{userID: user.GetUserID(r.Context()), role: member.Role}
+	permission := betaVideoPermission{userID: user.GetUserID(r.Context()), role: role}
 	if !betaVideoCanDelete(posterID, permission) {
 		writeError(w, http.StatusForbidden, "only the poster, setters, or admins can delete beta videos")
 		return

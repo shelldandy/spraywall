@@ -6,7 +6,7 @@ info:
     API for the Spraywall climbing app.
 
     Authorization: instance admins (`users.role = admin`, e.g. members of `OIDC_ADMIN_GROUP`)
-    are treated as gym admins in every gym, whether or not they have a membership row.
+    are instance-wide; admins can manage all walls.
 servers:
   - url: http://localhost:8080
     description: Local development
@@ -46,6 +46,7 @@ paths:
                     example: error
                 required: [status, db]
 
+
   /auth/register:
     post:
       operationId: register
@@ -72,6 +73,7 @@ paths:
         "409":
           description: Email already taken
 
+
   /auth/login:
     post:
       operationId: login
@@ -96,6 +98,7 @@ paths:
         "403":
           $ref: "#/components/responses/PasswordLoginDisabled"
 
+
   /auth/refresh:
     post:
       operationId: refreshToken
@@ -117,6 +120,7 @@ paths:
         "401":
           description: Invalid or expired refresh token
 
+
   /auth/logout:
     post:
       operationId: logout
@@ -136,12 +140,11 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-                    example: ok
-                required: [status]
+                  role: {type: string, enum: [climber, setter, admin]}
+                required: [role]
         "400":
           $ref: "#/components/responses/BadRequest"
+
 
   /auth/config:
     get:
@@ -155,6 +158,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuthConfig"
+
 
   /auth/oidc/login:
     get:
@@ -177,6 +181,7 @@ paths:
           description: Redirect to the identity provider's authorization endpoint
         "404":
           description: OIDC is not configured
+
 
   /auth/oidc/callback:
     get:
@@ -222,6 +227,7 @@ paths:
         "302":
           description: Redirect back into the web app (see description)
 
+
   /auth/oidc/link:
     post:
       operationId: oidcLink
@@ -249,6 +255,7 @@ paths:
         "404":
           description: OIDC is not configured
 
+
   /auth/me:
     get:
       operationId: getMe
@@ -265,6 +272,7 @@ paths:
                 $ref: "#/components/schemas/Me"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
 
   /users/me:
     patch:
@@ -290,6 +298,7 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
 
   /users/me/password:
     put:
@@ -329,6 +338,7 @@ paths:
                 $ref: "#/components/schemas/Error"
         "403":
           $ref: "#/components/responses/PasswordLoginDisabled"
+
 
   /users/me/avatar:
     post:
@@ -379,6 +389,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+
   /users/me/identities/{identityId}:
     delete:
       operationId: unlinkIdentity
@@ -411,53 +422,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /gyms:
-    get:
-      operationId: listGyms
-      summary: List gyms the user belongs to
-      tags: [Gym]
-      security:
-        - BearerAuth: []
-      responses:
-        "200":
-          description: List of gyms
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  gyms:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Gym"
-                required: [gyms]
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-    post:
-      operationId: createGym
-      summary: Create a gym
-      tags: [Gym]
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateGymRequest"
-      responses:
-        "201":
-          description: Gym created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gym"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
 
-  /gyms/{gymSlug}/walls/{wallId}/circuits:
+  /walls/{wallId}/circuits:
     get:
       operationId: listCircuits
       summary: List visible circuits on a wall
@@ -467,7 +433,6 @@ paths:
         the caller.
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
       responses:
         "200":
@@ -487,7 +452,6 @@ paths:
         be published or a draft created by the caller. A circuit can contain at most 100 unique routes.
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
       requestBody:
         required: true
@@ -510,14 +474,14 @@ paths:
               schema: {$ref: "#/components/schemas/Circuit"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "404": {$ref: "#/components/responses/NotFound"}
-  /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}:
+
+  /walls/{wallId}/circuits/{circuitId}:
     get:
       operationId: getCircuit
       summary: Get a visible circuit
-      description: The owner can read private circuits; any gym member can read a shared circuit. Other private circuits return 404.
+      description: The owner can read private circuits; any signed-in user can read a shared circuit. Other private circuits return 404.
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
       responses:
@@ -529,7 +493,6 @@ paths:
       description: Only the circuit owner may edit it. Names are trimmed and limited to 1–60 characters; color and emoji must use the supported presets.
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
       requestBody:
@@ -553,25 +516,24 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
     delete:
       operationId: deleteCircuit
-      summary: Delete a visible circuit as its owner or a gym admin
-      description: Private circuits are hidden from non-owners, including gym admins. Gym admins may delete shared circuits visible to them.
+      summary: Delete a visible circuit as its owner or an admin
+      description: Private circuits are hidden from non-owners, including admins. Admins may delete shared circuits visible to them.
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
       responses:
         "204": {description: Circuit deleted}
-        "403": {description: Not owner or gym admin of a visible circuit}
+        "403": {description: Not owner or admin of a visible circuit}
         "404": {$ref: "#/components/responses/NotFound"}
-  /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}/routes:
+
+  /walls/{wallId}/circuits/{circuitId}/routes:
     put:
       operationId: replaceCircuitRoutes
       summary: Atomically replace ordered circuit routes
       description: Only the owner may replace the visible route order. The list has at most 100 unique routes, all on this wall and published or caller-owned drafts; routes hidden from the caller are preserved in their prior relative position.
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
       requestBody:
@@ -598,7 +560,6 @@ paths:
       description: Only the owner may append. Repeating an existing route_id is a no-op; the circuit limit is 100 routes, including routes hidden from the caller.
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
       requestBody:
@@ -617,14 +578,14 @@ paths:
               schema: {$ref: "#/components/schemas/Circuit"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "403": {description: Not owner}
-  /gyms/{gymSlug}/walls/{wallId}/circuits/{circuitId}/routes/{routeId}:
+
+  /walls/{wallId}/circuits/{circuitId}/routes/{routeId}:
     delete:
       operationId: removeCircuitRoute
       summary: Remove a route from the circuit
       description: Only the owner may remove a route; this returns 204 whether or not the route was present.
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - {name: circuitId, in: path, required: true, schema: {type: string, format: uuid}}
         - {name: routeId, in: path, required: true, schema: {type: string, format: uuid}}
@@ -633,49 +594,23 @@ paths:
         "403": {description: Not owner}
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /gyms/{gymSlug}:
-    get:
-      operationId: getGym
-      summary: Get gym by slug
-      tags: [Gym]
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/gymSlug"
-      responses:
-        "200":
-          description: Gym detail
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gym"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
 
-  /gyms/{gymSlug}/walls:
+  /walls:
     get:
       operationId: listWalls
-      summary: List walls in a gym
+      summary: List all walls
       tags: [Wall]
       security:
         - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/gymSlug"
       responses:
         "200":
           description: List of walls
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  walls:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Wall"
-                required: [walls]
+                type: array
+                items:
+                  $ref: "#/components/schemas/Wall"
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
@@ -684,14 +619,15 @@ paths:
       tags: [Wall]
       security:
         - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/gymSlug"
       requestBody:
         required: true
         content:
-          multipart/form-data:
+          application/json:
             schema:
-              $ref: "#/components/schemas/CreateWallRequest"
+              type: object
+              required: [name]
+              properties:
+                name: {type: string}
       responses:
         "201":
           description: Wall created
@@ -703,8 +639,11 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
-  /gyms/{gymSlug}/walls/{wallId}:
+
+  /walls/{wallId}:
     get:
       operationId: getWall
       summary: Get wall by ID
@@ -712,7 +651,6 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
       responses:
         "200":
@@ -725,15 +663,26 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteWall
+      summary: Delete a wall and queue its images for deletion
+      tags: [Wall]
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/wallId"
+      responses:
+        "204": {description: Wall deleted}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
 
-  /gyms/{gymSlug}/walls/{wallId}/images:
+
+  /walls/{wallId}/images:
     post:
       operationId: uploadWallImage
       summary: Upload a wall image (full reset by default; partial reset with mode=partial)
       tags: [Wall]
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
       requestBody:
         required: true
@@ -751,9 +700,9 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {description: Partial reset requires an active image}
 
-  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}:
+
+  /walls/{wallId}/resets/{imageId}:
     parameters:
-      - $ref: "#/components/parameters/gymSlug"
       - $ref: "#/components/parameters/wallId"
       - name: imageId
         in: path
@@ -782,9 +731,9 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}/matches:
+
+  /walls/{wallId}/resets/{imageId}/matches:
     parameters:
-      - $ref: "#/components/parameters/gymSlug"
       - $ref: "#/components/parameters/wallId"
       - name: imageId
         in: path
@@ -811,9 +760,9 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}/holds/{holdId}:
+
+  /walls/{wallId}/resets/{imageId}/holds/{holdId}:
     parameters:
-      - $ref: "#/components/parameters/gymSlug"
       - $ref: "#/components/parameters/wallId"
       - name: imageId
         in: path
@@ -833,14 +782,14 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}/restore:
+
+  /walls/{wallId}/resets/{imageId}/restore:
     post:
       operationId: restoreWallResetHold
       summary: Restore an old hold into a pending reset
       tags: [Wall]
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - name: imageId
           in: path
@@ -860,14 +809,14 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /gyms/{gymSlug}/walls/{wallId}/resets/{imageId}/apply:
+
+  /walls/{wallId}/resets/{imageId}/apply:
     post:
       operationId: applyWallReset
       summary: Apply a completed pending reset
       tags: [Wall]
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - name: imageId
           in: path
@@ -878,7 +827,8 @@ paths:
         "409": {description: Pending reset is stale or detection is incomplete}
         "403": {$ref: "#/components/responses/Forbidden"}
 
-  /gyms/{gymSlug}/walls/{wallId}/routes:
+
+  /walls/{wallId}/routes:
     get:
       operationId: listRoutes
       summary: List routes on a wall
@@ -886,7 +836,6 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
       responses:
         "200":
@@ -906,7 +855,6 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
       requestBody:
         required: true
@@ -926,7 +874,8 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}:
+
+  /walls/{wallId}/routes/{routeId}:
     get:
       operationId: getRoute
       summary: Get route by ID
@@ -934,7 +883,6 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - $ref: "#/components/parameters/routeId"
       responses:
@@ -956,7 +904,6 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - $ref: "#/components/parameters/routeId"
       requestBody:
@@ -981,16 +928,16 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /gyms/{gymSlug}/walls/{wallId}/activity:
+
+  /walls/{wallId}/activity:
     get:
       operationId: listWallActivity
       summary: List activity across climbs on a wall
-      description: Returns published climb activity from all gym members, including notes, newest climbing date first. Draft activity is visible only to its author.
+      description: Returns published climb activity from all signed-in users, including notes, newest climbing date first. Draft activity is visible only to its author.
       tags: [Route]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - name: cursor
           in: query
@@ -1012,13 +959,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Caller is not a member of the gym
+          description: Caller is not authenticated
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/beta-videos:
+
+  /walls/{wallId}/routes/{routeId}/beta-videos:
     parameters:
-      - $ref: "#/components/parameters/gymSlug"
       - $ref: "#/components/parameters/wallId"
       - $ref: "#/components/parameters/routeId"
     get:
@@ -1055,14 +1002,14 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "409": {description: This link was already added to the climb}
         "422": {description: Immich share is unavailable, password-protected, contains no video, or its host is not allowed}
-  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/beta-videos/{videoId}:
+
+  /walls/{wallId}/routes/{routeId}/beta-videos/{videoId}:
     delete:
       operationId: deleteBetaVideo
       summary: Delete a beta video
       tags: [Route]
       security: [{BearerAuth: []}]
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - $ref: "#/components/parameters/routeId"
         - name: videoId
@@ -1074,6 +1021,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+
 
   /beta-media/{videoId}/{kind}:
     get:
@@ -1105,16 +1053,16 @@ paths:
         "404": {description: Video not found or share revoked}
         "502": {description: Immich server unavailable}
 
-  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/activity:
+
+  /walls/{wallId}/routes/{routeId}/activity:
     get:
       operationId: listRouteActivity
       summary: List activity for a climb
-      description: Returns all gym members' activity and notes for this climb. Draft activity is visible only to its author.
+      description: Returns all signed-in users' activity and notes for this climb. Draft activity is visible only to its author.
       tags: [Route]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - $ref: "#/components/parameters/routeId"
         - name: cursor
@@ -1137,20 +1085,20 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Caller is not a member of the gym
+          description: Caller is not authenticated
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/logs:
+
+  /walls/{wallId}/routes/{routeId}/logs:
     get:
       operationId: listClimbLogs
       summary: List the current user's history for a climb
-      description: Returns only the authenticated member's entries. The activity feed is a separate gym-visible view that includes notes.
+      description: Returns only the authenticated member's entries. The activity feed is a separate instance-visible view that includes notes.
       tags: [Route]
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - $ref: "#/components/parameters/routeId"
       responses:
@@ -1174,7 +1122,6 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - $ref: "#/components/parameters/routeId"
       requestBody:
@@ -1196,7 +1143,8 @@ paths:
           description: Activity would precede a recorded Flash
         "401":
           $ref: "#/components/responses/Unauthorized"
-  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/logs/{logId}:
+
+  /walls/{wallId}/routes/{routeId}/logs/{logId}:
     put:
       operationId: updateClimbLog
       summary: Correct an owned climb entry
@@ -1204,7 +1152,6 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - $ref: "#/components/parameters/routeId"
         - name: logId
@@ -1237,7 +1184,6 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - $ref: "#/components/parameters/routeId"
         - name: logId
@@ -1248,7 +1194,8 @@ paths:
         "204": { description: Entry deleted }
         "403": { description: Entry is owned by another user }
         "404": { $ref: "#/components/responses/NotFound" }
-  /gyms/{gymSlug}/walls/{wallId}/routes/{routeId}/rating:
+
+  /walls/{wallId}/routes/{routeId}/rating:
     put:
       operationId: setRouteRating
       summary: Set or update the current user's community rating
@@ -1257,7 +1204,6 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - $ref: "#/components/parameters/routeId"
       requestBody:
@@ -1280,17 +1226,17 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/gymSlug"
         - $ref: "#/components/parameters/wallId"
         - $ref: "#/components/parameters/routeId"
       responses:
         "204": { description: Vote removed }
 
+
   /users/me/logbook:
     get:
       operationId: getLogbook
       summary: Get all of the current user's climb activity
-      description: Includes attempts, sends, flashes, notes, climbing dates, and wall/gym identifiers for detail navigation.
+      description: Includes attempts, sends, flashes, notes, climbing dates, and wall identifiers for detail navigation.
       tags: [User]
       security:
         - BearerAuth: []
@@ -1304,15 +1250,23 @@ paths:
                 items:
                   $ref: "#/components/schemas/LogbookEntry"
 
-  /gyms/{gymSlug}/invites:
+
+  /invites:
     post:
       operationId: createInvite
-      summary: Create a gym invite
+      summary: Create an instance invite
       tags: [Invite]
       security:
         - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/gymSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: {type: string, enum: [climber, setter, admin]}
+              required: [role]
       responses:
         "201":
           description: Invite created
@@ -1320,18 +1274,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Invite"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /invites/{code}/accept:
+
+  /invites/{token}:
+    get:
+      operationId: validateInvite
+      summary: Validate an unused invite
+      tags: [Invite]
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Invite role and expiry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role: {type: string, enum: [climber, setter, admin]}
+                  expires_at: {type: string, format: date-time}
+                required: [role, expires_at]
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /invites/{token}/accept:
     post:
       operationId: acceptInvite
-      summary: Accept a gym invite
+      summary: Accept an invite
       tags: [Invite]
       security:
         - BearerAuth: []
       parameters:
-        - name: code
+        - name: token
           in: path
           required: true
           schema:
@@ -1344,14 +1324,13 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-                    example: ok
-                required: [status]
+                  role: {type: string, enum: [climber, setter, admin]}
+                required: [role]
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
 
 components:
   securitySchemes:
@@ -1361,12 +1340,6 @@ components:
       bearerFormat: JWT
 
   parameters:
-    gymSlug:
-      name: gymSlug
-      in: path
-      required: true
-      schema:
-        type: string
     wallId:
       name: wallId
       in: path
@@ -1542,7 +1515,7 @@ components:
             role:
               type: string
               enum: [admin, setter, climber]
-              description: Instance role. `admin` is treated as admin in every gym.
+              description: Instance-wide role.
             avatar_url:
               type: ["string", "null"]
               example: /images/avatars/7f8e9a10-1b2c-4d3e-8f90-a1b2c3d4e5f6.jpg
@@ -1608,43 +1581,20 @@ components:
           minLength: 8
       required: [new_password]
 
-    Gym:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        slug:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-      required: [id, name, slug]
-
-    CreateGymRequest:
-      type: object
-      properties:
-        name:
-          type: string
-      required: [name]
-
     Wall:
       type: object
       properties:
         id:
           type: string
           format: uuid
-        gym_id:
-          type: string
-          format: uuid
         name:
           type: string
         created_at:
           type: string
           format: date-time
-      required: [id, gym_id, name]
+        preview_image_url:
+          type: [string, "null"]
+      required: [id, name]
 
     WallResetDiff:
       type: object
@@ -1702,6 +1652,9 @@ components:
             - type: "null"
         detection_status:
           type: ["string", "null"]
+        user_role:
+          type: string
+          enum: [climber, setter, admin]
         pending_reset:
           oneOf:
             - type: object
@@ -1712,7 +1665,7 @@ components:
                 detection_status: {type: string, nullable: true}
                 created_at: {type: string, format: date-time}
             - type: "null"
-      required: [wall]
+      required: [wall, user_role]
 
     WallImage:
       type: object
@@ -1729,16 +1682,6 @@ components:
           type: string
           format: date-time
       required: [id, wall_id, path]
-
-    CreateWallRequest:
-      type: object
-      properties:
-        name:
-          type: string
-        image:
-          type: string
-          format: binary
-      required: [name, image]
 
     Route:
       type: object
@@ -1866,8 +1809,6 @@ components:
             route_grade: { type: [string, "null"] }
             wall_id: { type: string, format: uuid }
             wall_name: { type: string }
-            gym_id: { type: string, format: uuid }
-            gym_slug: { type: string }
 
     RouteStyleTag:
       type: string
@@ -1945,12 +1886,12 @@ components:
         id:
           type: string
           format: uuid
-        gym_id:
+        token:
           type: string
-          format: uuid
-        code:
+        role:
           type: string
+          enum: [climber, setter, admin]
         expires_at:
           type: string
           format: date-time
-      required: [id, gym_id, code]
+      required: [id, token, role, expires_at]

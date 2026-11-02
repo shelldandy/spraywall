@@ -42,7 +42,7 @@ Spraywall can log users in through any OpenID Connect provider (Pocket-ID, Authe
 | `OIDC_PROVIDER_NAME`     | `SSO`                         | Label for the login button                                                                                     |
 | `OIDC_SCOPES`            | `openid email profile groups` | Requested scopes                                                                                               |
 | `OIDC_GROUPS_CLAIM`      | `groups`                      | Claim holding the user's group names                                                                           |
-| `OIDC_ADMIN_GROUP`       |                               | Members become instance admins (admin in every gym); non-members are demoted to climber on their next SSO login. If unset, roles are never touched |
+| `OIDC_ADMIN_GROUP`       |                               | Members become instance admins; admins removed from the group become climbers on their next SSO login, while other roles are preserved. If unset, roles are never touched |
 | `OIDC_ADMIN_MAX_AGE`     | `24h`                         | With `OIDC_ADMIN_GROUP` set, admin rights lapse this long after the user's last SSO login (sessions and password logins don't renew them), so removing someone from the group takes effect within this window. Signing in with SSO again restores them |
 | `PASSWORD_LOGIN_ENABLED` | `true`                        | `false` = SSO only (disables password login and registration). The server refuses to start unless OIDC is configured |
 

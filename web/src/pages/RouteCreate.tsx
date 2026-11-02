@@ -26,7 +26,6 @@ export default function RouteCreatePage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const wallId = params.get("wallId") ?? "";
-  const gymSlug = params.get("gymSlug") ?? "";
   const routeId = params.get("routeId") ?? "";
   const holdIdsParam = params.get("holdIds");
   const holdRolesParam = params.get("holdRoles");
@@ -52,13 +51,12 @@ export default function RouteCreatePage() {
     }
   });
 
-  const createRouteMutation = useCreateRoute(gymSlug, wallId);
-  const updateRouteMutation = useUpdateRoute(gymSlug, wallId, routeId);
+  const createRouteMutation = useCreateRoute(wallId);
+  const updateRouteMutation = useUpdateRoute(wallId, routeId);
   const isPending = createRouteMutation.isPending || updateRouteMutation.isPending;
   const canSave = !!name.trim() && !isPending;
 
   const backParams = new URLSearchParams({
-    gymSlug,
     mode: "create",
     editHoldIds: holdIdsParam ?? "[]",
     editHoldRoles: holdRolesParam ?? "",
@@ -92,9 +90,9 @@ export default function RouteCreatePage() {
     mutation.mutate(routeParams, {
       onSuccess: () => {
         if (isEditing) {
-          navigate(`/routes/${routeId}?${new URLSearchParams({ wallId, gymSlug })}`, { replace: true });
+          navigate(`/routes/${routeId}?${new URLSearchParams({ wallId })}`, { replace: true });
         } else {
-          navigate(`/walls/${wallId}?${new URLSearchParams({ gymSlug })}`, { replace: true });
+          navigate(`/walls/${wallId}`, { replace: true });
         }
       },
     });

@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bowlinedandy/spraywall/server/internal/shared"
+	"github.com/bowlinedandy/spraywall/server/internal/wallaccess"
 )
 
 type resetAlignment struct {
@@ -42,24 +43,15 @@ func (h *Handler) resetAccess(w http.ResponseWriter, r *http.Request) (uuid.UUID
 		writeError(w, http.StatusInternalServerError, "database unavailable")
 		return uuid.Nil, uuid.Nil, false
 	}
-	gym, member, err := h.requireGymMember(w, r)
+	wall, role, err := wallaccess.RequireWall(w, r, h.queries)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, false
 	}
-	if member.Role != "admin" && member.Role != "setter" {
+	if role != "admin" && role != "setter" {
 		writeError(w, http.StatusForbidden, "only setters or admins can manage resets")
 		return uuid.Nil, uuid.Nil, false
 	}
-	wallID, err := uuid.Parse(chi.URLParam(r, "wallId"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid wall id")
-		return uuid.Nil, uuid.Nil, false
-	}
-	wall, err := h.queries.GetWallByID(r.Context(), shared.PgUUID(wallID))
-	if err != nil || wall.GymID != gym.ID {
-		writeError(w, http.StatusNotFound, "wall not found")
-		return uuid.Nil, uuid.Nil, false
-	}
+	wallID := uuid.UUID(wall.ID.Bytes)
 	imageID, err := uuid.Parse(chi.URLParam(r, "imageId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid image id")

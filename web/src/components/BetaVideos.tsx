@@ -6,7 +6,6 @@ import type { BetaVideo } from "../lib/api/types";
 import styles from "./BetaVideos.module.css";
 
 interface BetaVideosProps {
-  gymSlug: string;
   wallId: string;
   routeId: string;
 }
@@ -30,10 +29,10 @@ function BetaCardContent({ video }: { video: BetaVideo }) {
   );
 }
 
-export default function BetaVideos({ gymSlug, wallId, routeId }: BetaVideosProps) {
-  const query = useBetaVideos({ gymSlug, wallId, routeId });
-  const create = useCreateBetaVideo(gymSlug, wallId, routeId);
-  const remove = useDeleteBetaVideo(gymSlug, wallId, routeId);
+export default function BetaVideos({ wallId, routeId }: BetaVideosProps) {
+  const query = useBetaVideos({ wallId, routeId });
+  const create = useCreateBetaVideo(wallId, routeId);
+  const remove = useDeleteBetaVideo(wallId, routeId);
   const [formOpen, setFormOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [handle, setHandle] = useState("");

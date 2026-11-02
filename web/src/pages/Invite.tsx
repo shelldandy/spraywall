@@ -6,9 +6,7 @@ import { toast } from "../lib/toast";
 import styles from "./Invite.module.css";
 
 interface InviteInfo {
-  gym_name: string;
-  gym_slug: string;
-  role: string;
+  role: "climber" | "setter" | "admin";
   expires_at: string;
 }
 
@@ -58,17 +56,13 @@ export default function InvitePage() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        if (res.status === 409) {
-          toast("You are already a member of this gym.");
-        } else {
-          setError(data?.error || "Failed to accept invite");
-        }
+        setError(data?.error || "Failed to accept invite");
         return;
       }
 
-      queryClient.invalidateQueries({ queryKey: ["gyms-with-walls"] });
-      queryClient.invalidateQueries({ queryKey: ["gyms"] });
-      toast(`You have joined ${invite?.gym_name}.`);
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      queryClient.invalidateQueries({ queryKey: ["walls"] });
+      toast("Invite accepted.");
       navigate("/walls", { replace: true });
     } catch {
       setError("Failed to accept invite");
@@ -105,13 +99,9 @@ export default function InvitePage() {
 
   return (
     <main className={`center ${styles.container}`}>
-      <h1 className={styles.title}>You&apos;ve been invited!</h1>
+      <h1 className={styles.title}>You&apos;ve been invited as {invite.role}</h1>
 
       <div className={styles.card}>
-        <h2 className={styles.gymName}>{invite.gym_name}</h2>
-        <p className={styles.roleLabel}>
-          Role: <span className={styles.roleValue}>{invite.role}</span>
-        </p>
         <p className={styles.expiry}>
           Expires: {new Date(invite.expires_at).toLocaleDateString()}
         </p>
@@ -125,7 +115,7 @@ export default function InvitePage() {
         onClick={handleAccept}
         disabled={accepting}
       >
-        {accepting ? <span className={`spinner ${styles.buttonSpinner}`} /> : "Join Gym"}
+        {accepting ? <span className={`spinner ${styles.buttonSpinner}`} /> : "Join"}
       </button>
     </main>
   );

@@ -95,12 +95,15 @@ func parseGroups(v any) (groups []string, ok bool) {
 	return nil, false
 }
 
-// roleForGroups maps group membership to an instance role.
-func roleForGroups(groups []string, adminGroup string) generated.UserRole {
+// roleForGroups maps admin-group membership without overwriting non-admin roles.
+func roleForGroups(groups []string, adminGroup string, current generated.UserRole) generated.UserRole {
 	if slices.Contains(groups, adminGroup) {
 		return generated.UserRoleAdmin
 	}
-	return generated.UserRoleClimber
+	if current == generated.UserRoleAdmin {
+		return generated.UserRoleClimber
+	}
+	return current
 }
 
 // displayName picks name, then preferred_username, then the email local part.

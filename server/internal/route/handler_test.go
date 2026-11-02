@@ -50,7 +50,7 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 	pool := testdb.New(t)
 	q := generated.New(pool)
 	creator, err := q.CreateUser(context.Background(), generated.CreateUserParams{
-		Email: "route-creator@example.com", DisplayName: "Creator", Role: generated.UserRoleClimber,
+		Email: "route-creator@example.com", DisplayName: "Creator", Role: generated.UserRoleAdmin,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -61,17 +61,7 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gym, err := q.CreateGym(context.Background(), generated.CreateGymParams{Name: "Route test gym", Slug: "route-test", OwnerID: creator.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := q.CreateGymMember(context.Background(), generated.CreateGymMemberParams{GymID: gym.ID, UserID: creator.ID, Role: generated.UserRoleAdmin}); err != nil {
-		t.Fatal(err)
-	}
-	if err := q.CreateGymMember(context.Background(), generated.CreateGymMemberParams{GymID: gym.ID, UserID: other.ID, Role: generated.UserRoleClimber}); err != nil {
-		t.Fatal(err)
-	}
-	wall, err := q.CreateWall(context.Background(), generated.CreateWallParams{GymID: gym.ID, Name: "Test wall"})
+	wall, err := q.CreateWall(context.Background(), "Test wall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,12 +93,12 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 		r.Use(auth.Authenticate)
 		r.Get("/logbook", routeHandler.Logbook)
 	})
-	r.Route("/gyms/{gymSlug}", func(r chi.Router) {
+	r.Route("/walls", func(r chi.Router) {
 		r.Use(auth.Authenticate)
-		r.Route("/walls/{wallId}", func(r chi.Router) {
+		r.Route("/{wallId}", func(r chi.Router) {
 			r.Get("/activity", routehandler.NewHandler(q, pool).WallActivity)
 		})
-		r.Route("/walls/{wallId}/circuits", func(r chi.Router) {
+		r.Route("/{wallId}/circuits", func(r chi.Router) {
 			h := routeHandler
 			r.Get("/", h.ListCircuits)
 			r.Post("/", h.CreateCircuit)
@@ -121,7 +111,7 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 				r.Delete("/routes/{routeId}", h.DeleteCircuitRoute)
 			})
 		})
-		r.Route("/walls/{wallId}/routes", func(r chi.Router) {
+		r.Route("/{wallId}/routes", func(r chi.Router) {
 			h := routeHandler
 			r.Post("/", h.CreateRoute)
 			r.Get("/", h.ListRoutes)
@@ -151,7 +141,7 @@ func newRouteTestEnv(t *testing.T) *routeTestEnv {
 }
 
 func (e *routeTestEnv) path(routeID string) string {
-	path := fmt.Sprintf("/gyms/route-test/walls/%s/routes", e.wallID)
+	path := fmt.Sprintf("/walls/%s/routes", e.wallID)
 	if routeID != "" {
 		path += "/" + routeID
 	}
@@ -445,13 +435,8 @@ func TestGetRouteEnforcesRequestedWallAndDraftVisibility(t *testing.T) {
 		t.Fatalf("other member draft GET status = %d, want %d", got, http.StatusNotFound)
 	}
 
-	// Create a published route on another wall in the same gym. Its ID must
-	// not be usable through the original wall's route path.
-	gym, err := e.q.GetGymBySlug(context.Background(), "route-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	secondWall, err := e.q.CreateWall(context.Background(), generated.CreateWallParams{GymID: gym.ID, Name: "Second wall"})
+	// A route on another wall must not be reachable through this wall's path.
+	secondWall, err := e.q.CreateWall(context.Background(), "Second wall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,7 +460,7 @@ VALUES ($1, $2, $3, 'Second wall route', $4, '{}'::jsonb, 'draft', '{}') RETURNI
 	if got := e.request(http.MethodGet, secondWallRouteID.String(), e.token, "").Code; got != http.StatusNotFound {
 		t.Fatalf("wrong-wall GET status = %d, want %d", got, http.StatusNotFound)
 	}
-	wrongWallPath := fmt.Sprintf("/gyms/route-test/walls/%s/routes/%s", e.wallID, secondWallRouteID)
+	wrongWallPath := fmt.Sprintf("/walls/%s/routes/%s", e.wallID, secondWallRouteID)
 	for _, action := range []struct{ method, suffix, body string }{
 		{http.MethodPut, "", `{}`},
 		{http.MethodPatch, "/publish", ""},
@@ -493,36 +478,6 @@ VALUES ($1, $2, $3, 'Second wall route', $4, '{}'::jsonb, 'draft', '{}') RETURNI
 		t.Fatalf("wrong-wall write changed route to %q/%q", untouchedName, untouchedStatus)
 	}
 
-	// Even when the URL's wall matches the route, the gym slug must scope it.
-	otherGym, err := e.q.CreateGym(context.Background(), generated.CreateGymParams{Name: "Other gym", Slug: "other-gym", OwnerID: shared.PgUUID(e.creatorID)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	otherWall, err := e.q.CreateWall(context.Background(), generated.CreateWallParams{GymID: otherGym.ID, Name: "Foreign wall"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	otherImage, err := e.q.CreateWallImage(context.Background(), generated.CreateWallImageParams{WallID: otherWall.ID, StorageKey: "foreign-image"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var foreignHoldIDs []uuid.UUID
-	for i := 0; i < 2; i++ {
-		hold, err := e.q.CreateHold(context.Background(), generated.CreateHoldParams{WallImageID: otherImage.ID, Bbox: []byte(`{}`), Confidence: 1})
-		if err != nil {
-			t.Fatal(err)
-		}
-		foreignHoldIDs = append(foreignHoldIDs, uuid.UUID(hold.ID.Bytes))
-	}
-	var foreignRouteID uuid.UUID
-	if err := e.pool.QueryRow(context.Background(), `INSERT INTO routes (wall_id, wall_image_id, created_by, name, hold_ids, hold_roles, status, tags)
-VALUES ($1, $2, $3, 'Foreign route', $4, '{}'::jsonb, 'published', '{}') RETURNING id`, otherWall.ID, otherImage.ID, shared.PgUUID(e.creatorID), foreignHoldIDs).Scan(&foreignRouteID); err != nil {
-		t.Fatal(err)
-	}
-	foreignPath := fmt.Sprintf("/gyms/route-test/walls/%s/routes/%s", uuid.UUID(otherWall.ID.Bytes), foreignRouteID)
-	if got := e.requestPath(http.MethodGet, foreignPath, e.token, "").Code; got != http.StatusNotFound {
-		t.Fatalf("cross-gym GET status = %d, want %d", got, http.StatusNotFound)
-	}
 }
 
 func TestRouteTagsMigrationDefaultAndDown(t *testing.T) {

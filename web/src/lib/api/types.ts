@@ -1,17 +1,7 @@
 import type { RouteTagId } from "../routeTags";
 
-export interface Gym {
-  id: string;
-  name: string;
-  slug: string;
-  owner_id: string;
-  created_at: string;
-  user_role?: string;
-}
-
 export interface Wall {
   id: string;
-  gym_id: string;
   name: string;
   created_at: string;
   preview_image_url?: string | null;
@@ -190,8 +180,6 @@ export interface LogbookEntry extends ClimbLog {
   route_grade: string | null;
   wall_id: string;
   wall_name: string;
-  gym_id: string;
-  gym_slug: string;
 }
 
 export interface AuthConfig {

@@ -13,16 +13,16 @@ import (
 
 func TestSanitizeRedirect(t *testing.T) {
 	cases := map[string]string{
-		"":                       "/walls",
-		"/":                      "/",
-		"/invite/abc123":         "/invite/abc123",
-		"/gyms/x?tab=routes#top": "/gyms/x?tab=routes#top",
-		"//evil.example.com":     "/walls",
-		"/\\evil.example.com":    "/walls",
-		"https://evil.example":   "/walls",
-		"walls":                  "/walls",
-		"javascript:alert(1)":    "/walls",
-		"/ok\r\nSet-Cookie: x=y": "/walls",
+		"":                        "/walls",
+		"/":                       "/",
+		"/invite/abc123":          "/invite/abc123",
+		"/walls/x?tab=routes#top": "/walls/x?tab=routes#top",
+		"//evil.example.com":      "/walls",
+		"/\\evil.example.com":     "/walls",
+		"https://evil.example":    "/walls",
+		"walls":                   "/walls",
+		"javascript:alert(1)":     "/walls",
+		"/ok\r\nSet-Cookie: x=y":  "/walls",
 	}
 	for in, want := range cases {
 		if got := sanitizeRedirect(in); got != want {
@@ -148,14 +148,21 @@ func TestParseBoolClaim(t *testing.T) {
 }
 
 func TestRoleForGroups(t *testing.T) {
-	if got := roleForGroups([]string{"users", "spraywall-admins"}, "spraywall-admins"); got != generated.UserRoleAdmin {
-		t.Errorf("member of admin group got %s", got)
+	cases := []struct {
+		name, groups  string
+		current, want generated.UserRole
+	}{
+		{"admin group promotes", "spraywall-admins", generated.UserRoleSetter, generated.UserRoleAdmin},
+		{"removed admin is demoted", "users", generated.UserRoleAdmin, generated.UserRoleClimber},
+		{"setter is retained", "users", generated.UserRoleSetter, generated.UserRoleSetter},
+		{"climber is retained", "users", generated.UserRoleClimber, generated.UserRoleClimber},
 	}
-	if got := roleForGroups([]string{"users"}, "spraywall-admins"); got != generated.UserRoleClimber {
-		t.Errorf("non-member got %s", got)
-	}
-	if got := roleForGroups(nil, "spraywall-admins"); got != generated.UserRoleClimber {
-		t.Errorf("no groups got %s", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := roleForGroups([]string{tc.groups}, "spraywall-admins", tc.current); got != tc.want {
+				t.Errorf("roleForGroups() = %s, want %s", got, tc.want)
+			}
+		})
 	}
 }
 

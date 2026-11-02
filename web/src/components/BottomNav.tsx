@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
-import { useGymsWithWalls, useMe } from "../lib/hooks/queries";
+import { useMe } from "../lib/hooks/queries";
 import styles from "./BottomNav.module.css";
 
 const LAST_WALL_KEY = "spraywall:last-visited-wall";
-function lastWall(): { wallId: string; gymSlug: string; name: string } | null {
+function lastWall(): { wallId: string; name: string } | null {
   try { return JSON.parse(localStorage.getItem(LAST_WALL_KEY) ?? "null"); } catch { return null; }
 }
 
@@ -13,7 +13,6 @@ export default function BottomNav() {
   const navigate = useNavigate();
   const pathname = location.pathname.replace(/\/+$/, "") || "/";
   const wallMatch = /^\/walls\/([^/]+)$/.exec(pathname);
-  const gymsWithWallsQuery = useGymsWithWalls(pathname === "/walls");
   const profile = useMe();
   const [showActions, setShowActions] = useState(false);
   const [wall, setWall] = useState(lastWall);
@@ -38,11 +37,10 @@ export default function BottomNav() {
     (pathname.startsWith("/walls/") && new URLSearchParams(location.search).get("mode") === "create") ||
     (pathname.startsWith("/walls/") && new URLSearchParams(location.search).has("editRouteId"));
   if (hide || wallImmersive) return null;
-  const routeForWall = `/walls/${wall?.wallId ?? ""}?gymSlug=${encodeURIComponent(wall?.gymSlug ?? "")}`;
+  const routeForWall = `/walls/${wall?.wallId ?? ""}`;
   const handleCreateClick = () => {
     if (wallMatch) {
-      const gymSlug = new URLSearchParams(location.search).get("gymSlug") || wall?.gymSlug || "";
-      navigate(`/walls/${wallMatch[1]}?${new URLSearchParams({ gymSlug, mode: "create" })}`);
+      navigate(`/walls/${wallMatch[1]}?mode=create`);
       return;
     }
     setShowActions(true);
@@ -53,21 +51,13 @@ export default function BottomNav() {
       <NavLink to="/walls" className={({ isActive }) => `${styles.item} ${isActive ? styles.active : ""}`}><Icon type="wall"/><span>Walls</span></NavLink>
       <NavLink to="/logbook" className={({ isActive }) => `${styles.item} ${isActive ? styles.active : ""}`}><Icon type="book"/><span>Logbook</span></NavLink>
       <button type="button" className={styles.add} aria-label={wallMatch ? "Create a climb" : "Create"} onClick={handleCreateClick}><Icon type="plus"/></button>
-      {wall ? <NavLink to={`/circuits?wallId=${encodeURIComponent(wall.wallId)}&gymSlug=${encodeURIComponent(wall.gymSlug)}`} className={({ isActive }) => `${styles.item} ${isActive ? styles.active : ""}`}><Icon type="circuit"/><span>Circuits</span></NavLink> : <button type="button" className={`${styles.item} ${styles.disabled}`} disabled><Icon type="circuit"/><span>Circuits</span></button>}
+      {wall ? <NavLink to={`/circuits?wallId=${encodeURIComponent(wall.wallId)}`} className={({ isActive }) => `${styles.item} ${isActive ? styles.active : ""}`}><Icon type="circuit"/><span>Circuits</span></NavLink> : <button type="button" className={`${styles.item} ${styles.disabled}`} disabled><Icon type="circuit"/><span>Circuits</span></button>}
       <NavLink to="/profile" className={({ isActive }) => `${styles.item} ${isActive ? styles.active : ""}`}>{avatar ? <img className={styles.avatar} src={avatar} alt=""/> : <Icon type="profile"/>}<span>Profile</span></NavLink>
     </nav>
     {showActions && <div className={styles.overlay} onClick={() => setShowActions(false)}><section className={styles.sheet} role="dialog" aria-modal="true" aria-label="Create" onClick={e => e.stopPropagation()}>
       <div className={styles.grabber}/>
-      {pathname === "/walls" ? <>
-        {(gymsWithWallsQuery.data ?? [])
-          .filter(gym => gym.user_role === "admin" || gym.user_role === "setter")
-          .map(gym => <Link key={gym.id} to={`/walls?${new URLSearchParams({ create: "wall", gymSlug: gym.slug })}`} onClick={() => setShowActions(false)}>Add wall to {gym.name}</Link>)}
-        <Link to="/walls?create=gym" onClick={() => setShowActions(false)}>Add gym</Link>
-      </> : <>
-        {wall && <Link to={`${routeForWall}&mode=create`} onClick={() => setShowActions(false)}>New climb on {wall.name}</Link>}
-        <Link to="/walls" onClick={() => setShowActions(false)}>Add wall</Link>
-        <Link to="/walls?create=gym" onClick={() => setShowActions(false)}>Add gym</Link>
-      </>}
+      {pathname !== "/walls" && wall && <Link to={`${routeForWall}?mode=create`} onClick={() => setShowActions(false)}>New climb on {wall.name}</Link>}
+      {(profile.data?.role === "admin" || profile.data?.role === "setter") && <Link to="/walls?create=wall" onClick={() => setShowActions(false)}>Add wall</Link>}
       <button type="button" onClick={() => setShowActions(false)}>Cancel</button>
     </section></div>}
   </>;

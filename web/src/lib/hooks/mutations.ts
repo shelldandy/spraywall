@@ -7,7 +7,6 @@ import { useAuthStore } from "../store/auth";
 import { toastError } from "../toast";
 
 export async function uploadWallImage(
-  gymSlug: string,
   wallId: string,
   image: Blob,
   mode: "full" | "partial" = "full",
@@ -20,7 +19,7 @@ export async function uploadWallImage(
   const form = new FormData();
   form.append("image", prepared, prepared instanceof File ? prepared.name : "photo.jpg");
   form.append("mode", mode);
-  return apiFetch(`/gyms/${gymSlug}/walls/${wallId}/images`, {
+  return apiFetch(`/walls/${wallId}/images`, {
     method: "POST",
     body: form,
   });
@@ -39,7 +38,6 @@ function invalidateResetQueries(
 }
 
 function useResetMutation<T>(
-  gymSlug: string,
   wallId: string,
   imageId: string,
   action: string,
@@ -52,7 +50,7 @@ function useResetMutation<T>(
       if (variables) request.body = JSON.stringify(variables);
 
       const response = await apiFetch(
-        `/gyms/${gymSlug}/walls/${wallId}/resets/${imageId}${action}`,
+        `/walls/${wallId}/resets/${imageId}${action}`,
         request,
       );
       await ensureOkJson(response, "Reset request failed");
@@ -63,16 +61,16 @@ function useResetMutation<T>(
   });
 }
 
-export function useMatchResetHold(gymSlug: string, wallId: string, imageId: string) {
-  return useResetMutation<void>(gymSlug, wallId, imageId, "/matches", "PUT");
+export function useMatchResetHold(wallId: string, imageId: string) {
+  return useResetMutation<void>(wallId, imageId, "/matches", "PUT");
 }
 
-export function useDeleteResetHold(gymSlug: string, wallId: string, imageId: string) {
+export function useDeleteResetHold(wallId: string, imageId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: async (holdId) => {
       const response = await apiFetch(
-        `/gyms/${gymSlug}/walls/${wallId}/resets/${imageId}/holds/${holdId}`,
+        `/walls/${wallId}/resets/${imageId}/holds/${holdId}`,
         { method: "DELETE" },
       );
       await ensureOkJson(response, "Could not delete hold");
@@ -82,16 +80,16 @@ export function useDeleteResetHold(gymSlug: string, wallId: string, imageId: str
   });
 }
 
-export function useRestoreResetHold(gymSlug: string, wallId: string, imageId: string) {
-  return useResetMutation<void>(gymSlug, wallId, imageId, "/restore", "POST");
+export function useRestoreResetHold(wallId: string, imageId: string) {
+  return useResetMutation<void>(wallId, imageId, "/restore", "POST");
 }
 
-export function useApplyReset(gymSlug: string, wallId: string, imageId: string) {
-  return useResetMutation<{ kept: number; archived: number }>(gymSlug, wallId, imageId, "/apply", "POST");
+export function useApplyReset(wallId: string, imageId: string) {
+  return useResetMutation<{ kept: number; archived: number }>(wallId, imageId, "/apply", "POST");
 }
 
-export function useDiscardReset(gymSlug: string, wallId: string, imageId: string) {
-  return useResetMutation<void>(gymSlug, wallId, imageId, "", "DELETE");
+export function useDiscardReset(wallId: string, imageId: string) {
+  return useResetMutation<void>(wallId, imageId, "", "DELETE");
 }
 
 export interface RouteParams {
@@ -125,11 +123,11 @@ function invalidateClimbData(queryClient: ReturnType<typeof useQueryClient>, rou
   queryClient.invalidateQueries({ queryKey: ["logbook"] });
 }
 
-export function useCreateClimbLog(gymSlug: string, wallId: string, routeId: string) {
+export function useCreateClimbLog(wallId: string, routeId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, ClimbLogInput>({
     mutationFn: async (input) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/logs`, {
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}/logs`, {
         method: "POST", body: JSON.stringify(input),
       });
       await ensureOkJson(res, "Failed to log climb");
@@ -138,11 +136,11 @@ export function useCreateClimbLog(gymSlug: string, wallId: string, routeId: stri
   });
 }
 
-export function useUpdateClimbLog(gymSlug: string, wallId: string, routeId: string) {
+export function useUpdateClimbLog(wallId: string, routeId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, ClimbLogInput & { logId: string }>({
     mutationFn: async ({ logId, ...input }) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/logs/${logId}`, {
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}/logs/${logId}`, {
         method: "PUT", body: JSON.stringify(input),
       });
       await ensureOkJson(res, "Failed to update climb");
@@ -151,22 +149,22 @@ export function useUpdateClimbLog(gymSlug: string, wallId: string, routeId: stri
   });
 }
 
-export function useDeleteClimbLog(gymSlug: string, wallId: string, routeId: string) {
+export function useDeleteClimbLog(wallId: string, routeId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: async (logId) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/logs/${logId}`, { method: "DELETE" });
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}/logs/${logId}`, { method: "DELETE" });
       await ensureOkJson(res, "Failed to delete log entry");
     },
     onSuccess: () => invalidateClimbData(queryClient, routeId, wallId),
   });
 }
 
-export function useCreateBetaVideo(gymSlug: string, wallId: string, routeId: string) {
+export function useCreateBetaVideo(wallId: string, routeId: string) {
   const queryClient = useQueryClient();
   return useMutation<BetaVideo, Error, { url: string; climber_handle?: string }>({
     mutationFn: async (input) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/beta-videos`, {
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}/beta-videos`, {
         method: "POST",
         body: JSON.stringify(input),
       });
@@ -182,11 +180,11 @@ export function useCreateBetaVideo(gymSlug: string, wallId: string, routeId: str
   });
 }
 
-export function useDeleteBetaVideo(gymSlug: string, wallId: string, routeId: string) {
+export function useDeleteBetaVideo(wallId: string, routeId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: async (videoId) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/beta-videos/${videoId}`, { method: "DELETE" });
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}/beta-videos/${videoId}`, { method: "DELETE" });
       await ensureOkJson(res, "Failed to delete beta video");
     },
     onSuccess: () => {
@@ -198,11 +196,11 @@ export function useDeleteBetaVideo(gymSlug: string, wallId: string, routeId: str
   });
 }
 
-export function useSetRouteRating(gymSlug: string, wallId: string, routeId: string) {
+export function useSetRouteRating(wallId: string, routeId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, number>({
     mutationFn: async (stars) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/rating`, { method: "PUT", body: JSON.stringify({ stars }) });
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}/rating`, { method: "PUT", body: JSON.stringify({ stars }) });
       await ensureOkJson(res, "Failed to save rating");
     },
     onSuccess: () => {
@@ -212,11 +210,11 @@ export function useSetRouteRating(gymSlug: string, wallId: string, routeId: stri
   });
 }
 
-export function useDeleteRouteRating(gymSlug: string, wallId: string, routeId: string) {
+export function useDeleteRouteRating(wallId: string, routeId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, void>({
     mutationFn: async () => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}/rating`, { method: "DELETE" });
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}/rating`, { method: "DELETE" });
       await ensureOkJson(res, "Failed to clear rating");
     },
     onSuccess: () => {
@@ -226,12 +224,12 @@ export function useDeleteRouteRating(gymSlug: string, wallId: string, routeId: s
   });
 }
 
-export function useCreateRoute(gymSlug: string, wallId: string) {
+export function useCreateRoute(wallId: string) {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, RouteParams>({
     mutationFn: async (params) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes`, {
+      const res = await apiFetch(`/walls/${wallId}/routes`, {
         method: "POST",
         body: JSON.stringify(params),
       });
@@ -244,13 +242,13 @@ export function useCreateRoute(gymSlug: string, wallId: string) {
   });
 }
 
-export function useUpdateRoute(gymSlug: string, wallId: string, routeId: string) {
+export function useUpdateRoute(wallId: string, routeId: string) {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, RouteParams>({
     mutationFn: async (params) => {
       const res = await apiFetch(
-        `/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}`,
+        `/walls/${wallId}/routes/${routeId}`,
         { method: "PUT", body: JSON.stringify(params) },
       );
       await ensureOk(res, "Failed to update route");
@@ -263,11 +261,11 @@ export function useUpdateRoute(gymSlug: string, wallId: string, routeId: string)
   });
 }
 
-export function useDeleteRoute(gymSlug: string, wallId: string, routeId: string) {
+export function useDeleteRoute(wallId: string, routeId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, void>({
     mutationFn: async () => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/routes/${routeId}`, { method: "DELETE" });
+      const res = await apiFetch(`/walls/${wallId}/routes/${routeId}`, { method: "DELETE" });
       await ensureOkJson(res, "Failed to delete climb");
     },
     onSuccess: () => {
@@ -281,11 +279,11 @@ export function useDeleteRoute(gymSlug: string, wallId: string, routeId: string)
 
 // --- Circuits ---
 
-export function useCreateCircuit(gymSlug: string, wallId: string) {
+export function useCreateCircuit(wallId: string) {
   const queryClient = useQueryClient();
   return useMutation<Circuit, Error, { name: string; color?: string; emoji?: string; is_shared?: boolean; route_ids?: string[] }>({
     mutationFn: async (input) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits`, { method: "POST", body: JSON.stringify(input) });
+      const res = await apiFetch(`/walls/${wallId}/circuits`, { method: "POST", body: JSON.stringify(input) });
       await ensureOkJson(res, "Failed to create circuit");
       return res.json();
     },
@@ -294,11 +292,11 @@ export function useCreateCircuit(gymSlug: string, wallId: string) {
   });
 }
 
-export function useUpdateCircuit(gymSlug: string, wallId: string, circuitId: string) {
+export function useUpdateCircuit(wallId: string, circuitId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, { name?: string; color?: string; emoji?: string; is_shared?: boolean }>({
     mutationFn: async (input) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits/${circuitId}`, { method: "PATCH", body: JSON.stringify(input) });
+      const res = await apiFetch(`/walls/${wallId}/circuits/${circuitId}`, { method: "PATCH", body: JSON.stringify(input) });
       await ensureOkJson(res, "Failed to update circuit");
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["circuits", wallId] }),
@@ -306,11 +304,11 @@ export function useUpdateCircuit(gymSlug: string, wallId: string, circuitId: str
   });
 }
 
-export function useDeleteCircuit(gymSlug: string, wallId: string) {
+export function useDeleteCircuit(wallId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: async (circuitId) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits/${circuitId}`, { method: "DELETE" });
+      const res = await apiFetch(`/walls/${wallId}/circuits/${circuitId}`, { method: "DELETE" });
       await ensureOkJson(res, "Failed to delete circuit");
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["circuits", wallId] }),
@@ -318,11 +316,11 @@ export function useDeleteCircuit(gymSlug: string, wallId: string) {
   });
 }
 
-export function useSetCircuitRoutes(gymSlug: string, wallId: string, circuitId: string) {
+export function useSetCircuitRoutes(wallId: string, circuitId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string[]>({
     mutationFn: async (route_ids) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits/${circuitId}/routes`, { method: "PUT", body: JSON.stringify({ route_ids }) });
+      const res = await apiFetch(`/walls/${wallId}/circuits/${circuitId}/routes`, { method: "PUT", body: JSON.stringify({ route_ids }) });
       await ensureOkJson(res, "Failed to save circuit routes");
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["circuits", wallId] }),
@@ -330,11 +328,11 @@ export function useSetCircuitRoutes(gymSlug: string, wallId: string, circuitId: 
   });
 }
 
-export function useToggleCircuitRoute(gymSlug: string, wallId: string, circuitId: string) {
+export function useToggleCircuitRoute(wallId: string, circuitId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, { route_id: string; included: boolean }>({
     mutationFn: async ({ route_id, included }) => {
-      const res = await apiFetch(`/gyms/${gymSlug}/walls/${wallId}/circuits/${circuitId}/routes${included ? "" : `/${route_id}`}`, {
+      const res = await apiFetch(`/walls/${wallId}/circuits/${circuitId}/routes${included ? "" : `/${route_id}`}`, {
         method: included ? "POST" : "DELETE",
         ...(included ? { body: JSON.stringify({ route_id }) } : {}),
       });
