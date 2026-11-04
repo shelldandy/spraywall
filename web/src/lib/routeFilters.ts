@@ -70,6 +70,30 @@ export function writeRouteSort(params: URLSearchParams, sort: RouteSort): URLSea
   return params;
 }
 
+export const ROUTE_LIST_KEYS = ["tag", "minGrade", "maxGrade", "progress", "minStars", "circuit", "beta", "sort"] as const;
+const LIST_STATE_KEY = (wallId: string) => `spraywall:route-list:${wallId}`;
+
+export function hasRouteListParams(params: URLSearchParams): boolean {
+  return ROUTE_LIST_KEYS.some((key) => params.has(key));
+}
+
+export function saveRouteListState(wallId: string, params: URLSearchParams): void {
+  const listParams = writeRouteSort(
+    writeRouteFilters(new URLSearchParams(), parseRouteFilters(params)),
+    parseRouteSort(params),
+  );
+  try { sessionStorage.setItem(LIST_STATE_KEY(wallId), listParams.toString()); } catch { /* storage unavailable */ }
+}
+
+export function loadRouteListState(wallId: string): URLSearchParams | null {
+  try {
+    const stored = sessionStorage.getItem(LIST_STATE_KEY(wallId));
+    return stored === null ? null : new URLSearchParams(stored);
+  } catch {
+    return null;
+  }
+}
+
 /** Sort by V-grade while keeping equal and ungraded routes in their existing relative order. */
 export function sortRoutes<T extends { grade: string | null }>(routes: readonly T[], sort: RouteSort): T[] {
   if (sort === "newest") return [...routes];

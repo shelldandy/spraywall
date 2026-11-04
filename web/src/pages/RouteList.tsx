@@ -8,7 +8,7 @@ import RouteTags from "../components/RouteTags";
 import type { Circuit, Hold, Route } from "../lib/api/types";
 import { getGradeColorStyle, getVGradeRank, uniqueVGrades } from "../lib/grades";
 import { circuitColor } from "../lib/circuitStyle";
-import { applyCircuit, parseRouteFilters, writeRouteFilters, matchesRouteFilters, hasRouteFilters, parseRouteSort, writeRouteSort, sortRoutes, type ProgressFilter, type RouteFilters, type RouteSort } from "../lib/routeFilters";
+import { applyCircuit, parseRouteFilters, writeRouteFilters, matchesRouteFilters, hasRouteFilters, parseRouteSort, writeRouteSort, sortRoutes, hasRouteListParams, loadRouteListState, ROUTE_LIST_KEYS, saveRouteListState, type ProgressFilter, type RouteFilters, type RouteSort } from "../lib/routeFilters";
 import type { RouteTagId } from "../lib/routeTags";
 import styles from "./RouteList.module.css";
 
@@ -82,12 +82,28 @@ export default function RouteList({
   const [sortOpen, setSortOpen] = useState(false);
   const filtersTriggerRef = useRef<HTMLButtonElement>(null);
   const sortTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoredWallIdsRef = useRef(new Set<string>());
+  const skipSaveWallIdRef = useRef<string | null>(null);
   const filters = parseRouteFilters(searchParams);
   const sort = parseRouteSort(searchParams);
   const { tags: selectedTags, minGrade, maxGrade, progress, minStars, hasBeta } = filters;
   const minRank = minGrade === null ? null : getVGradeRank(minGrade);
   const gradeOptions = uniqueVGrades();
   const hasGradeFilter = minGrade !== null || maxGrade !== null;
+
+  useEffect(() => {
+    if (restoredWallIdsRef.current.has(wallId)) return;
+    restoredWallIdsRef.current.add(wallId);
+    if (hasRouteListParams(searchParams)) return;
+    const restored = loadRouteListState(wallId);
+    if (!restored?.toString()) return;
+    const merged = new URLSearchParams(searchParams);
+    for (const key of ROUTE_LIST_KEYS) {
+      for (const value of restored.getAll(key)) merged.append(key, value);
+    }
+    skipSaveWallIdRef.current = wallId;
+    setSearchParams(merged, { replace: true });
+  }, [wallId, searchParams, setSearchParams]);
 
   useEffect(() => {
     const currentFilters = parseRouteFilters(searchParams);
@@ -106,6 +122,15 @@ export default function RouteList({
     const canonical = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, circuit: null });
     setSearchParams(canonical, { replace: true });
   }, [circuitsLoaded, filters, activeCircuit, searchParams, setSearchParams]);
+  useEffect(() => {
+    if (!restoredWallIdsRef.current.has(wallId)) return;
+    if (skipSaveWallIdRef.current === wallId) {
+      skipSaveWallIdRef.current = null;
+      return;
+    }
+    skipSaveWallIdRef.current = null;
+    saveRouteListState(wallId, searchParams);
+  }, [wallId, searchParams]);
   const circuitRoutes = activeCircuit ? applyCircuit(routes, activeCircuit.route_ids) : routes;
   const matchingRoutes = sortRoutes(circuitRoutes.filter((route) => matchesRouteFilters(route, filters)), sort);
   const hasActiveFilters = hasRouteFilters(filters);

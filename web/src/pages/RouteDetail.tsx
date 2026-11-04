@@ -120,12 +120,11 @@ export default function RouteDetailPage() {
 
   const fallbackParams = new URLSearchParams(params);
   fallbackParams.delete("wallId");
-  fallbackParams.delete("circuit");
   fallbackParams.delete("from");
   fallbackParams.delete("gymSlug");
   fallbackParams.delete("tag");
   for (const tag of parseRouteTags(params.getAll("tag"))) fallbackParams.append("tag", tag);
-  const backUrl = params.has("circuit")
+  const backUrl = params.get("from") === "circuits"
     ? `/circuits?${new URLSearchParams({ wallId })}`
     : params.get("from") === "logbook"
       ? "/logbook"

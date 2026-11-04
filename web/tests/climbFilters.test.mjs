@@ -1,10 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canFlash, deriveProgress, formatCalendarDate, localCalendarDate } from "../src/lib/climbLogs.ts";
-import { hasRouteFilters, matchesRouteFilters, parseRouteFilters, writeRouteFilters, parseRouteSort, writeRouteSort, sortRoutes } from "../src/lib/routeFilters.ts";
+import { hasRouteFilters, hasRouteListParams, loadRouteListState, matchesRouteFilters, parseRouteFilters, parseRouteSort, ROUTE_LIST_KEYS, saveRouteListState, sortRoutes, writeRouteFilters, writeRouteSort } from "../src/lib/routeFilters.ts";
 
 function route(overrides = {}) {
   return { grade: "V4", tags: ["crimpy"], progress: "not_tried", has_sent: false, rating_average: null, rating_count: 0, ...overrides };
+}
+
+function withSessionStorage(storage, callback) {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: storage });
+  try {
+    callback();
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "sessionStorage", descriptor);
+    else delete globalThis.sessionStorage;
+  }
+}
+
+function mapSessionStorage() {
+  const values = new Map();
+  return { values, getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
 }
 
 test("derives progress from outcomes and keeps Flash a first activity", () => {
@@ -91,4 +107,35 @@ test("route sort URL state normalizes valid values and falls back to newest", ()
   assert.equal(params.has("sort"), false);
   assert.equal(params.get("wallId"), "w");
   assert.equal(writeRouteSort(new URLSearchParams(), "grade_asc").get("sort"), "grade_asc");
+});
+
+test("route list state round-trips only list parameters", () => {
+  const storage = mapSessionStorage();
+  withSessionStorage(storage, () => {
+    const params = new URLSearchParams("tag=crimpy&tag=pinchy&minGrade=V2&maxGrade=V5&progress=projects&minStars=4&circuit=c-1&beta=1&sort=grade_desc&wallId=w&view=activity&gymSlug=gym");
+    saveRouteListState("w", params);
+    const loaded = loadRouteListState("w");
+    assert.ok(loaded);
+    assert.deepEqual([...new Set(loaded.keys())].sort(), [...ROUTE_LIST_KEYS].sort());
+    assert.deepEqual(loaded.getAll("tag"), ["crimpy", "pinchy"]);
+    assert.equal(loaded.get("sort"), "grade_desc");
+    assert.equal(loaded.has("wallId"), false);
+    assert.equal(loaded.has("view"), false);
+    assert.equal(loaded.has("gymSlug"), false);
+    saveRouteListState("w", new URLSearchParams("wallId=w&view=activity"));
+    assert.equal(storage.values.get("spraywall:route-list:w"), "");
+    assert.equal(loadRouteListState("w")?.toString(), "");
+  });
+});
+
+test("route list state load handles missing and unavailable storage", () => {
+  withSessionStorage(mapSessionStorage(), () => assert.equal(loadRouteListState("missing"), null));
+  withSessionStorage({ getItem() { throw new Error("storage unavailable"); } }, () => {
+    assert.equal(loadRouteListState("w"), null);
+  });
+});
+
+test("hasRouteListParams recognizes every list key only", () => {
+  for (const key of ROUTE_LIST_KEYS) assert.equal(hasRouteListParams(new URLSearchParams(`${key}=x`)), true, key);
+  assert.equal(hasRouteListParams(new URLSearchParams("wallId=w&view=activity&gymSlug=gym")), false);
 });
