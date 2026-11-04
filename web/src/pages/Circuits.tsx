@@ -77,7 +77,7 @@ function CircuitCard({ circuit, wallId, routes, circuitsFresh, onDelete }: { cir
     }
   };
   const startRoute = draft.map((id) => routeById.get(id)).find(Boolean);
-  const climbParams = new URLSearchParams({ wallId, circuit: circuit.id });
+  const climbParams = new URLSearchParams({ wallId, circuit: circuit.id, from: "circuits" });
   return <section className={styles.card} style={{ borderLeftColor: circuitColor(circuit.color) }}>
     <header className={styles.cardHeader}>
       <div><h2><CircuitBadge circuit={circuit} /></h2>{!isOwner && <p>Shared by {circuit.creator_name}</p>}</div>
