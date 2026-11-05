@@ -4,6 +4,7 @@ import type { Hold, HoldRoles } from "../lib/api/types";
 interface HoldOverlayProps {
   holds: Hold[];
   selectedIds: Set<string>;
+  disabledIds?: ReadonlySet<string>;
   onToggle: (holdId: string) => void;
   mode?: "select" | "view" | "edit";
   holdRoles?: HoldRoles | null;
@@ -59,6 +60,7 @@ function getHoldColor(
 export default function HoldOverlay({
   holds,
   selectedIds,
+  disabledIds,
   onToggle,
   mode = "select",
   holdRoles,
@@ -102,6 +104,7 @@ export default function HoldOverlay({
       )}
       {holds.map((hold) => {
         const isSelected = selectedIds.has(hold.id);
+        const isDisabled = !isSelected && (disabledIds?.has(hold.id) ?? false);
         const colors = getHoldColor(
           hold.id,
           isSelected,
@@ -115,10 +118,11 @@ export default function HoldOverlay({
           stroke: colors.stroke,
           strokeWidth: 2,
           vectorEffect: "non-scaling-stroke" as const,
-          style: { cursor: "pointer" },
+          "aria-disabled": isDisabled || undefined,
+          style: { cursor: isDisabled ? "default" : "pointer", opacity: isDisabled ? 0.25 : undefined },
           onClick: (e: MouseEvent) => {
             e.stopPropagation();
-            onToggle(hold.id);
+            if (!isDisabled) onToggle(hold.id);
           },
         };
 

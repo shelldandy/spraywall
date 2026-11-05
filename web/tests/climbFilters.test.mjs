@@ -38,7 +38,7 @@ test("formats date-only values without shifting calendar day", () => {
 });
 
 test("combines grade, style, progress, and unrounded community stars", () => {
-  const filters = { tags: ["crimpy"], minGrade: "V3", maxGrade: "V5", progress: "projects", minStars: 4, circuit: null, hasBeta: false };
+  const filters = { tags: ["crimpy"], holds: [], minGrade: "V3", maxGrade: "V5", progress: "projects", minStars: 4, circuit: null, hasBeta: false };
   assert.equal(matchesRouteFilters(route({ progress: "projects", rating_average: 4.01 }), filters), true);
   assert.equal(matchesRouteFilters(route({ progress: "projects", rating_average: 3.99 }), filters), false);
   assert.equal(matchesRouteFilters(route({ progress: "projects", rating_average: null }), filters), false);
@@ -51,7 +51,7 @@ test("combines grade, style, progress, and unrounded community stars", () => {
 test("normalizes malformed and repeated URL values while preserving unrelated params", () => {
   const params = new URLSearchParams("tag=crimpy&tag=bad&tag=crimpy&minGrade=v5&maxGrade=V3&progress=bogus&progress=projects&minStars=9&minStars=4.0&wallId=w&other=value");
   const filters = parseRouteFilters(params);
-  assert.deepEqual(filters, { tags: ["crimpy"], minGrade: "V5", maxGrade: null, progress: "projects", minStars: 4, circuit: null, hasBeta: false });
+  assert.deepEqual(filters, { tags: ["crimpy"], holds: [], minGrade: "V5", maxGrade: null, progress: "projects", minStars: 4, circuit: null, hasBeta: false });
   const normalized = writeRouteFilters(new URLSearchParams(params), filters);
   assert.equal(normalized.getAll("tag").length, 1);
   assert.deepEqual(normalized.getAll("progress"), ["projects"]);
@@ -63,10 +63,34 @@ test("normalizes malformed and repeated URL values while preserving unrelated pa
   assert.equal(hasRouteFilters(parseRouteFilters(new URLSearchParams("sort=grade_asc"))), false);
 });
 
+test("hold filters trim, dedupe, and migrate legacy holdId values", () => {
+  const filters = parseRouteFilters(new URLSearchParams("hold=%20h1%20&hold=&hold=h1&holdId=h2&holdId=h1&holdId=%20"));
+  assert.deepEqual(filters.holds, ["h1", "h2"]);
+  const normalized = writeRouteFilters(new URLSearchParams("hold=h1&holdId=h2&wallId=w"), filters);
+  assert.deepEqual(normalized.getAll("hold"), ["h1", "h2"]);
+  assert.equal(normalized.has("holdId"), false);
+  assert.equal(normalized.get("wallId"), "w");
+  assert.deepEqual(parseRouteFilters(normalized).holds, ["h1", "h2"]);
+});
+
+test("hold filters match routes using every selected hold", () => {
+  const filters = parseRouteFilters(new URLSearchParams("hold=h1&hold=h2"));
+  assert.equal(matchesRouteFilters(route({ hold_ids: ["h1", "h2", "h3"] }), filters), true);
+  assert.equal(matchesRouteFilters(route({ hold_ids: ["h1"] }), filters), false);
+  assert.equal(matchesRouteFilters(route({ hold_ids: ["h1", "h2"], active_hold_ids: ["h2"] }), filters), false);
+  assert.equal(matchesRouteFilters(route({ hold_ids: ["h1"], active_hold_ids: ["h1", "h2"] }), filters), true);
+  assert.equal(matchesRouteFilters(route({ hold_ids: ["h1", "h2"], active_hold_ids: [] }), filters), false);
+});
+
+test("holds alone count as an active route filter", () => {
+  assert.equal(hasRouteFilters(parseRouteFilters(new URLSearchParams("hold=h1"))), true);
+  assert.equal(hasRouteFilters(parseRouteFilters(new URLSearchParams())), false);
+});
+
 test("Any rating includes unrated climbs, but active minimum excludes them", () => {
   const unrated = route({ rating_average: null });
   assert.equal(matchesRouteFilters(unrated, parseRouteFilters(new URLSearchParams())), true);
-  assert.equal(matchesRouteFilters(unrated, { tags: [], minGrade: null, maxGrade: null, progress: null, minStars: 1, circuit: null, hasBeta: false }), false);
+  assert.equal(matchesRouteFilters(unrated, { tags: [], holds: [], minGrade: null, maxGrade: null, progress: null, minStars: 1, circuit: null, hasBeta: false }), false);
 });
 
 test("beta filter matches only routes with a reported video count", () => {
@@ -112,12 +136,13 @@ test("route sort URL state normalizes valid values and falls back to newest", ()
 test("route list state round-trips only list parameters", () => {
   const storage = mapSessionStorage();
   withSessionStorage(storage, () => {
-    const params = new URLSearchParams("tag=crimpy&tag=pinchy&minGrade=V2&maxGrade=V5&progress=projects&minStars=4&circuit=c-1&beta=1&sort=grade_desc&wallId=w&view=activity&gymSlug=gym");
+    const params = new URLSearchParams("tag=crimpy&tag=pinchy&hold=h1&hold=h2&minGrade=V2&maxGrade=V5&progress=projects&minStars=4&circuit=c-1&beta=1&sort=grade_desc&wallId=w&view=activity&gymSlug=gym");
     saveRouteListState("w", params);
     const loaded = loadRouteListState("w");
     assert.ok(loaded);
     assert.deepEqual([...new Set(loaded.keys())].sort(), [...ROUTE_LIST_KEYS].sort());
     assert.deepEqual(loaded.getAll("tag"), ["crimpy", "pinchy"]);
+    assert.deepEqual(loaded.getAll("hold"), ["h1", "h2"]);
     assert.equal(loaded.get("sort"), "grade_desc");
     assert.equal(loaded.has("wallId"), false);
     assert.equal(loaded.has("view"), false);

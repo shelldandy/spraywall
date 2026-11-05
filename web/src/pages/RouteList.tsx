@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import HoldOverlay from "../components/HoldOverlay";
+import WallImage from "../components/WallImage";
 import RouteTagPicker from "../components/RouteTagPicker";
 import FilterDrawer from "../components/FilterDrawer";
 import { CircuitBadge } from "../components/CircuitForm";
@@ -22,6 +23,7 @@ const progressChoices: { value: ProgressFilter; label: string }[] = [
 function activeFilterCount(filters: RouteFilters): number {
   return [
     filters.tags.length > 0,
+    filters.holds.length > 0,
     filters.minGrade !== null || filters.maxGrade !== null,
     filters.hasBeta,
     filters.progress !== null,
@@ -123,6 +125,14 @@ export default function RouteList({
     setSearchParams(canonical, { replace: true });
   }, [circuitsLoaded, filters, activeCircuit, searchParams, setSearchParams]);
   useEffect(() => {
+    if (holds.length === 0) return;
+    const availableHoldIds = new Set(holds.map((hold) => hold.id));
+    const nextHolds = filters.holds.filter((id) => availableHoldIds.has(id));
+    if (nextHolds.length === filters.holds.length) return;
+    const canonical = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, holds: nextHolds });
+    setSearchParams(canonical, { replace: true });
+  }, [holds, filters, searchParams, setSearchParams]);
+  useEffect(() => {
     if (!restoredWallIdsRef.current.has(wallId)) return;
     if (skipSaveWallIdRef.current === wallId) {
       skipSaveWallIdRef.current = null;
@@ -132,26 +142,24 @@ export default function RouteList({
     saveRouteListState(wallId, searchParams);
   }, [wallId, searchParams]);
   const circuitRoutes = activeCircuit ? applyCircuit(routes, activeCircuit.route_ids) : routes;
-  const holdId = searchParams.get("holdId");
-  const matchingRoutes = sortRoutes(circuitRoutes.filter((route) => matchesRouteFilters(route, filters) && (!holdId || (route.active_hold_ids ?? route.hold_ids).includes(holdId))), sort);
-  const hasActiveFilters = hasRouteFilters(filters) || Boolean(holdId);
-  const activeFiltersCount = activeFilterCount(filters) + (holdId ? 1 : 0);
+  const usedHoldIds = new Set(routes.flatMap((route) => route.active_hold_ids ?? route.hold_ids));
+  const disabledHoldIds = new Set(holds.filter((hold) => !usedHoldIds.has(hold.id)).map((hold) => hold.id));
+  const matchingRoutes = sortRoutes(circuitRoutes.filter((route) => matchesRouteFilters(route, filters)), sort);
+  const hasActiveFilters = hasRouteFilters(filters);
+  const activeFiltersCount = activeFilterCount(filters);
   const updateFilters = (next: Partial<typeof filters>) => {
     const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, ...next });
     setSearchParams(nextParams, { replace: true });
   };
   const updateTags = (tags: readonly RouteTagId[]) => updateFilters({ tags: [...tags] });
+  const toggleHold = (id: string) => {
+    updateFilters({ holds: filters.holds.includes(id) ? filters.holds.filter((holdId) => holdId !== id) : [...filters.holds, id] });
+  };
   const updateSort = (nextSort: RouteSort) => {
     setSearchParams(writeRouteSort(new URLSearchParams(searchParams), nextSort), { replace: true });
   };
   const clearFilters = () => {
-    const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, tags: [], minGrade: null, maxGrade: null, progress: null, minStars: null, circuit: null, hasBeta: false });
-    nextParams.delete("holdId");
-    setSearchParams(nextParams, { replace: true });
-  };
-  const clearHoldFilter = () => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("holdId");
+    const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, tags: [], holds: [], minGrade: null, maxGrade: null, progress: null, minStars: null, circuit: null, hasBeta: false });
     setSearchParams(nextParams, { replace: true });
   };
   const selectGrade = (grade: string) => {
@@ -196,8 +204,20 @@ export default function RouteList({
           Sort: {sortLabel}
         </button>
       </div>
-      {holdId && <div className={styles.holdFilterIndicator} role="status"><span>Hold filter active</span><button type="button" className="btn btn-ghost" onClick={clearHoldFilter}>Clear hold</button></div>}
+      {filters.holds.length > 0 && <div className={styles.holdFilterIndicator} role="status"><span>{filters.holds.length} hold{filters.holds.length === 1 ? "" : "s"} selected ·</span><button type="button" className="btn btn-ghost" onClick={() => updateFilters({ holds: [] })}>Clear holds</button></div>}
       <FilterDrawer open={filtersOpen} title="Filters" onClose={() => setFiltersOpen(false)} onClear={clearFilters} matchingCount={matchingRoutes.length} triggerRef={filtersTriggerRef}>
+        {imageUrl && holds.length > 0 && (
+          <section className={styles.filterSection}>
+            <h3 className={styles.filterSectionTitle}>Holds</h3>
+            <p className={styles.gradeHelper}>Shows climbs that use every selected hold. Dimmed holds have no climbs.</p>
+            <div className={styles.holdPicker}>
+              <WallImage src={imageUrl} fitContainer>
+                <HoldOverlay holds={holds} selectedIds={new Set(filters.holds)} disabledIds={disabledHoldIds} onToggle={toggleHold} mode="select" />
+              </WallImage>
+            </div>
+            {filters.holds.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => updateFilters({ holds: [] })}>Clear holds</button>}
+          </section>
+        )}
         <section className={styles.filterSection}>
           <h3 className={styles.filterSectionTitle}>Style</h3>
           <p className={styles.gradeHelper}>Matches any selected tag</p>

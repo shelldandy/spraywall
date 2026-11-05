@@ -5,6 +5,7 @@ import type { Route } from "./api/types.ts";
 export type ProgressFilter = "unsent" | "not_tried" | "projects" | "sent";
 export interface RouteFilters {
   tags: RouteTagId[];
+  holds: string[];
   minGrade: string | null;
   maxGrade: string | null;
   progress: ProgressFilter | null;
@@ -17,6 +18,10 @@ export type RouteSort = "newest" | "grade_asc" | "grade_desc";
 
 const validGrades = new Set(uniqueVGrades().map(({ v }) => v));
 const progressValues = new Set<ProgressFilter>(["unsent", "not_tried", "projects", "sent"]);
+
+function holdIds(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))];
+}
 
 function gradeBound(values: string[]): string | null {
   for (const value of values) {
@@ -36,13 +41,17 @@ export function parseRouteFilters(params: URLSearchParams): RouteFilters {
   const parsedStars = rawStars.map(Number).find((value) => Number.isInteger(value) && value >= 1 && value <= 5);
   const circuit = params.getAll("circuit").find((value) => value.trim().length > 0)?.trim() ?? null;
   const hasBeta = params.getAll("beta").includes("1");
-  return { tags: parseRouteTags(params.getAll("tag")), minGrade, maxGrade, progress, minStars: parsedStars ?? null, circuit, hasBeta };
+  const holds = holdIds([...params.getAll("hold"), ...params.getAll("holdId")]);
+  return { tags: parseRouteTags(params.getAll("tag")), holds, minGrade, maxGrade, progress, minStars: parsedStars ?? null, circuit, hasBeta };
 }
 
 /** Replace only route filter keys and preserve unrelated navigation parameters. */
 export function writeRouteFilters(params: URLSearchParams, filters: RouteFilters): URLSearchParams {
   params.delete("tag");
   for (const tag of parseRouteTags(filters.tags)) params.append("tag", tag);
+  params.delete("hold");
+  params.delete("holdId");
+  for (const hold of holdIds(filters.holds)) params.append("hold", hold);
   params.delete("minGrade");
   if (filters.minGrade) params.set("minGrade", filters.minGrade);
   params.delete("maxGrade");
@@ -70,7 +79,7 @@ export function writeRouteSort(params: URLSearchParams, sort: RouteSort): URLSea
   return params;
 }
 
-export const ROUTE_LIST_KEYS = ["tag", "minGrade", "maxGrade", "progress", "minStars", "circuit", "beta", "sort"] as const;
+export const ROUTE_LIST_KEYS = ["tag", "hold", "minGrade", "maxGrade", "progress", "minStars", "circuit", "beta", "sort"] as const;
 const LIST_STATE_KEY = (wallId: string) => `spraywall:route-list:${wallId}`;
 
 export function hasRouteListParams(params: URLSearchParams): boolean {
@@ -118,11 +127,13 @@ export function matchesRouteFilters(route: Route, filters: RouteFilters): boolea
         : progress === filters.progress);
   const stars = filters.minStars === null || (route.rating_average !== null && route.rating_average !== undefined && route.rating_average >= filters.minStars);
   const betaMatches = !filters.hasBeta || (route.beta_video_count ?? 0) > 0;
-  return gradeMatches && styleMatches && progressMatches && stars && betaMatches;
+  const routeHoldIds = new Set(route.active_hold_ids ?? route.hold_ids);
+  const holdsMatch = filters.holds.every((id) => routeHoldIds.has(id));
+  return gradeMatches && styleMatches && progressMatches && stars && betaMatches && holdsMatch;
 }
 
 export function hasRouteFilters(filters: RouteFilters): boolean {
-  return filters.tags.length > 0 || filters.minGrade !== null || filters.maxGrade !== null
+  return filters.tags.length > 0 || filters.holds.length > 0 || filters.minGrade !== null || filters.maxGrade !== null
     || filters.progress !== null || filters.minStars !== null || filters.circuit !== null || filters.hasBeta;
 }
 
