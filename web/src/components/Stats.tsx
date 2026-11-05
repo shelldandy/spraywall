@@ -319,8 +319,7 @@ export function HoldHeatmap({
                     onClick={() => onSelectHold?.(hold.id)}
                     aria-pressed={hold.id === selectedHoldId}
                   >
-                    Hold {hold.id.slice(0, 8)} ·{" "}
-                    {statsByHold.get(hold.id)?.[metric] ?? 0}
+                    {statsByHold.get(hold.id)?.[metric] ?? 0} {metric}
                   </button>
                 </li>
               ))}
