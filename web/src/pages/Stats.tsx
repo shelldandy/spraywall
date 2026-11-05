@@ -5,8 +5,9 @@ import {
   useHolds,
   useRoutes,
   useWallDetail,
+  useWalls,
 } from "../lib/hooks/queries";
-import { holdCoverage, personalStats } from "../lib/stats";
+import { holdCoverage, personalStats, statsWallChoices } from "../lib/stats";
 import { getVGradeRank } from "../lib/grades";
 import {
   BarChart,
@@ -22,6 +23,7 @@ export default function StatsPage() {
   const wallId = params.get("wallId") ?? undefined;
   const [selectedHoldId, setSelectedHoldId] = useState<string | null>(null);
   const logbook = useLogbook();
+  const walls = useWalls();
   const holds = useHolds(wallId ?? "", Boolean(wallId));
   const routes = useRoutes(wallId ?? "");
   const wall = useWallDetail(wallId ?? "");
@@ -29,11 +31,7 @@ export default function StatsPage() {
   const coverage = wallId
     ? holdCoverage(holds.data ?? [], routes.data ?? [])
     : null;
-  const wallChoices = [
-    ...new Map(
-      (logbook.data ?? []).map((entry) => [entry.wall_id, entry.wall_name]),
-    ).entries(),
-  ].sort((a, b) => a[1].localeCompare(b[1]));
+  const wallChoices = statsWallChoices(walls.data ?? [], logbook.data ?? []);
   const selectWall = (nextWallId?: string) => {
     const next = new URLSearchParams(params);
     if (nextWallId) next.set("wallId", nextWallId);

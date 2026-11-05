@@ -1,5 +1,5 @@
 import { getVGradeRank } from "./grades.ts";
-import type { ClimbLog, Hold, LogbookEntry, Route } from "./api/types";
+import type { ClimbLog, Hold, LogbookEntry, Route, Wall } from "./api/types";
 
 export function heatColor(value: number, max = 4): string {
   if (value <= 0) return "var(--bg-muted)";
@@ -172,6 +172,16 @@ export function personalStats(
     calendar,
     streaks: { current, longest },
   };
+}
+
+export function statsWallChoices(
+  walls: Wall[],
+  entries: Pick<LogbookEntry, "wall_id" | "wall_name">[],
+) {
+  const choices = new Map<string, string>();
+  for (const { wall_id, wall_name } of entries) choices.set(wall_id, wall_name);
+  for (const wall of walls) choices.set(wall.id, wall.name);
+  return [...choices.entries()].sort((a, b) => a[1].localeCompare(b[1]));
 }
 
 export function holdCoverage(holds: Hold[], routes: Route[]) {

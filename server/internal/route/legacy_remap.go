@@ -77,6 +77,95 @@ func remapToActive(ctx context.Context, db generated.DBTX, routeImageID, activeI
 	return mappedIDs, mappedRoles, nil
 }
 
+type activeRouteHolds struct {
+	ids   []uuid.UUID
+	roles json.RawMessage
+}
+
+// remapRoutesToActive resolves a batch of legacy routes using one image-chain
+// walk and one hold-match query, avoiding per-route database round trips.
+func remapRoutesToActive(ctx context.Context, db generated.DBTX, routes []generated.Route, activeImageID uuid.UUID) (map[uuid.UUID]activeRouteHolds, error) {
+	needed := make(map[uuid.UUID]struct{})
+	for _, route := range routes {
+		imageID := uuid.UUID(route.WallImageID.Bytes)
+		if imageID != activeImageID {
+			needed[imageID] = struct{}{}
+		}
+	}
+	if len(needed) == 0 {
+		return nil, nil
+	}
+	if db == nil {
+		return nil, errors.New("database unavailable")
+	}
+
+	chain := []uuid.UUID{activeImageID}
+	indices := map[uuid.UUID]int{activeImageID: 0}
+	delete(needed, activeImageID)
+	for len(needed) > 0 {
+		var parent pgtype.UUID
+		err := db.QueryRow(ctx, `SELECT parent_image_id FROM wall_images WHERE id=$1`, chain[len(chain)-1]).Scan(&parent)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && !parent.Valid) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("load wall image ancestry: %w", err)
+		}
+		parentID := uuid.UUID(parent.Bytes)
+		if _, seen := indices[parentID]; seen {
+			break
+		}
+		indices[parentID] = len(chain)
+		chain = append(chain, parentID)
+		delete(needed, parentID)
+	}
+
+	matchesByImage := make(map[uuid.UUID]map[uuid.UUID]uuid.UUID)
+	if len(chain) > 1 {
+		rows, err := db.Query(ctx, `SELECT wall_image_id,old_hold_id,new_hold_id FROM hold_matches WHERE wall_image_id=ANY($1::uuid[])`, chain[:len(chain)-1])
+		if err != nil {
+			return nil, fmt.Errorf("load hold matches: %w", err)
+		}
+		for rows.Next() {
+			var imageID, oldID, newID uuid.UUID
+			if err := rows.Scan(&imageID, &oldID, &newID); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("read hold match: %w", err)
+			}
+			if matchesByImage[imageID] == nil {
+				matchesByImage[imageID] = make(map[uuid.UUID]uuid.UUID)
+			}
+			matchesByImage[imageID][oldID] = newID
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("read hold matches: %w", err)
+		}
+		rows.Close()
+	}
+
+	result := make(map[uuid.UUID]activeRouteHolds, len(routes))
+	for _, route := range routes {
+		routeID := uuid.UUID(route.ID.Bytes)
+		imageID := uuid.UUID(route.WallImageID.Bytes)
+		index, found := indices[imageID]
+		if !found {
+			result[routeID] = activeRouteHolds{ids: []uuid.UUID{}}
+			continue
+		}
+		ids, roles := uuidIDsFromPg(route.HoldIds), json.RawMessage(route.HoldRoles)
+		var err error
+		for i := index - 1; i >= 0; i-- {
+			ids, roles, err = remapPartialHolds(ids, roles, matchesByImage[chain[i]])
+			if err != nil {
+				return nil, err
+			}
+		}
+		result[routeID] = activeRouteHolds{ids: ids, roles: roles}
+	}
+	return result, nil
+}
+
 func uuidIDsFromPg(ids []pgtype.UUID) []uuid.UUID {
 	result := make([]uuid.UUID, len(ids))
 	for i, id := range ids {

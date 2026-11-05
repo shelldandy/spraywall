@@ -5,6 +5,7 @@ import {
   heatColor,
   holdCoverage,
   personalStats,
+  statsWallChoices,
 } from "../src/lib/stats.ts";
 
 const entry = (id, route, outcome, date, grade = "V2", wall = "w1") => ({
@@ -44,6 +45,26 @@ test("gradeBuckets sorts rows by V grade and puts unknown or ungraded last", () 
     rows[1],
     rows[2],
   ]);
+});
+
+test("statsWallChoices includes zero-log walls and prefers current names", () => {
+  assert.deepEqual(
+    statsWallChoices(
+      [
+        { id: "w1", name: "Current name", created_at: "2025-01-01" },
+        { id: "w2", name: "No logs", created_at: "2025-01-01" },
+      ],
+      [
+        { wall_id: "w1", wall_name: "Old name" },
+        { wall_id: "w3", wall_name: "Logbook only" },
+      ],
+    ),
+    [
+      ["w1", "Current name"],
+      ["w3", "Logbook only"],
+      ["w2", "No logs"],
+    ],
+  );
 });
 
 test("personalStats scopes wall, distinct sent routes, flashes, calendar and weekly streaks", () => {

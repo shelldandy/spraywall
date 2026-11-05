@@ -594,6 +594,24 @@ func TestLegacyRouteRemapAndReactivation(t *testing.T) {
 	if len(detail.ActiveHoldRoles["start"]) != 1 || detail.ActiveHoldRoles["start"][0] != matchedB || len(detail.ActiveHoldRoles["finish"]) != 0 {
 		t.Fatalf("partial role remap: %#v", detail.ActiveHoldRoles)
 	}
+	list := e.request(http.MethodGet, "", e.token, "")
+	var listed []struct {
+		ID              string                 `json:"id"`
+		ActiveHoldIDs   []uuid.UUID            `json:"active_hold_ids"`
+		ActiveHoldRoles map[string][]uuid.UUID `json:"active_hold_roles"`
+	}
+	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &listed) != nil {
+		t.Fatalf("list legacy route: %d %s", list.Code, list.Body)
+	}
+	found := false
+	for _, item := range listed {
+		if item.ID == routeID.String() {
+			found = len(item.ActiveHoldIDs) == 1 && item.ActiveHoldIDs[0] == matchedB && len(item.ActiveHoldRoles["start"]) == 1 && item.ActiveHoldRoles["start"][0] == matchedB
+		}
+	}
+	if !found {
+		t.Fatalf("list did not remap legacy route holds: %s", list.Body)
+	}
 
 	foreign := fmt.Sprintf(`{"name":"Foreign","hold_ids":[%q,%q]}`, e.holdIDs[0], e.holdIDs[1])
 	if rec := e.request(http.MethodPut, routeID.String(), e.token, foreign); rec.Code != http.StatusBadRequest {
@@ -651,6 +669,23 @@ func TestGetRouteRemapsResetChainAndFullReset(t *testing.T) {
 		if len(got.ActiveHoldIDs) != 1 || got.ActiveHoldIDs[0] != holdC || len(got.ActiveRoles["start"]) != 1 || got.ActiveRoles["start"][0] != holdC || len(got.ActiveRoles["finish"]) != 0 {
 			t.Fatalf("chain remap holds=%v roles=%#v", got.ActiveHoldIDs, got.ActiveRoles)
 		}
+		list := e.request(http.MethodGet, "", e.token, "")
+		var listed []struct {
+			ID            string      `json:"id"`
+			ActiveHoldIDs []uuid.UUID `json:"active_hold_ids"`
+		}
+		if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &listed) != nil {
+			t.Fatalf("list chained route: %d %s", list.Code, list.Body)
+		}
+		found := false
+		for _, item := range listed {
+			if item.ID == routeID.String() {
+				found = len(item.ActiveHoldIDs) == 1 && item.ActiveHoldIDs[0] == holdC
+			}
+		}
+		if !found {
+			t.Fatalf("list did not remap chained route holds: %s", list.Body)
+		}
 	})
 
 	t.Run("full reset has no ancestry", func(t *testing.T) {
@@ -671,6 +706,23 @@ func TestGetRouteRemapsResetChainAndFullReset(t *testing.T) {
 		}
 		if !got.IsLegacy || got.ActiveHoldIDs == nil || len(got.ActiveHoldIDs) != 0 {
 			t.Fatalf("full reset remap legacy=%v holds=%v", got.IsLegacy, got.ActiveHoldIDs)
+		}
+		list := e.request(http.MethodGet, "", e.token, "")
+		var listed []struct {
+			ID            string      `json:"id"`
+			ActiveHoldIDs []uuid.UUID `json:"active_hold_ids"`
+		}
+		if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &listed) != nil {
+			t.Fatalf("list full-reset route: %d %s", list.Code, list.Body)
+		}
+		found := false
+		for _, item := range listed {
+			if item.ID == routeID.String() {
+				found = item.ActiveHoldIDs != nil && len(item.ActiveHoldIDs) == 0
+			}
+		}
+		if !found {
+			t.Fatalf("list did not return an empty hold mapping after full reset: %s", list.Body)
 		}
 	})
 }
