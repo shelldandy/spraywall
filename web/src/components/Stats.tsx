@@ -294,7 +294,7 @@ export function HoldHeatmap({
             </p>
           )}
           <Link
-            to={`/walls/${wallId}?holdId=${encodeURIComponent(selected.id)}`}
+            to={`/walls/${wallId}?hold=${encodeURIComponent(selected.id)}`}
           >
             Show routes using this hold
           </Link>

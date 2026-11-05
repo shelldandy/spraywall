@@ -114,6 +114,13 @@
   font-size: 13px;
 }
 
+.holdPicker {
+  height: min(42vh, 360px);
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--bg-muted);
+}
+
 .noMatches {
   display: flex;
   flex-wrap: wrap;
