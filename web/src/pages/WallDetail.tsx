@@ -167,6 +167,8 @@ export default function WallDetailPage() {
       setHoldDeleteError(err instanceof Error ? err.message : "Failed to delete hold");
     } finally {
       queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["wall-stats", wallId] });
       setDeletingHoldId(null);
     }
   };
@@ -194,6 +196,7 @@ export default function WallDetailPage() {
       });
       if (!res.ok) throw new Error("Failed to add hold");
       queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["wall-stats", wallId] });
     } catch (err) {
       toastError(err);
     }
@@ -664,7 +667,10 @@ export default function WallDetailPage() {
               </button>
               <button type="button" className={browseView === "activity" ? styles.viewActive : ""} aria-pressed={browseView === "activity"} onClick={() => setBrowseView("activity")}>Activity</button>
             </div>
-            <Link className={`btn btn-ghost ${styles.manageWallButton}`} to={`/circuits?${new URLSearchParams({ wallId })}`}>Circuits</Link>
+            <div className={styles.browseActions}>
+              <Link className={`btn btn-ghost ${styles.manageWallButton}`} to={`/circuits?${new URLSearchParams({ wallId })}`}>Circuits</Link>
+              <Link className={`btn btn-ghost ${styles.manageWallButton}`} to={`/walls/${wallId}/stats`}>Stats</Link>
+            </div>
           </div>
           {browseView === "activity" ? (
             <ActivityFeed wallId={wallId} showRoute />

@@ -52,6 +52,18 @@ export interface DetectionJob {
   created_at: string;
 }
 
+export interface WallStats {
+  image_id: string | null;
+  totals: { climbs: number; ascents: number; sends: number; flashes: number; climbers: number; holds: number; unused_holds: number };
+  holds: { hold_id: string; climbs: number; ascents: number; start: number; finish: number; foot: number }[];
+  grades: { grade: string | null; climbs: number; sends: number; flashes: number }[];
+  weekly: { week_start: string; ascents: number; climbers: number }[];
+  most_repeated: { route_id: string; name: string; grade: string | null; sends: number }[];
+  top_rated: { route_id: string; name: string; grade: string | null; rating_average: number; rating_count: number }[];
+  unsent: { route_id: string; name: string; grade: string | null; created_at: string }[];
+  setters: { user_id: string; display_name: string; climbs: number }[];
+}
+
 export interface WallDetail {
   wall: Wall;
   image: {

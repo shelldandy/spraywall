@@ -1,0 +1,97 @@
+.page {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.title {
+  font-size: 18px;
+  text-align: center;
+}
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+.tabs a {
+  padding: 7px 12px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.active {
+  background: var(--bg-elevated);
+  color: var(--text) !important;
+  font-weight: 700;
+}
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 8px;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.row:last-child {
+  border: 0;
+}
+.empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.toggle {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-muted);
+  color: var(--text);
+  font: inherit;
+}
+.link {
+  color: var(--accent);
+}
+.loader {
+  display: grid;
+  place-items: center;
+  padding: 40px;
+}
+.wallPicker {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+  scrollbar-width: thin;
+}
+.wallPicker button {
+  flex: 0 0 auto;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-muted);
+  color: var(--text);
+  font: inherit;
+}
+.wallPicker .wallSelected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 700;
+}

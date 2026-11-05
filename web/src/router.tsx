@@ -15,6 +15,8 @@ import ProfilePage from "./pages/Profile";
 import CircuitsPage from "./pages/Circuits";
 import ResetReviewPage from "./pages/ResetReview";
 import WallCameraPage from "./pages/WallCamera";
+import WallStatsPage from "./pages/WallStats";
+import StatsPage from "./pages/Stats";
 
 export const router = createBrowserRouter([
   {
@@ -29,6 +31,7 @@ export const router = createBrowserRouter([
         children: [
           { path: "/walls", element: <WallsPage /> },
           { path: "/walls/:wallId", element: <WallDetailPage /> },
+          { path: "/walls/:wallId/stats", element: <WallStatsPage /> },
           { path: "/walls/:wallId/reset/:imageId", element: <ResetReviewPage /> },
           { path: "/walls/:wallId/camera", element: <WallCameraPage /> },
           { path: "/routes", element: <RoutesPage /> },
@@ -36,6 +39,7 @@ export const router = createBrowserRouter([
           { path: "/routes/create", element: <RouteCreatePage /> },
           { path: "/routes/:routeId", element: <RouteDetailPage /> },
           { path: "/logbook", element: <LogbookPage /> },
+          { path: "/stats", element: <StatsPage /> },
           { path: "/settings", element: <SettingsPage /> },
           { path: "/profile", element: <ProfilePage /> },
           { path: "/invite/:token", element: <InvitePage /> },

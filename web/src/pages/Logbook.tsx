@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import type { LogbookEntry } from "../lib/api/types";
 import { formatCalendarDate } from "../lib/climbLogs";
 import { getGradeColorStyle } from "../lib/grades";
@@ -14,6 +14,7 @@ interface LogbookSection {
 
 export default function LogbookPage() {
   const logbookQuery = useLogbook();
+  const [params] = useSearchParams();
 
   const sections: LogbookSection[] = useMemo(() => {
     const grouped = new Map<string, { title: string; data: LogbookEntry[] }>();
@@ -28,7 +29,10 @@ export default function LogbookPage() {
   return (
     <div className={`screen ${styles.page}`}>
       <header className="header">
-        <div className={styles.side} />
+        <nav className={styles.tabs}>
+          <Link className={styles.activeTab} to="/logbook">Logbook</Link>
+          <Link to={`/stats${params.get("wallId") ? `?wallId=${encodeURIComponent(params.get("wallId")!)}` : ""}`}>Stats</Link>
+        </nav>
         <h1 className={styles.title}>Logbook</h1>
         <div className={styles.side} />
       </header>

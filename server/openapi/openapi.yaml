@@ -956,6 +956,28 @@ paths:
           $ref: "#/components/responses/NotFound"
 
 
+  /walls/{wallId}/stats:
+    get:
+      operationId: getWallStats
+      summary: Get published route and climbing statistics for a wall
+      description: Statistics include only published routes on the active image. Climb counts include all attempt, send, and flash log rows.
+      tags: [Route]
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/wallId"
+      responses:
+        "200":
+          description: Wall statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WallStats"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+
   /walls/{wallId}/activity:
     get:
       operationId: listWallActivity
@@ -1815,6 +1837,99 @@ components:
           required: [id, display_name, avatar_url]
       required: [id, route_id, route_name, route_grade, route_is_legacy, outcome, climbed_on, logged_at, notes, attempts, user]
 
+    WallStats:
+      type: object
+      required: [image_id, totals, holds, grades, weekly, most_repeated, top_rated, unsent, setters]
+      properties:
+        image_id: {type: [string, "null"], format: uuid}
+        totals:
+          type: object
+          required: [climbs, ascents, sends, flashes, climbers, holds, unused_holds]
+          properties:
+            climbs: {type: integer, description: Published routes on the active image.}
+            ascents: {type: integer, description: All climb log rows, including attempts, sends, and flashes.}
+            sends: {type: integer, description: Rows with the send outcome.}
+            flashes: {type: integer}
+            climbers: {type: integer}
+            holds: {type: integer}
+            unused_holds: {type: integer}
+        holds:
+          type: array
+          items:
+            type: object
+            required: [hold_id, climbs, ascents, start, finish, foot]
+            properties:
+              hold_id: {type: string, format: uuid}
+              climbs: {type: integer, description: Published route memberships for this hold.}
+              ascents: {type: integer, description: Climb log rows across those routes.}
+              start: {type: integer}
+              finish: {type: integer}
+              foot: {type: integer}
+        grades:
+          type: array
+          items:
+            type: object
+            required: [grade, climbs, sends, flashes]
+            properties:
+              grade: {type: [string, "null"]}
+              climbs: {type: integer}
+              sends: {type: integer}
+              flashes: {type: integer}
+        weekly:
+          type: array
+          description: The last 12 ISO weeks, including weeks with no activity.
+          items:
+            type: object
+            required: [week_start, ascents, climbers]
+            properties:
+              week_start: {type: string, format: date}
+              ascents: {type: integer, description: Climb log rows, including attempts, sends, and flashes.}
+              climbers: {type: integer}
+        most_repeated:
+          type: array
+          description: Up to five routes with the most successful send logs, including flashes.
+          items:
+            $ref: "#/components/schemas/WallStatsRouteSends"
+        top_rated:
+          type: array
+          description: Up to five routes with at least two ratings, ranked by average rating.
+          items:
+            type: object
+            required: [route_id, name, grade, rating_average, rating_count]
+            properties:
+              route_id: {type: string, format: uuid}
+              name: {type: string}
+              grade: {type: [string, "null"]}
+              rating_average: {type: number}
+              rating_count: {type: integer}
+        unsent:
+          type: array
+          description: Up to ten newest routes without a send or flash.
+          items:
+            type: object
+            required: [route_id, name, grade, created_at]
+            properties:
+              route_id: {type: string, format: uuid}
+              name: {type: string}
+              grade: {type: [string, "null"]}
+              created_at: {type: string, format: date-time}
+        setters:
+          type: array
+          items:
+            type: object
+            required: [user_id, display_name, climbs]
+            properties:
+              user_id: {type: string, format: uuid}
+              display_name: {type: string}
+              climbs: {type: integer}
+    WallStatsRouteSends:
+      type: object
+      required: [route_id, name, grade, sends]
+      properties:
+        route_id: {type: string, format: uuid}
+        name: {type: string}
+        grade: {type: [string, "null"]}
+        sends: {type: integer, description: Successful send and flash log rows.}
     ActivityPage:
       type: object
       properties:

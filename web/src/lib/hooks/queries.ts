@@ -12,6 +12,7 @@ import type {
   ResetDiff,
   ActivityPage,
   BetaVideoList,
+  WallStats,
 } from "../api/types";
 import { useAuthStore } from "../store/auth";
 import { useWalls } from "./walls";
@@ -51,6 +52,18 @@ export function useResetDiff(wallId?: string, imageId?: string) {
     },
     enabled: Boolean(wallId && imageId),
     refetchInterval: (query) => isDetecting(query.state.data?.detection_status) ? POLL_INTERVAL_MS : false,
+  });
+}
+
+export function useWallStats(wallId: string) {
+  return useQuery<WallStats>({
+    queryKey: ["wall-stats", wallId],
+    queryFn: async () => {
+      const res = await apiFetch(`/walls/${wallId}/stats`);
+      if (!res.ok) throw new Error("Failed to fetch wall stats");
+      return res.json();
+    },
+    enabled: Boolean(wallId),
   });
 }
 

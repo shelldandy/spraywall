@@ -13,6 +13,7 @@ export default function BottomNav() {
   const navigate = useNavigate();
   const pathname = location.pathname.replace(/\/+$/, "") || "/";
   const wallMatch = /^\/walls\/([^/]+)$/.exec(pathname);
+  const wallStats = /^\/walls\/[^/]+\/stats$/.test(pathname);
   const profile = useMe();
   const [showActions, setShowActions] = useState(false);
   const [wall, setWall] = useState(lastWall);
@@ -31,7 +32,7 @@ export default function BottomNav() {
       window.removeEventListener("spraywall:last-visited-wall", syncLastWall);
     };
   }, []);
-  const hide = pathname === "/settings" ||
+  const hide = wallStats || pathname === "/settings" ||
     pathname.startsWith("/routes/") || pathname === "/routes" ||
     pathname === "/invite" || pathname.startsWith("/invite/") ||
     (pathname.startsWith("/walls/") && new URLSearchParams(location.search).get("mode") === "create") ||

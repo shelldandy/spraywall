@@ -101,6 +101,19 @@
   .gradeOptions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
+.holdFilterIndicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 12px 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 13px;
+}
+
 .noMatches {
   display: flex;
   flex-wrap: wrap;

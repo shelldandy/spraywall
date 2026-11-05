@@ -132,9 +132,10 @@ export default function RouteList({
     saveRouteListState(wallId, searchParams);
   }, [wallId, searchParams]);
   const circuitRoutes = activeCircuit ? applyCircuit(routes, activeCircuit.route_ids) : routes;
-  const matchingRoutes = sortRoutes(circuitRoutes.filter((route) => matchesRouteFilters(route, filters)), sort);
-  const hasActiveFilters = hasRouteFilters(filters);
-  const activeFiltersCount = activeFilterCount(filters);
+  const holdId = searchParams.get("holdId");
+  const matchingRoutes = sortRoutes(circuitRoutes.filter((route) => matchesRouteFilters(route, filters) && (!holdId || (route.active_hold_ids ?? route.hold_ids).includes(holdId))), sort);
+  const hasActiveFilters = hasRouteFilters(filters) || Boolean(holdId);
+  const activeFiltersCount = activeFilterCount(filters) + (holdId ? 1 : 0);
   const updateFilters = (next: Partial<typeof filters>) => {
     const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, ...next });
     setSearchParams(nextParams, { replace: true });
@@ -145,6 +146,12 @@ export default function RouteList({
   };
   const clearFilters = () => {
     const nextParams = writeRouteFilters(new URLSearchParams(searchParams), { ...filters, tags: [], minGrade: null, maxGrade: null, progress: null, minStars: null, circuit: null, hasBeta: false });
+    nextParams.delete("holdId");
+    setSearchParams(nextParams, { replace: true });
+  };
+  const clearHoldFilter = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("holdId");
     setSearchParams(nextParams, { replace: true });
   };
   const selectGrade = (grade: string) => {
@@ -189,6 +196,7 @@ export default function RouteList({
           Sort: {sortLabel}
         </button>
       </div>
+      {holdId && <div className={styles.holdFilterIndicator} role="status"><span>Hold filter active</span><button type="button" className="btn btn-ghost" onClick={clearHoldFilter}>Clear hold</button></div>}
       <FilterDrawer open={filtersOpen} title="Filters" onClose={() => setFiltersOpen(false)} onClear={clearFilters} matchingCount={matchingRoutes.length} triggerRef={filtersTriggerRef}>
         <section className={styles.filterSection}>
           <h3 className={styles.filterSectionTitle}>Style</h3>

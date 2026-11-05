@@ -183,6 +183,7 @@ func main() {
 			r.Get("/", wallHandler.GetWall)
 			r.Patch("/", wallHandler.UpdateWall)
 			r.Get("/activity", routeHandler.WallActivity)
+			r.Get("/stats", routeHandler.WallStats)
 			r.Delete("/", wallHandler.DeleteWall)
 			r.Post("/images", wallHandler.UploadImage)
 			r.Route("/resets/{imageId}", func(r chi.Router) {
