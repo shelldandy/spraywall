@@ -142,6 +142,8 @@ export default function RouteList({
     saveRouteListState(wallId, searchParams);
   }, [wallId, searchParams]);
   const circuitRoutes = activeCircuit ? applyCircuit(routes, activeCircuit.route_ids) : routes;
+  const usedHoldIds = new Set(routes.flatMap((route) => route.active_hold_ids ?? route.hold_ids));
+  const disabledHoldIds = new Set(holds.filter((hold) => !usedHoldIds.has(hold.id)).map((hold) => hold.id));
   const matchingRoutes = sortRoutes(circuitRoutes.filter((route) => matchesRouteFilters(route, filters)), sort);
   const hasActiveFilters = hasRouteFilters(filters);
   const activeFiltersCount = activeFilterCount(filters);
@@ -207,10 +209,10 @@ export default function RouteList({
         {imageUrl && holds.length > 0 && (
           <section className={styles.filterSection}>
             <h3 className={styles.filterSectionTitle}>Holds</h3>
-            <p className={styles.gradeHelper}>Shows climbs that use every selected hold.</p>
+            <p className={styles.gradeHelper}>Shows climbs that use every selected hold. Dimmed holds have no climbs.</p>
             <div className={styles.holdPicker}>
               <WallImage src={imageUrl} fitContainer>
-                <HoldOverlay holds={holds} selectedIds={new Set(filters.holds)} onToggle={toggleHold} mode="select" />
+                <HoldOverlay holds={holds} selectedIds={new Set(filters.holds)} disabledIds={disabledHoldIds} onToggle={toggleHold} mode="select" />
               </WallImage>
             </div>
             {filters.holds.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => updateFilters({ holds: [] })}>Clear holds</button>}
