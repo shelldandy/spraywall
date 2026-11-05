@@ -228,6 +228,23 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var activeHolds map[uuid.UUID]activeRouteHolds
+	if activeImgErr == nil {
+		legacyRoutes := make([]generated.Route, 0)
+		for _, rt := range routes {
+			if rt.WallImageID != activeImg.ID {
+				legacyRoutes = append(legacyRoutes, rt)
+			}
+		}
+		if len(legacyRoutes) > 0 {
+			activeHolds, err = remapRoutesToActive(r.Context(), h.db, legacyRoutes, uuid.UUID(activeImg.ID.Bytes))
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "could not map route holds to active image")
+				return
+			}
+		}
+	}
+
 	userID := user.GetUserID(r.Context())
 	summaries, err := h.summarizeRoutes(r.Context(), routes, shared.PgUUID(userID))
 	if err != nil {
@@ -239,6 +256,14 @@ func (h *Handler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		isLegacy := errors.Is(activeImgErr, pgx.ErrNoRows) || rt.WallImageID != activeImg.ID
 		rt.Tags = nonNilRouteTags(rt.Tags)
 		response := routeResponse{Route: rt, HoldRoles: json.RawMessage(rt.HoldRoles), IsLegacy: isLegacy}
+		if isLegacy {
+			mapped, ok := activeHolds[uuid.UUID(rt.ID.Bytes)]
+			if !ok {
+				mapped.ids = []uuid.UUID{}
+			}
+			response.ActiveHoldIDs = &mapped.ids
+			response.ActiveHoldRoles = mapped.roles
+		}
 		applySummary(&response, summaries[rt.ID])
 		result = append(result, response)
 	}

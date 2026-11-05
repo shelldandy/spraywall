@@ -10,6 +10,25 @@
   justify-content: flex-start;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tabs a {
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.tabs .activeTab {
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-weight: 700;
+}
+
 :global(.header) .title {
   text-align: center;
   font-size: 18px;

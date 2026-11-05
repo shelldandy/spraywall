@@ -80,8 +80,13 @@
   font-weight: 500;
 }
 
-.manageWallButton {
+.browseActions {
+  display: flex;
+  gap: 4px;
   margin-left: auto;
+}
+
+.manageWallButton {
   padding: 8px 12px;
   font-size: 14px;
 }

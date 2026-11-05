@@ -35,6 +35,7 @@ function invalidateResetQueries(
   queryClient.invalidateQueries({ queryKey: ["holds", wallId] });
   queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
   queryClient.invalidateQueries({ queryKey: ["circuits", wallId] });
+  queryClient.invalidateQueries({ queryKey: ["wall-stats", wallId] });
 }
 
 function useResetMutation<T>(
@@ -121,6 +122,7 @@ function invalidateClimbData(queryClient: ReturnType<typeof useQueryClient>, rou
   queryClient.invalidateQueries({ queryKey: ["climb-logs", routeId] });
   queryClient.invalidateQueries({ queryKey: ["activity", wallId] });
   queryClient.invalidateQueries({ queryKey: ["logbook"] });
+  queryClient.invalidateQueries({ queryKey: ["wall-stats", wallId] });
 }
 
 export function useCreateClimbLog(wallId: string, routeId: string) {
@@ -206,6 +208,7 @@ export function useSetRouteRating(wallId: string, routeId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
       queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["wall-stats", wallId] });
     },
   });
 }
@@ -220,6 +223,7 @@ export function useDeleteRouteRating(wallId: string, routeId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
       queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["wall-stats", wallId] });
     },
   });
 }
@@ -237,6 +241,7 @@ export function useCreateRoute(wallId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
+      queryClient.invalidateQueries({ queryKey: ["wall-stats", wallId] });
     },
     onError: toastError,
   });
@@ -256,6 +261,7 @@ export function useUpdateRoute(wallId: string, routeId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["routes", wallId] });
       queryClient.invalidateQueries({ queryKey: ["route-detail", routeId] });
+      queryClient.invalidateQueries({ queryKey: ["wall-stats", wallId] });
     },
     onError: toastError,
   });
@@ -273,6 +279,7 @@ export function useDeleteRoute(wallId: string, routeId: string) {
       queryClient.invalidateQueries({ queryKey: ["circuits", wallId] });
       queryClient.invalidateQueries({ queryKey: ["activity", wallId] });
       queryClient.invalidateQueries({ queryKey: ["logbook"] });
+      queryClient.invalidateQueries({ queryKey: ["wall-stats", wallId] });
     },
   });
 }
