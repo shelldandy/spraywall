@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.0](https://github.com/shelldandy/spraywall/compare/v1.3.0...v1.4.0) (2026-11-05)
+
+
+### Features
+
+* add wall and personal stats pages ([#63](https://github.com/shelldandy/spraywall/issues/63)) ([28d4213](https://github.com/shelldandy/spraywall/commit/28d4213bbb273ea9ef9208fb929bf26432206eee))
+* allow setters and admins to rename walls ([#61](https://github.com/shelldandy/spraywall/issues/61)) ([5f88e47](https://github.com/shelldandy/spraywall/commit/5f88e4778eb2ba17203f9add32a29b4980f3047b))
+* filter climbs by hold ([#64](https://github.com/shelldandy/spraywall/issues/64)) ([02e5af8](https://github.com/shelldandy/spraywall/commit/02e5af81174eddba987c6caf0835518b457d2e9e))
+
+
+### Bug Fixes
+
+* address repository audit findings ([#58](https://github.com/shelldandy/spraywall/issues/58)) ([598db0c](https://github.com/shelldandy/spraywall/commit/598db0cb98da7f2f8f95700a28b71a20dd3f0cfa))
+* remember climbs list sort and filters per wall ([#62](https://github.com/shelldandy/spraywall/issues/62)) ([8c76d2d](https://github.com/shelldandy/spraywall/commit/8c76d2d189a2683f06232b8f300d86b11d10406b))
+
 ## [1.3.0](https://github.com/shelldandy/spraywall/compare/v1.2.0...v1.3.0) (2026-10-30)
 
 
