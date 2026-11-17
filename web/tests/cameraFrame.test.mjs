@@ -62,10 +62,10 @@ test("leaves a matching frame uncropped", () => {
   });
 });
 
-test("sizes portrait streams with the long side at the requested size", () => {
-  assert.deepEqual(streamSize(3 / 4, 1920), {
-    width: { ideal: 1440 },
-    height: { ideal: 1920 },
-    aspectRatio: { ideal: 3 / 4 },
+test("requests a landscape 4:3 stream without an aspect-ratio constraint", () => {
+  assert.deepEqual(streamSize(1920), {
+    width: { ideal: 1920 },
+    height: { ideal: 1440 },
+    resizeMode: { ideal: "none" },
   });
 });

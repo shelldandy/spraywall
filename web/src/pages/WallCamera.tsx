@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { uploadWallImage } from "../lib/hooks/mutations";
@@ -25,6 +25,8 @@ const LENS_ORDER = ["0.5x", "1x", "Tele"];
 // 1920 streams fine.
 const PREVIEW_LONG_SIDE = 1920;
 const PHOTO_LONG_SIDE = 4096;
+const PREVIEW_SIZE = streamSize(PREVIEW_LONG_SIDE);
+const PHOTO_SIZE = streamSize(PHOTO_LONG_SIDE);
 
 /** Resolves on the next decoded video frame, or after a timeout. */
 function nextFrame(video: HTMLVideoElement): Promise<void> {
@@ -169,12 +171,12 @@ export default function WallCameraPage() {
     width: 0,
     height: 0,
   });
+  const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
+  const [cameraSettings, setCameraSettings] = useState<MediaTrackSettings | null>(null);
   const [ghostImage, setGhostImage] = useState<{ src: string; aspect?: number } | null>(null);
   const ghostAspect = ghostImage?.src === oldImage ? ghostImage.aspect : undefined;
   const aspectReady = !oldImage || ghostImage?.src === oldImage;
-  const streamAspect = ghostAspect ?? 4 / 3;
-  const previewSize = useMemo(() => streamSize(streamAspect, PREVIEW_LONG_SIDE), [streamAspect]);
-  const photoSize = useMemo(() => streamSize(streamAspect, PHOTO_LONG_SIDE), [streamAspect]);
+  const debug = params.get("debug") === "1";
   const [ready, setReady] = useState(false);
   const [opacity, setOpacity] = useState(0.4);
   const [busy, setBusy] = useState(false);
@@ -187,17 +189,18 @@ export default function WallCameraPage() {
     const gen = ++streamGenRef.current;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    setCameraSettings(null);
 
     let media: MediaStream;
     try {
-      media = await requestStream(deviceId, previewSize);
+      media = await requestStream(deviceId, PREVIEW_SIZE);
     } catch (error) {
       if (!deviceId) throw error;
       try {
         media = await requestStream(deviceId, {});
       } catch (retryError) {
         if (!fallback) throw retryError;
-        media = await requestStream(undefined, previewSize);
+        media = await requestStream(undefined, PREVIEW_SIZE);
       }
     }
     if (gen !== streamGenRef.current) {
@@ -207,6 +210,7 @@ export default function WallCameraPage() {
 
     streamRef.current = media;
     const track = media.getVideoTracks()[0];
+    setCameraSettings(track?.getSettings() ?? null);
     setActiveLens({ deviceId: track?.getSettings().deviceId, name: track?.label ?? "" });
     const video = videoRef.current;
     if (video) {
@@ -220,7 +224,7 @@ export default function WallCameraPage() {
       await video.play().catch(() => undefined);
     }
     return gen === streamGenRef.current ? media : null;
-  }, [previewSize]);
+  }, []);
 
   useEffect(() => {
     if (!oldImage) return;
@@ -251,12 +255,12 @@ export default function WallCameraPage() {
 
   useEffect(() => {
     if (!aspectReady) return;
-    let mounted = true;
     const video = videoRef.current;
     const stage = stageRef.current;
 
     const updateVideoFrame = () => {
       if (!video || !stage) return;
+      setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
       setVideoFrame(
         getContainedFrame(
           stage.clientWidth,
@@ -273,7 +277,17 @@ export default function WallCameraPage() {
     if (stage) resizeObserver?.observe(stage);
     video?.addEventListener("loadedmetadata", updateVideoFrame);
     video?.addEventListener("resize", updateVideoFrame);
+    updateVideoFrame();
 
+    return () => {
+      resizeObserver?.disconnect();
+      video?.removeEventListener("loadedmetadata", updateVideoFrame);
+      video?.removeEventListener("resize", updateVideoFrame);
+    };
+  }, [aspectReady, ghostAspect]);
+
+  useEffect(() => {
+    let mounted = true;
     const startCamera = async () => {
       try {
         // With permission already granted, labels are available up front and we can
@@ -281,7 +295,6 @@ export default function WallCameraPage() {
         let available = await listLenses();
         const media = await openStream(preferredLens(available)?.deviceId);
         if (!media) return;
-        updateVideoFrame();
 
         if (available.length === 0) {
           available = await listLenses();
@@ -311,13 +324,10 @@ export default function WallCameraPage() {
       // A counter, not a DOM ref: bumping the live value is the point.
       // oxlint-disable-next-line react-hooks/exhaustive-deps
       streamGenRef.current++;
-      resizeObserver?.disconnect();
-      video?.removeEventListener("loadedmetadata", updateVideoFrame);
-      video?.removeEventListener("resize", updateVideoFrame);
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     };
-  }, [aspectReady, ghostAspect, openStream]);
+  }, [openStream]);
 
   const switchLens = async (lens: Lens) => {
     const previousTrack = streamRef.current?.getVideoTracks()[0];
@@ -389,7 +399,7 @@ export default function WallCameraPage() {
     if (!image) {
       setBusy(true);
       const fullSize = track
-        ? await drawFullSizeFrame(video, track, photoSize, previewSize, aspect)
+        ? await drawFullSizeFrame(video, track, PHOTO_SIZE, PREVIEW_SIZE, aspect)
         : null;
       const canvas = fullSize ?? drawFrame(video, aspect);
       if (canvas) image = await canvasToJpeg(canvas);
@@ -458,6 +468,33 @@ export default function WallCameraPage() {
               );
             })}
           </div>
+        )}
+        {debug && (
+          <pre
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              zIndex: 1,
+              margin: 0,
+              padding: 8,
+              background: "#000b",
+              color: "#fff",
+              fontSize: 11,
+              pointerEvents: "none",
+            }}
+          >
+            {JSON.stringify({
+              track: cameraSettings && {
+                width: cameraSettings.width,
+                height: cameraSettings.height,
+                aspectRatio: cameraSettings.aspectRatio,
+                resizeMode: (cameraSettings as MediaTrackSettings & { resizeMode?: string }).resizeMode,
+              },
+              video: videoDimensions,
+              ghostAspect,
+            }, null, 2)}
+          </pre>
         )}
       </div>
 
