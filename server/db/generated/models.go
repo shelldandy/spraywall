@@ -190,6 +190,7 @@ type User struct {
 	AvatarOriginUrl pgtype.Text        `json:"avatar_origin_url"`
 	RoleSyncedAt    pgtype.Timestamptz `json:"role_synced_at"`
 	TokenVersion    int32              `json:"token_version"`
+	RoleLapsedFrom  NullUserRole       `json:"role_lapsed_from"`
 }
 
 type UserIdentity struct {

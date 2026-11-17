@@ -11,6 +11,7 @@ import HoldOverlay from "../components/HoldOverlay";
 import WallImage from "../components/WallImage";
 import RouteList from "./RouteList";
 import ActivityFeed from "../components/ActivityFeed";
+import AdminLapsedBanner from "../components/AdminLapsedBanner";
 import styles from "./WallDetail.module.css";
 import wallFormStyles from "./Walls.module.css";
 
@@ -499,6 +500,8 @@ export default function WallDetailPage() {
           <span className={styles.headerRight} aria-hidden="true" />
         )}
       </header>
+
+      <AdminLapsedBanner />
 
       {canEdit && wall?.image && detectionStatus === "failed" && (
         <p className="error-text" role="alert">

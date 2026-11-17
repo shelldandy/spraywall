@@ -95,6 +95,7 @@ type userResponse struct {
 	CreatedAt   time.Time          `json:"created_at"`
 	AvatarURL   *string            `json:"avatar_url"`
 	HasPassword bool               `json:"has_password"`
+	AdminLapsed bool               `json:"admin_lapsed"`
 	Identities  []identityResponse `json:"identities"`
 }
 
@@ -297,15 +298,21 @@ func (h *Handler) buildMe(ctx context.Context, u generated.User) (userResponse, 
 		return userResponse{}, err
 	}
 
+	role := string(u.Role)
+	if effectiveRole := GetUserRole(ctx); effectiveRole != "" {
+		role = effectiveRole
+	}
 	resp := userResponse{
 		ID:          uuidFromPg(u.ID),
 		Email:       u.Email,
 		DisplayName: u.DisplayName,
-		Role:        string(u.Role),
+		Role:        role,
 		CreatedAt:   u.CreatedAt.Time,
 		AvatarURL:   AvatarURL(u),
 		HasPassword: u.PasswordHash != "",
-		Identities:  make([]identityResponse, 0, len(identities)),
+		AdminLapsed: (u.RoleLapsedFrom.Valid &&
+			u.RoleLapsedFrom.UserRole == generated.UserRoleAdmin) || adminLapsedFromContext(ctx),
+		Identities: make([]identityResponse, 0, len(identities)),
 	}
 	for _, ident := range identities {
 		resp.Identities = append(resp.Identities, identityResponse{
@@ -346,8 +353,14 @@ func SameIssuer(a, b string) bool {
 func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u generated.User) (*TokenPair, error) {
 	userID := uuidFromPg(u.ID)
 
-	if role, demote := h.adminRoleDemotion(u, time.Now()); demote {
-		demoted, err := q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: role})
+	if role, demote, lapsed := h.adminRoleDemotion(u, time.Now()); demote {
+		var demoted generated.User
+		var err error
+		if lapsed {
+			demoted, err = q.LapseUserRole(ctx, generated.LapseUserRoleParams{ID: u.ID, Role: role})
+		} else {
+			demoted, err = q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: role})
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -396,17 +409,17 @@ func (h *Handler) IssueTokens(ctx context.Context, q *generated.Queries, u gener
 }
 
 // adminRoleDemotion returns the effective fallback for admins under SSO role management.
-func (h *Handler) adminRoleDemotion(u generated.User, now time.Time) (generated.UserRole, bool) {
+func (h *Handler) adminRoleDemotion(u generated.User, now time.Time) (generated.UserRole, bool, bool) {
 	if h.opts.AdminRoleMaxAge <= 0 || u.Role != generated.UserRoleAdmin {
-		return "", false
+		return "", false, false
 	}
 	if !u.RoleSyncedAt.Valid {
-		return generated.UserRoleSetter, true
+		return generated.UserRoleSetter, true, false
 	}
 	if now.Sub(u.RoleSyncedAt.Time) > h.opts.AdminRoleMaxAge {
-		return generated.UserRoleClimber, true
+		return generated.UserRoleClimber, true, true
 	}
-	return "", false
+	return "", false, false
 }
 
 func hashToken(token string) string {

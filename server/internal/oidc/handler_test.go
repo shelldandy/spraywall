@@ -544,13 +544,20 @@ func TestAdminGroupPromotesAndDemotes(t *testing.T) {
 		t.Fatalf("db role = %s", u.Role)
 	}
 
-	// Groups only available through UserInfo, and no longer in the group.
+	// SSO clears a previous lapse marker even when the user was removed from the group.
+	if _, err := env.q.LapseUserRole(ctx, generated.LapseUserRoleParams{ID: pgUUID(res.userID), Role: generated.UserRoleClimber}); err != nil {
+		t.Fatal(err)
+	}
 	res = parseSuccess(t, env.login(t, "/walls", &grant{
 		claims:   idClaims("sub-admin", "boss@example.com", nil),
 		userinfo: map[string]any{"groups": "users"},
 	}))
 	if res.role != "climber" {
 		t.Fatalf("expected demotion to climber, got %q", res.role)
+	}
+	updated, err := env.q.GetUserByID(ctx, pgUUID(res.userID))
+	if err != nil || updated.RoleLapsedFrom.Valid {
+		t.Fatalf("SSO login left admin lapse marker set: %+v, err=%v", updated.RoleLapsedFrom, err)
 	}
 
 	// Back in the group via UserInfo.
@@ -585,8 +592,8 @@ func TestUnconfirmedLegacyAdminWithoutGroupKeepsSetterRole(t *testing.T) {
 		t.Fatalf("unconfirmed admin outside group got role %q, want setter", res.role)
 	}
 	updated, err := env.q.GetUserByID(ctx, admin.ID)
-	if err != nil || updated.Role != generated.UserRoleSetter {
-		t.Fatalf("stored role = %v, err=%v; want setter", updated.Role, err)
+	if err != nil || updated.Role != generated.UserRoleSetter || updated.RoleLapsedFrom.Valid {
+		t.Fatalf("stored role = %v, lapsed from %+v, err=%v; want setter without lapse", updated.Role, updated.RoleLapsedFrom, err)
 	}
 }
 
