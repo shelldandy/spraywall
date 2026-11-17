@@ -427,7 +427,7 @@ func (q *Queries) ListUserIdentities(ctx context.Context, userID pgtype.UUID) ([
 }
 
 const promoteUserRole = `-- name: PromoteUserRole :exec
-UPDATE users SET role = GREATEST(role, $2), updated_at = now() WHERE id = $1
+UPDATE users SET role = GREATEST(role, $2), role_lapsed_from = NULL, updated_at = now() WHERE id = $1
 `
 
 type PromoteUserRoleParams struct {
@@ -571,7 +571,7 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 }
 
 const updateUserRole = `-- name: UpdateUserRole :one
-UPDATE users SET role = $2, updated_at = now() WHERE id = $1
+UPDATE users SET role = $2, role_lapsed_from = NULL, updated_at = now() WHERE id = $1
 RETURNING id, email, password_hash, display_name, role, created_at, updated_at, avatar_key, avatar_source, avatar_origin_url, role_synced_at, token_version, role_lapsed_from
 `
 

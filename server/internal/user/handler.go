@@ -310,8 +310,8 @@ func (h *Handler) buildMe(ctx context.Context, u generated.User) (userResponse, 
 		CreatedAt:   u.CreatedAt.Time,
 		AvatarURL:   AvatarURL(u),
 		HasPassword: u.PasswordHash != "",
-		AdminLapsed: (u.RoleLapsedFrom.Valid &&
-			u.RoleLapsedFrom.UserRole == generated.UserRoleAdmin) || adminLapsedFromContext(ctx),
+		AdminLapsed: h.opts.AdminRoleMaxAge > 0 && ((u.RoleLapsedFrom.Valid &&
+			u.RoleLapsedFrom.UserRole == generated.UserRoleAdmin) || adminLapsedFromContext(ctx)),
 		Identities: make([]identityResponse, 0, len(identities)),
 	}
 	for _, ident := range identities {

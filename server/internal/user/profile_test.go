@@ -212,6 +212,46 @@ func TestMeResponse(t *testing.T) {
 	}
 }
 
+func TestAdminLapseReportingAndRoleChangeClearing(t *testing.T) {
+	env := newProfileEnv(t, Options{PasswordEnabled: true})
+	ctx := context.Background()
+	u := env.createUser(t, "role-change@example.com", "")
+	u, err := env.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err = env.q.LapseUserRole(ctx, generated.LapseUserRoleParams{ID: u.ID, Role: generated.UserRoleClimber})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	me := decodeMe(t, do(env.h.Me, u, http.MethodGet, "", nil, nil))
+	if me["admin_lapsed"] != false {
+		t.Fatalf("admin_lapsed without configured expiry = %v, want false", me["admin_lapsed"])
+	}
+
+	if err := env.q.PromoteUserRole(ctx, generated.PromoteUserRoleParams{ID: u.ID, Role: generated.UserRoleSetter}); err != nil {
+		t.Fatal(err)
+	}
+	u, err = env.q.GetUserByID(ctx, u.ID)
+	if err != nil || u.Role != generated.UserRoleSetter || u.RoleLapsedFrom.Valid {
+		t.Fatalf("invite promotion left lapse marker: role=%s, marker=%+v, err=%v", u.Role, u.RoleLapsedFrom, err)
+	}
+
+	u, err = env.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err = env.q.LapseUserRole(ctx, generated.LapseUserRoleParams{ID: u.ID, Role: generated.UserRoleClimber})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err = env.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: generated.UserRoleSetter})
+	if err != nil || u.RoleLapsedFrom.Valid {
+		t.Fatalf("explicit role update left lapse marker: %+v, err=%v", u.RoleLapsedFrom, err)
+	}
+}
+
 func TestLoginRejectsPasswordlessUser(t *testing.T) {
 	env := newProfileEnv(t, Options{PasswordEnabled: true})
 	env.createUser(t, "sso@example.com", "")

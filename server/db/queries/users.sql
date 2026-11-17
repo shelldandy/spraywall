@@ -26,10 +26,10 @@ DELETE FROM refresh_tokens WHERE id = $1;
 DELETE FROM refresh_tokens WHERE user_id = $1;
 
 -- name: PromoteUserRole :exec
-UPDATE users SET role = GREATEST(role, $2), updated_at = now() WHERE id = $1;
+UPDATE users SET role = GREATEST(role, $2), role_lapsed_from = NULL, updated_at = now() WHERE id = $1;
 
 -- name: UpdateUserRole :one
-UPDATE users SET role = $2, updated_at = now() WHERE id = $1
+UPDATE users SET role = $2, role_lapsed_from = NULL, updated_at = now() WHERE id = $1
 RETURNING *;
 
 -- name: UpdateUserDisplayName :one
