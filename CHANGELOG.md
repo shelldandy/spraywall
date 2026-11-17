@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.1](https://github.com/shelldandy/spraywall/compare/v1.4.0...v1.4.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* avoid zoomed-in partial reset camera preview ([#68](https://github.com/shelldandy/spraywall/issues/68)) ([82b6594](https://github.com/shelldandy/spraywall/commit/82b659405c59a70043731360ec76cfd36c294588))
+* match partial reset viewfinder to base photo aspect ([#67](https://github.com/shelldandy/spraywall/issues/67)) ([dfdbb20](https://github.com/shelldandy/spraywall/commit/dfdbb20736354e08ad123ebf01f3481d1b6dfea3))
+* surface expired OIDC admin access ([#65](https://github.com/shelldandy/spraywall/issues/65)) ([c9e8acb](https://github.com/shelldandy/spraywall/commit/c9e8acbf2a18e6f23d2b1cda081a5c9d39a9d11d))
+
 ## [1.4.0](https://github.com/shelldandy/spraywall/compare/v1.3.0...v1.4.0) (2026-11-05)
 
 
