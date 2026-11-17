@@ -43,12 +43,10 @@ export function cropToAspect(width: number, height: number, aspect: number): Cam
   return { left: 0, top: (height - cropHeight) / 2, width, height: cropHeight };
 }
 
-export function streamSize(aspect: number, longSide: number) {
-  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 4 / 3;
-  const shortSide = longSide / Math.max(safeAspect, 1 / safeAspect);
+export function streamSize(longSide: number) {
   return {
-    width: { ideal: safeAspect >= 1 ? longSide : shortSide },
-    height: { ideal: safeAspect >= 1 ? shortSide : longSide },
-    aspectRatio: { ideal: safeAspect },
+    width: { ideal: longSide },
+    height: { ideal: longSide * 3 / 4 },
+    resizeMode: { ideal: "none" },
   };
 }
