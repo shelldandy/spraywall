@@ -227,17 +227,26 @@ export default function WallCameraPage() {
     let mounted = true;
     const image = new Image();
     image.src = oldImage;
-    void image.decode().then(() => {
-      if (mounted) {
-        const aspect = image.naturalWidth > 0 && image.naturalHeight > 0
-          ? image.naturalWidth / image.naturalHeight
-          : undefined;
-        setGhostImage({ src: oldImage, aspect });
-      }
-    }, () => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      settled = true;
       if (mounted) setGhostImage({ src: oldImage });
-    });
-    return () => { mounted = false; };
+    }, 1500);
+    const finish = (aspect?: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (mounted) setGhostImage({ src: oldImage, aspect });
+    };
+    void image.decode().then(() => {
+      finish(image.naturalWidth > 0 && image.naturalHeight > 0
+        ? image.naturalWidth / image.naturalHeight
+        : undefined);
+    }, () => finish());
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+    };
   }, [oldImage]);
 
   useEffect(() => {
@@ -413,11 +422,11 @@ export default function WallCameraPage() {
           }}
         >
           <video ref={videoRef} autoPlay muted playsInline className={styles.video} />
-          {oldImage && ghostAspect !== undefined && ready && videoFrame.width > 0 && (
+          {oldImage && ready && videoFrame.width > 0 && (
             <img
               src={oldImage}
               className={styles.ghost}
-              style={{ opacity }}
+              style={{ opacity, objectFit: ghostAspect === undefined ? "cover" : "fill" }}
               alt="Previous wall photo alignment guide"
             />
           )}
