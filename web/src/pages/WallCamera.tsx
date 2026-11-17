@@ -1,17 +1,11 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { uploadWallImage } from "../lib/hooks/mutations";
 import { filterAmbiguousWideLenses, lensLabel } from "../lib/cameraLenses";
+import { cropToAspect, getContainedFrame, streamSize, type CameraFrame } from "../lib/cameraFrame";
 import { toast } from "../lib/toast";
 import styles from "./WallCamera.module.css";
-
-interface VideoFrame {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
 
 interface Lens {
   deviceId: string;
@@ -25,33 +19,12 @@ interface ImageCaptureConstructor {
   new (track: MediaStreamTrack): { takePhoto: () => Promise<Blob> };
 }
 
-function getContainedFrame(
-  containerWidth: number,
-  containerHeight: number,
-  videoWidth: number,
-  videoHeight: number,
-): VideoFrame {
-  if (containerWidth <= 0 || containerHeight <= 0 || videoWidth <= 0 || videoHeight <= 0) {
-    return { left: 0, top: 0, width: 0, height: 0 };
-  }
-
-  const scale = Math.min(containerWidth / videoWidth, containerHeight / videoHeight);
-  const width = videoWidth * scale;
-  const height = videoHeight * scale;
-  return {
-    left: (containerWidth - width) / 2,
-    top: (containerHeight - height) / 2,
-    width,
-    height,
-  };
-}
-
 const LENS_KEY = "spraywall-camera-lens";
 const LENS_ORDER = ["0.5x", "1x", "Tele"];
 // iOS renders a black preview when asked for 4096 (its photo-only sensor formats);
 // 1920 streams fine.
-const VIDEO_SIZE = { width: { ideal: 1920 }, height: { ideal: 1920 } };
-const PHOTO_SIZE = { width: { ideal: 4096 }, height: { ideal: 4096 } };
+const PREVIEW_LONG_SIDE = 1920;
+const PHOTO_LONG_SIDE = 4096;
 
 /** Resolves on the next decoded video frame, or after a timeout. */
 function nextFrame(video: HTMLVideoElement): Promise<void> {
@@ -65,14 +38,32 @@ function nextFrame(video: HTMLVideoElement): Promise<void> {
 }
 
 /** Draws the current video frame; null if there is no frame yet. */
-function drawFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
+function drawFrame(video: HTMLVideoElement, aspect: number): HTMLCanvasElement | null {
+  return cropFrame(video, video.videoWidth, video.videoHeight, aspect);
+}
+
+function cropFrame(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+  aspect: number,
+): HTMLCanvasElement | null {
+  const crop = cropToAspect(width, height, aspect);
+  if (crop.width === 0 || crop.height === 0) return null;
+
   const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width = Math.round(crop.width);
+  canvas.height = Math.round(crop.height);
   const context = canvas.getContext("2d");
-  if (!context || canvas.width === 0 || canvas.height === 0) return null;
-  context.drawImage(video, 0, 0);
+  if (!context) return null;
+  context.drawImage(source, crop.left, crop.top, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
   return canvas;
+}
+
+function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob | undefined> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob ?? undefined), "image/jpeg", 0.9);
+  });
 }
 
 /** True if a downscaled copy of the canvas is entirely black. */
@@ -98,18 +89,21 @@ function isBlank(canvas: HTMLCanvasElement): boolean {
 async function drawFullSizeFrame(
   video: HTMLVideoElement,
   track: MediaStreamTrack,
+  photoSize: MediaTrackConstraints,
+  previewSize: MediaTrackConstraints,
+  aspect: number,
 ): Promise<HTMLCanvasElement | null> {
   const previewWidth = video.videoWidth;
   try {
-    await track.applyConstraints(PHOTO_SIZE);
+    await track.applyConstraints(photoSize);
     for (let i = 0; i < 5 && video.videoWidth <= previewWidth; i++) await nextFrame(video);
     await nextFrame(video);
-    const canvas = drawFrame(video);
-    return canvas && canvas.width > previewWidth && !isBlank(canvas) ? canvas : null;
+    const canvas = drawFrame(video, aspect);
+    return canvas && video.videoWidth > previewWidth && !isBlank(canvas) ? canvas : null;
   } catch {
     return null;
   } finally {
-    await track.applyConstraints(VIDEO_SIZE).catch(() => undefined);
+    await track.applyConstraints(previewSize).catch(() => undefined);
     for (let i = 0; i < 5 && video.videoWidth > previewWidth; i++) await nextFrame(video);
     await nextFrame(video);
   }
@@ -146,12 +140,14 @@ function preferredLens(lenses: Lens[]): Lens | undefined {
   return lenses.find((lens) => lens.name === saved) ?? lenses.find((lens) => lens.label === "0.5x");
 }
 
-async function requestStream(deviceId?: string, includeVideoSize = true): Promise<MediaStream> {
+async function requestStream(
+  deviceId: string | undefined,
+  constraints: MediaTrackConstraints,
+): Promise<MediaStream> {
   if (!navigator.mediaDevices) throw new Error("Camera unavailable");
-  const size = includeVideoSize ? VIDEO_SIZE : {};
   const video = deviceId
-    ? { deviceId: { exact: deviceId }, ...size }
-    : { facingMode: { ideal: "environment" }, ...size };
+    ? { deviceId: { exact: deviceId }, ...constraints }
+    : { facingMode: { ideal: "environment" }, ...constraints };
   return navigator.mediaDevices.getUserMedia({ video, audio: false });
 }
 
@@ -167,12 +163,18 @@ export default function WallCameraPage() {
   const streamRef = useRef<MediaStream | null>(null);
   // Bumped on every stream request and on unmount so stale requests drop their stream.
   const streamGenRef = useRef(0);
-  const [videoFrame, setVideoFrame] = useState<VideoFrame>({
+  const [videoFrame, setVideoFrame] = useState<CameraFrame>({
     left: 0,
     top: 0,
     width: 0,
     height: 0,
   });
+  const [ghostImage, setGhostImage] = useState<{ src: string; aspect?: number } | null>(null);
+  const ghostAspect = ghostImage?.src === oldImage ? ghostImage.aspect : undefined;
+  const aspectReady = !oldImage || ghostImage?.src === oldImage;
+  const streamAspect = ghostAspect ?? 4 / 3;
+  const previewSize = useMemo(() => streamSize(streamAspect, PREVIEW_LONG_SIDE), [streamAspect]);
+  const photoSize = useMemo(() => streamSize(streamAspect, PHOTO_LONG_SIDE), [streamAspect]);
   const [ready, setReady] = useState(false);
   const [opacity, setOpacity] = useState(0.4);
   const [busy, setBusy] = useState(false);
@@ -181,21 +183,21 @@ export default function WallCameraPage() {
   const [switching, setSwitching] = useState(false);
 
   /** Replace the current stream; resolves null if superseded by a newer request or unmount. */
-  const openStream = async (deviceId?: string, fallback = true): Promise<MediaStream | null> => {
+  const openStream = useCallback(async (deviceId?: string, fallback = true): Promise<MediaStream | null> => {
     const gen = ++streamGenRef.current;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
 
     let media: MediaStream;
     try {
-      media = await requestStream(deviceId);
+      media = await requestStream(deviceId, previewSize);
     } catch (error) {
       if (!deviceId) throw error;
       try {
-        media = await requestStream(deviceId, false);
+        media = await requestStream(deviceId, {});
       } catch (retryError) {
         if (!fallback) throw retryError;
-        media = await requestStream();
+        media = await requestStream(undefined, previewSize);
       }
     }
     if (gen !== streamGenRef.current) {
@@ -218,9 +220,37 @@ export default function WallCameraPage() {
       await video.play().catch(() => undefined);
     }
     return gen === streamGenRef.current ? media : null;
-  };
+  }, [previewSize]);
 
   useEffect(() => {
+    if (!oldImage) return;
+    let mounted = true;
+    const image = new Image();
+    image.src = oldImage;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      settled = true;
+      if (mounted) setGhostImage({ src: oldImage });
+    }, 1500);
+    const finish = (aspect?: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (mounted) setGhostImage({ src: oldImage, aspect });
+    };
+    void image.decode().then(() => {
+      finish(image.naturalWidth > 0 && image.naturalHeight > 0
+        ? image.naturalWidth / image.naturalHeight
+        : undefined);
+    }, () => finish());
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+    };
+  }, [oldImage]);
+
+  useEffect(() => {
+    if (!aspectReady) return;
     let mounted = true;
     const video = videoRef.current;
     const stage = stageRef.current;
@@ -228,7 +258,11 @@ export default function WallCameraPage() {
     const updateVideoFrame = () => {
       if (!video || !stage) return;
       setVideoFrame(
-        getContainedFrame(stage.clientWidth, stage.clientHeight, video.videoWidth, video.videoHeight),
+        getContainedFrame(
+          stage.clientWidth,
+          stage.clientHeight,
+          ghostAspect ?? video.videoWidth / video.videoHeight,
+        ),
       );
     };
 
@@ -283,7 +317,7 @@ export default function WallCameraPage() {
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     };
-  }, []);
+  }, [aspectReady, ghostAspect, openStream]);
 
   const switchLens = async (lens: Lens) => {
     const previousTrack = streamRef.current?.getVideoTracks()[0];
@@ -336,10 +370,17 @@ export default function WallCameraPage() {
 
     let image: Blob | undefined;
     const track = streamRef.current?.getVideoTracks()[0];
+    const aspect = ghostAspect ?? (video.videoHeight ? video.videoWidth / video.videoHeight : 4 / 3);
     const ImageCapture = (window as Window & { ImageCapture?: ImageCaptureConstructor }).ImageCapture;
     if (track && ImageCapture) {
       try {
-        image = await new ImageCapture(track).takePhoto();
+        const bitmap = await createImageBitmap(await new ImageCapture(track).takePhoto());
+        try {
+          const canvas = cropFrame(bitmap, bitmap.width, bitmap.height, aspect);
+          if (canvas) image = await canvasToJpeg(canvas);
+        } finally {
+          bitmap.close();
+        }
       } catch {
         // Fall back to a frame captured from the video element.
       }
@@ -347,13 +388,11 @@ export default function WallCameraPage() {
 
     if (!image) {
       setBusy(true);
-      const fullSize = track ? await drawFullSizeFrame(video, track) : null;
-      const canvas = fullSize ?? drawFrame(video);
-      if (canvas) {
-        image = await new Promise<Blob | undefined>((resolve) => {
-          canvas.toBlob((blob) => resolve(blob ?? undefined), "image/jpeg", 0.9);
-        });
-      }
+      const fullSize = track
+        ? await drawFullSizeFrame(video, track, photoSize, previewSize, aspect)
+        : null;
+      const canvas = fullSize ?? drawFrame(video, aspect);
+      if (canvas) image = await canvasToJpeg(canvas);
       if (!image) setBusy(false);
     }
 
@@ -373,21 +412,25 @@ export default function WallCameraPage() {
         Cancel
       </Link>
       <div ref={stageRef} className={styles.stage}>
-        <video ref={videoRef} autoPlay muted playsInline className={styles.video} />
-        {oldImage && ready && videoFrame.width > 0 && (
-          <img
-            src={oldImage}
-            className={styles.ghost}
-            style={{
-              left: videoFrame.left,
-              top: videoFrame.top,
-              width: videoFrame.width,
-              height: videoFrame.height,
-              opacity,
-            }}
-            alt="Previous wall photo alignment guide"
-          />
-        )}
+        <div
+          className={styles.viewfinder}
+          style={{
+            left: videoFrame.left,
+            top: videoFrame.top,
+            width: videoFrame.width,
+            height: videoFrame.height,
+          }}
+        >
+          <video ref={videoRef} autoPlay muted playsInline className={styles.video} />
+          {oldImage && ready && videoFrame.width > 0 && (
+            <img
+              src={oldImage}
+              className={styles.ghost}
+              style={{ opacity, objectFit: ghostAspect === undefined ? "cover" : "fill" }}
+              alt="Previous wall photo alignment guide"
+            />
+          )}
+        </div>
         {!ready && (
           <div className={styles.fallback}>
             {window.isSecureContext
