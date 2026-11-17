@@ -1,0 +1,29 @@
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: calc(100% - 32px);
+  max-width: 860px;
+  margin: 12px auto;
+  padding: 12px 16px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.banner p {
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .banner a {
+    text-align: center;
+  }
+}

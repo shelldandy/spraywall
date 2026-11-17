@@ -26,10 +26,10 @@ DELETE FROM refresh_tokens WHERE id = $1;
 DELETE FROM refresh_tokens WHERE user_id = $1;
 
 -- name: PromoteUserRole :exec
-UPDATE users SET role = GREATEST(role, $2), updated_at = now() WHERE id = $1;
+UPDATE users SET role = GREATEST(role, $2), role_lapsed_from = NULL, updated_at = now() WHERE id = $1;
 
 -- name: UpdateUserRole :one
-UPDATE users SET role = $2, updated_at = now() WHERE id = $1
+UPDATE users SET role = $2, role_lapsed_from = NULL, updated_at = now() WHERE id = $1
 RETURNING *;
 
 -- name: UpdateUserDisplayName :one
@@ -74,7 +74,11 @@ DELETE FROM user_identities WHERE id = $1 AND user_id = $2;
 SELECT * FROM users WHERE id = $1 FOR UPDATE;
 
 -- name: SyncUserRole :one
-UPDATE users SET role = $2, role_synced_at = now(), updated_at = now() WHERE id = $1
+UPDATE users SET role = $2, role_synced_at = now(), role_lapsed_from = NULL, updated_at = now() WHERE id = $1
+RETURNING *;
+
+-- name: LapseUserRole :one
+UPDATE users SET role = $2, role_lapsed_from = role, updated_at = now() WHERE id = $1
 RETURNING *;
 
 -- name: DeleteUserIdentitiesByUserID :exec

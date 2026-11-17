@@ -1570,11 +1570,14 @@ components:
               example: /images/avatars/7f8e9a10-1b2c-4d3e-8f90-a1b2c3d4e5f6.jpg
             has_password:
               type: boolean
+            admin_lapsed:
+              type: boolean
+              description: True when admin access expired under OIDC_ADMIN_MAX_AGE and an SSO login is needed to restore it.
             identities:
               type: array
               items:
                 $ref: "#/components/schemas/UserIdentity"
-          required: [avatar_url, has_password, identities]
+          required: [avatar_url, has_password, admin_lapsed, identities]
 
     UserIdentity:
       type: object

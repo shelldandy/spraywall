@@ -222,5 +222,6 @@ export interface Me {
   /** Same-origin path (e.g. "/images/avatars/x.jpg"), served outside /api. */
   avatar_url: string | null;
   has_password: boolean;
+  admin_lapsed: boolean;
   identities: Identity[];
 }

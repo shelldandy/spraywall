@@ -24,6 +24,7 @@ const (
 	// TokenVersionKey holds the access token's "ver" claim (0 if absent).
 	TokenVersionKey contextKey = "tokenVersion"
 	currentUserKey  contextKey = "currentUser"
+	adminLapsedKey  contextKey = "adminLapsed"
 )
 
 // Authenticate validates the bearer token and loads its account. Tokens
@@ -102,13 +103,16 @@ func (h *Handler) Authenticate(next http.Handler) http.Handler {
 
 		// Apply the same fallback used by IssueTokens before it is persisted.
 		role := string(u.Role)
-		if fallback, demote := h.adminRoleDemotion(u, time.Now()); demote {
+		adminLapsed := false
+		if fallback, demote, lapsed := h.adminRoleDemotion(u, time.Now()); demote {
 			role = string(fallback)
 			u.Role = fallback
+			adminLapsed = lapsed
 		}
 
 		ctx := context.WithValue(r.Context(), UserIDKey, userID)
 		ctx = context.WithValue(ctx, UserRoleKey, role)
+		ctx = context.WithValue(ctx, adminLapsedKey, adminLapsed)
 		ctx = context.WithValue(ctx, TokenVersionKey, int32(ver))
 		ctx = context.WithValue(ctx, currentUserKey, u)
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -129,6 +133,11 @@ func GetUserRole(ctx context.Context) string {
 func CurrentUser(ctx context.Context) (generated.User, bool) {
 	u, ok := ctx.Value(currentUserKey).(generated.User)
 	return u, ok
+}
+
+func adminLapsedFromContext(ctx context.Context) bool {
+	lapsed, _ := ctx.Value(adminLapsedKey).(bool)
+	return lapsed
 }
 
 // SessionCurrent reports whether the request's access token was issued after

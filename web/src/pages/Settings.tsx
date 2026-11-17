@@ -5,6 +5,7 @@ import { apiFetch } from "../lib/api/fetch";
 import { useMe } from "../lib/hooks/queries";
 import { logout } from "../lib/queryClient";
 import { toast } from "../lib/toast";
+import AdminLapsedBanner from "../components/AdminLapsedBanner";
 import styles from "./Settings.module.css";
 
 const APP_VERSION = __APP_VERSION__;
@@ -50,6 +51,7 @@ export default function SettingsPage() {
     <div className={`screen ${styles.page}`}>
       <main className={styles.container}>
         <h1 className={styles.title}>Settings</h1>
+        <AdminLapsedBanner />
 
         <section className={styles.section}>
           <h2 className={styles.label}>Account</h2>

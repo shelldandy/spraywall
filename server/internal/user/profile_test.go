@@ -190,7 +190,7 @@ func TestMeResponse(t *testing.T) {
 	}
 
 	me := decodeMe(t, do(env.h.Me, u, http.MethodGet, "", nil, nil))
-	if me["has_password"] != false || me["avatar_url"] != nil || me["role"] != "climber" || me["email"] != "me@example.com" {
+	if me["has_password"] != false || me["avatar_url"] != nil || me["role"] != "climber" || me["email"] != "me@example.com" || me["admin_lapsed"] != false {
 		t.Fatalf("unexpected me %v", me)
 	}
 	idents := me["identities"].([]any)
@@ -209,6 +209,46 @@ func TestMeResponse(t *testing.T) {
 		if _, ok := first[k]; !ok {
 			t.Errorf("identity missing %s", k)
 		}
+	}
+}
+
+func TestAdminLapseReportingAndRoleChangeClearing(t *testing.T) {
+	env := newProfileEnv(t, Options{PasswordEnabled: true})
+	ctx := context.Background()
+	u := env.createUser(t, "role-change@example.com", "")
+	u, err := env.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err = env.q.LapseUserRole(ctx, generated.LapseUserRoleParams{ID: u.ID, Role: generated.UserRoleClimber})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	me := decodeMe(t, do(env.h.Me, u, http.MethodGet, "", nil, nil))
+	if me["admin_lapsed"] != false {
+		t.Fatalf("admin_lapsed without configured expiry = %v, want false", me["admin_lapsed"])
+	}
+
+	if err := env.q.PromoteUserRole(ctx, generated.PromoteUserRoleParams{ID: u.ID, Role: generated.UserRoleSetter}); err != nil {
+		t.Fatal(err)
+	}
+	u, err = env.q.GetUserByID(ctx, u.ID)
+	if err != nil || u.Role != generated.UserRoleSetter || u.RoleLapsedFrom.Valid {
+		t.Fatalf("invite promotion left lapse marker: role=%s, marker=%+v, err=%v", u.Role, u.RoleLapsedFrom, err)
+	}
+
+	u, err = env.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err = env.q.LapseUserRole(ctx, generated.LapseUserRoleParams{ID: u.ID, Role: generated.UserRoleClimber})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err = env.q.UpdateUserRole(ctx, generated.UpdateUserRoleParams{ID: u.ID, Role: generated.UserRoleSetter})
+	if err != nil || u.RoleLapsedFrom.Valid {
+		t.Fatalf("explicit role update left lapse marker: %+v, err=%v", u.RoleLapsedFrom, err)
 	}
 }
 
@@ -503,8 +543,8 @@ func TestIssueTokensAppliesManagedAdminFallbacks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u, _ := env.q.GetUserByID(ctx, stale.ID); u.Role != generated.UserRoleClimber {
-		t.Fatalf("expired confirmed admin role = %s, want climber", u.Role)
+	if u, _ := env.q.GetUserByID(ctx, stale.ID); u.Role != generated.UserRoleClimber || !u.RoleLapsedFrom.Valid || u.RoleLapsedFrom.UserRole != generated.UserRoleAdmin {
+		t.Fatalf("expired confirmed admin state = role %s, lapsed from %+v; want climber, admin lapse", u.Role, u.RoleLapsedFrom)
 	}
 	claims = jwt.MapClaims{}
 	if _, err := jwt.ParseWithClaims(tokens.AccessToken, claims, func(*jwt.Token) (any, error) { return []byte("secret"), nil }); err != nil {
@@ -523,6 +563,72 @@ func TestIssueTokensAppliesManagedAdminFallbacks(t *testing.T) {
 	}
 	if u, _ := plain.q.GetUserByID(ctx, manual.ID); u.Role != generated.UserRoleAdmin {
 		t.Fatalf("manual admin demoted without admin group: %s", u.Role)
+	}
+}
+
+func TestAdminLapseAppearsBeforeAndAfterRefresh(t *testing.T) {
+	env := newProfileEnv(t, Options{PasswordEnabled: true, AdminRoleMaxAge: time.Hour})
+	ctx := context.Background()
+	u := env.createUser(t, "lapsed@example.com", "")
+	u, err := env.q.SyncUserRole(ctx, generated.SyncUserRoleParams{ID: u.ID, Role: generated.UserRoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, err := env.h.IssueTokens(ctx, env.q, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.pool.Exec(ctx, `UPDATE users SET role_synced_at = now() - interval '2 hours' WHERE id = $1`, u.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	getMe := func(accessToken string) map[string]any {
+		t.Helper()
+		router := chi.NewRouter()
+		router.With(env.h.Authenticate).Get("/auth/me", env.h.Me)
+		req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return decodeMe(t, rec)
+	}
+
+	// Authenticate applies the lapse in memory before the refresh writes it.
+	me := getMe(pair.AccessToken)
+	if me["admin_lapsed"] != true || me["role"] != "climber" {
+		t.Fatalf("pre-refresh /me = %v, want lapsed climber", me)
+	}
+	profileRouter := chi.NewRouter()
+	profileRouter.With(env.h.Authenticate).Patch("/users/me", env.h.UpdateMe)
+	profileReq := httptest.NewRequest(http.MethodPatch, "/users/me", strings.NewReader(`{"display_name":"Updated"}`))
+	profileReq.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+	profileRec := httptest.NewRecorder()
+	profileRouter.ServeHTTP(profileRec, profileReq)
+	profileMe := decodeMe(t, profileRec)
+	if profileMe["admin_lapsed"] != true || profileMe["role"] != "climber" {
+		t.Fatalf("pre-refresh profile update response = %v, want lapsed climber", profileMe)
+	}
+	stored, err := env.q.GetUserByID(ctx, u.ID)
+	if err != nil || stored.Role != generated.UserRoleAdmin || stored.RoleLapsedFrom.Valid {
+		t.Fatalf("in-memory fallback changed stored state: %+v, err=%v", stored, err)
+	}
+
+	refreshRec := httptest.NewRecorder()
+	env.h.Refresh(refreshRec, httptest.NewRequest(http.MethodPost, "/auth/refresh", strings.NewReader(`{"refresh_token":"`+pair.RefreshToken+`"}`)))
+	if refreshRec.Code != http.StatusOK {
+		t.Fatalf("refresh status %d: %s", refreshRec.Code, refreshRec.Body)
+	}
+	var refreshed TokenPair
+	if err := json.Unmarshal(refreshRec.Body.Bytes(), &refreshed); err != nil {
+		t.Fatal(err)
+	}
+	me = getMe(refreshed.AccessToken)
+	if me["admin_lapsed"] != true || me["role"] != "climber" {
+		t.Fatalf("post-refresh /me = %v, want lapsed climber", me)
+	}
+	stored, err = env.q.GetUserByID(ctx, u.ID)
+	if err != nil || stored.Role != generated.UserRoleClimber || !stored.RoleLapsedFrom.Valid || stored.RoleLapsedFrom.UserRole != generated.UserRoleAdmin {
+		t.Fatalf("refreshed stored state = %+v, err=%v", stored, err)
 	}
 }
 
