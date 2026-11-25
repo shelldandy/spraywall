@@ -30,14 +30,35 @@ const ROLE_STROKES: Record<HoldRole, string> = {
   normal: "#00FFFF",
 };
 
+interface GlowLayer {
+  width: number;
+  opacity: number;
+}
+
 /**
- * Selected-hold outline sizing, in screen px. The glow is a stack of progressively wider, faint
- * strokes rather than an SVG blur filter: iOS Safari does not render the blur in this overlay, while
- * plain strokes and masks work everywhere. Overlapping layers fade out away from the hold edge.
+ * Builds the glow as a stack of progressively wider, faint strokes rather than an SVG blur filter:
+ * iOS Safari does not render the blur in this overlay, while plain strokes and masks work everywhere.
+ *
+ * Each stroke is centred on the hold edge and masked to the outside, so a stroke of width 2d reaches
+ * d px outwards. Layer opacities are solved from the outermost layer inwards so the composited glow
+ * follows `peak * exp(-d² / 2σ²)` at each step, giving a soft falloff with no solid band at the edge.
  */
+function buildGlowLayers(peak: number, sigma: number, step: number, reach: number): GlowLayer[] {
+  const alphaAt = (d: number) => peak * Math.exp(-(d * d) / (2 * sigma * sigma));
+  const layers: GlowLayer[] = [];
+  let outerAlpha = 0;
+  for (let d = reach; d >= step - 1e-9; d -= step) {
+    const alpha = alphaAt(d);
+    layers.push({ width: 2 * d, opacity: 1 - (1 - alpha) / (1 - outerAlpha) });
+    outerAlpha = alpha;
+  }
+  return layers;
+}
+
+/** Selected-hold outline sizing, in screen px. */
 const SELECTED_STYLE = {
-  regular: { outline: 2, glowWidths: [4, 6, 8, 10, 12, 14], glowOpacity: 0.2 },
-  compact: { outline: 1.25, glowWidths: [2.5, 4], glowOpacity: 0.3 },
+  regular: { outline: 2, glow: buildGlowLayers(0.8, 3.2, 1, 10) },
+  compact: { outline: 1.25, glow: buildGlowLayers(0.7, 1.2, 0.5, 3) },
 };
 
 function getSelectedStroke(holdId: string, holdRoles?: HoldRoles | null, selectedRole?: HoldRole) {
@@ -163,13 +184,13 @@ export default function HoldOverlay({
       {spotlitHolds.length > 0 && (
         <g mask={`url(#${maskId})`} style={{ pointerEvents: "none" }}>
           {spotlitHolds.flatMap(({ hold, shape, stroke }) =>
-            sizes.glowWidths.map((width) =>
+            sizes.glow.map(({ width, opacity }) =>
               renderHoldShape(
                 shape,
                 {
                   fill: "none",
                   stroke,
-                  strokeOpacity: sizes.glowOpacity,
+                  strokeOpacity: opacity,
                   strokeWidth: width,
                   strokeLinejoin: "round",
                   vectorEffect: "non-scaling-stroke",
