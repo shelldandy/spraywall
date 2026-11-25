@@ -160,11 +160,19 @@
   white-space: pre-wrap;
 }
 
+.aboveFold {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  /* Fill the scroll viewport so the wall image takes all space above the fold. */
+  min-height: 100%;
+}
+
 .imageContainer {
   display: flex;
   flex: 1 0 0;
-  min-height: min(45vh, 480px);
-  margin: 16px 0 12px;
+  min-height: 280px;
+  margin: 8px 0 12px;
   overflow: hidden;
   border-radius: var(--radius);
   background: var(--bg-muted);
@@ -182,7 +190,7 @@
   align-items: center;
   width: 100%;
   min-height: 0;
-  margin: 16px 0 12px;
+  margin: 8px 0 12px;
   border-radius: var(--radius);
   background: var(--bg-muted);
   color: var(--text-faint);
