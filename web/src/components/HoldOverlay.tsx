@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useId, type MouseEvent, type SVGProps } from "react";
 import type { Hold, HoldRoles } from "../lib/api/types";
 
 interface HoldOverlayProps {
@@ -53,6 +53,41 @@ function getHoldColor(
   return { fill: "rgba(0, 255, 255, 0.35)", stroke: "#00FFFF" };
 }
 
+/** Blur radius for the view-mode glow, in normalised image units (1 = image height). */
+const GLOW_BLUR = 0.005;
+
+type HoldShape =
+  | { kind: "polygon"; points: string }
+  | { kind: "rect"; x: number; y: number; width: number; height: number };
+
+function getHoldShape(hold: Hold, xScale: number): HoldShape {
+  if (hold.polygon && hold.polygon.length > 0) {
+    return {
+      kind: "polygon",
+      points: hold.polygon.map(([px, py]) => `${px * xScale},${py}`).join(" "),
+    };
+  }
+  return {
+    kind: "rect",
+    x: hold.bbox.x * xScale,
+    y: hold.bbox.y,
+    width: hold.bbox.w * xScale,
+    height: hold.bbox.h,
+  };
+}
+
+function renderHoldShape(
+  shape: HoldShape,
+  props: SVGProps<SVGPolygonElement & SVGRectElement>,
+  key?: string,
+) {
+  return shape.kind === "polygon" ? (
+    <polygon key={key} points={shape.points} {...props} />
+  ) : (
+    <rect key={key} x={shape.x} y={shape.y} width={shape.width} height={shape.height} {...props} />
+  );
+}
+
 /**
  * SVG layer drawn over a wall image. Hold coordinates are normalised (0..1); when the
  * source aspect ratio is provided, the viewBox preserves the image's letterboxed bounds.
@@ -71,8 +106,22 @@ export default function HoldOverlay({
   preserveAspectRatio = "none",
   onBackgroundPress,
 }: HoldOverlayProps) {
+  const idBase = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const maskId = `hold-dim-mask-${idBase}`;
+  const glowId = `hold-glow-${idBase}`;
   const aspectRatio = coordinateAspectRatio && coordinateAspectRatio > 0 ? coordinateAspectRatio : null;
+  const xScale = aspectRatio ?? 1;
   const viewBox = aspectRatio ? `0 0 ${aspectRatio} 1` : "0 0 1 1";
+  const spotlitHolds =
+    mode === "view"
+      ? holds
+          .filter((hold) => selectedIds.has(hold.id) && holdToDelete !== hold.id)
+          .map((hold) => ({
+            hold,
+            shape: getHoldShape(hold, xScale),
+            stroke: getHoldColor(hold.id, true, holdRoles, mode, holdToDelete, selectedRoleById?.get(hold.id)).stroke,
+          }))
+      : [];
 
   const handleBackgroundClick = (evt: MouseEvent<SVGRectElement>) => {
     // The rect's client rect includes any zoom transform, so this stays correct when zoomed.
@@ -89,7 +138,29 @@ export default function HoldOverlay({
       style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
     >
       {mode === "view" && (
-        <rect x={0} y={0} width={aspectRatio ?? 1} height={1} fill="rgba(0, 0, 0, 0.5)" />
+        <>
+          {/* One filter region covering the whole image, so the blur is never clipped per hold. */}
+          <filter id={glowId} filterUnits="userSpaceOnUse" x={0} y={0} width={xScale} height={1}>
+            <feGaussianBlur stdDeviation={GLOW_BLUR} />
+          </filter>
+          {/* White = outside the selected holds. Used to dim the wall and to keep the glow outside the holds. */}
+          <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={xScale} height={1}>
+            <rect x={0} y={0} width={xScale} height={1} fill="white" />
+            {spotlitHolds.map(({ hold, shape }) => renderHoldShape(shape, { fill: "black" }, hold.id))}
+          </mask>
+          <rect x={0} y={0} width={xScale} height={1} fill="rgba(0, 0, 0, 0.5)" mask={`url(#${maskId})`} />
+          <g mask={`url(#${maskId})`} style={{ pointerEvents: "none" }}>
+            <g filter={`url(#${glowId})`}>
+              {spotlitHolds.map(({ hold, shape, stroke }) =>
+                renderHoldShape(
+                  shape,
+                  { fill: "none", stroke, strokeWidth: 8, vectorEffect: "non-scaling-stroke" },
+                  hold.id,
+                ),
+              )}
+            </g>
+          </g>
+        </>
       )}
       {mode === "edit" && editHoldMode === "add" && (
         <rect
@@ -113,6 +184,17 @@ export default function HoldOverlay({
           holdToDelete,
           selectedRoleById?.get(hold.id),
         );
+        const shape = getHoldShape(hold, xScale);
+
+        // View mode: a crisp outline only (the outward glow is drawn above), so the real hold colour shows.
+        if (mode === "view" && isSelected && holdToDelete !== hold.id) {
+          return renderHoldShape(
+            shape,
+            { fill: "none", stroke: colors.stroke, strokeWidth: 2, vectorEffect: "non-scaling-stroke", style: { pointerEvents: "none" } },
+            hold.id,
+          );
+        }
+
         const common = {
           fill: colors.fill,
           stroke: colors.stroke,
@@ -126,23 +208,7 @@ export default function HoldOverlay({
           },
         };
 
-        if (hold.polygon && hold.polygon.length > 0) {
-          const points = hold.polygon
-            .map(([px, py]) => `${px * (aspectRatio ?? 1)},${py}`)
-            .join(" ");
-          return <polygon key={hold.id} points={points} {...common} />;
-        }
-
-        return (
-          <rect
-            key={hold.id}
-            x={hold.bbox.x * (aspectRatio ?? 1)}
-            y={hold.bbox.y}
-            width={hold.bbox.w * (aspectRatio ?? 1)}
-            height={hold.bbox.h}
-            {...common}
-          />
-        );
+        return renderHoldShape(shape, common, hold.id);
       })}
     </svg>
   );

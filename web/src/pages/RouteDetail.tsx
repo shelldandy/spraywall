@@ -224,75 +224,77 @@ export default function RouteDetailPage() {
             <p className={`error-text ${styles.centered}`}>{routeQuery.error.message}</p>
           ) : (
             <>
-              {routeData?.is_legacy && (
-                <div className={styles.legacyBanner}>This climb was archived when the wall was reset</div>
-              )}
-
-              <div className={styles.metaSection}>
-                <div className={styles.metaRow}>
-                  {routeData?.grade && (
-                    <span className={`${styles.pill} ${styles.gradeBadge}`} style={getGradeColorStyle(routeData.grade)}>
-                      {routeData.grade}
-                    </span>
-                  )}
-                  {routeData?.is_legacy && <span className={`${styles.pill} ${styles.resetBadge}`}>Reset</span>}
-                  {routeData?.progress === "projects" && <span className={`${styles.pill} ${styles.projectBadge}`}>Projects</span>}
-                  {routeData?.has_sent && <span className={`${styles.pill} ${styles.sentBadge}`}>Sent</span>}
-                  {routeData?.has_flashed && <span className={`${styles.pill} ${styles.flashBadge}`}>Flashed</span>}
-                  <RouteTags tags={routeData?.tags} inline />
-                </div>
-                <div className={styles.metaStats}>
-                  {sendCount} send{sendCount !== 1 ? "s" : ""} · {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""} · {ratingSummary}
-                </div>
-                <div className={`${styles.metaActions} ${styles.actionBar} ${routeData?.status === "published" ? "" : styles.actionBarSingle}`}>
-                  <button
-                    ref={logTriggerRef}
-                    type="button"
-                    className={`btn btn-primary ${styles.metaAction}`}
-                    onClick={() => { setEditingLog(null); setAddingLog(!resetRoute); setLogDrawerOpen(true); }}
-                    title={resetRoute ? "View and edit existing climb history" : undefined}
-                  >
-                    {resetRoute ? "Your history" : "Log climb"}
-                  </button>
-                  {routeData?.status === "published" && <button ref={circuitTriggerRef} type="button" className={`btn btn-ghost ${styles.metaAction}`} onClick={() => setCircuitDrawerOpen(true)}>Circuits</button>}
-                  {routeData?.status === "published" && (
-                    <button
-                      ref={ratingTriggerRef}
-                      type="button"
-                      className={`btn btn-ghost ${styles.metaAction}`}
-                      onClick={() => setRatingDrawerOpen(true)}
-                      aria-label={routeData.my_rating == null ? "Rate this climb" : `Your rating: ${routeData.my_rating} out of 5`}
-                    >
-                      {routeData.my_rating == null ? "Rate" : `Rated ★ ${routeData.my_rating}`}
-                    </button>
-                  )}
-                </div>
-              </div>
-              {selectedCircuit && currentCircuitIndex >= 0 && <nav aria-label={`${selectedCircuit.name} circuit navigation`} className={styles.metaActions}>
-                <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === 0} onClick={() => moveCircuit(-1)}>‹ Prev</button>
-                <CircuitBadge circuit={selectedCircuit} />
-                <span>· {currentCircuitIndex + 1} of {circuitRouteIds.length} ·</span>
-                <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === circuitRouteIds.length - 1} onClick={() => moveCircuit(1)}>Next ›</button>
-              </nav>}
-              {routeData?.description && <p className={styles.description}>{routeData.description}</p>}
-
-              {wall?.image ? (
-                <div className={styles.imageContainer}>
-                  <WallImage src={wall.image.image_url} fitContainer>
-                    {routeHolds.length > 0 && (
-                      <HoldOverlay
-                        holds={routeHolds}
-                        selectedIds={routeHoldIds}
-                        onToggle={() => {}}
-                        mode="view"
-                        holdRoles={visibleHoldRoles}
-                      />
+              <div className={styles.aboveFold}>
+                {routeData?.is_legacy && (
+                  <div className={styles.legacyBanner}>This climb was archived when the wall was reset</div>
+                )}
+  
+                <div className={styles.metaSection}>
+                  <div className={styles.metaRow}>
+                    {routeData?.grade && (
+                      <span className={`${styles.pill} ${styles.gradeBadge}`} style={getGradeColorStyle(routeData.grade)}>
+                        {routeData.grade}
+                      </span>
                     )}
-                  </WallImage>
+                    {routeData?.is_legacy && <span className={`${styles.pill} ${styles.resetBadge}`}>Reset</span>}
+                    {routeData?.progress === "projects" && <span className={`${styles.pill} ${styles.projectBadge}`}>Projects</span>}
+                    {routeData?.has_sent && <span className={`${styles.pill} ${styles.sentBadge}`}>Sent</span>}
+                    {routeData?.has_flashed && <span className={`${styles.pill} ${styles.flashBadge}`}>Flashed</span>}
+                    <RouteTags tags={routeData?.tags} inline />
+                  </div>
+                  <div className={styles.metaStats}>
+                    {sendCount} send{sendCount !== 1 ? "s" : ""} · {routeHolds.length} hold{routeHolds.length !== 1 ? "s" : ""} · {ratingSummary}
+                  </div>
+                  <div className={`${styles.metaActions} ${styles.actionBar} ${routeData?.status === "published" ? "" : styles.actionBarSingle}`}>
+                    <button
+                      ref={logTriggerRef}
+                      type="button"
+                      className={`btn btn-primary ${styles.metaAction}`}
+                      onClick={() => { setEditingLog(null); setAddingLog(!resetRoute); setLogDrawerOpen(true); }}
+                      title={resetRoute ? "View and edit existing climb history" : undefined}
+                    >
+                      {resetRoute ? "Your history" : "Log climb"}
+                    </button>
+                    {routeData?.status === "published" && <button ref={circuitTriggerRef} type="button" className={`btn btn-ghost ${styles.metaAction}`} onClick={() => setCircuitDrawerOpen(true)}>Circuits</button>}
+                    {routeData?.status === "published" && (
+                      <button
+                        ref={ratingTriggerRef}
+                        type="button"
+                        className={`btn btn-ghost ${styles.metaAction}`}
+                        onClick={() => setRatingDrawerOpen(true)}
+                        aria-label={routeData.my_rating == null ? "Rate this climb" : `Your rating: ${routeData.my_rating} out of 5`}
+                      >
+                        {routeData.my_rating == null ? "Rate" : `Rated ★ ${routeData.my_rating}`}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <div className={styles.noImage}>No wall image</div>
-              )}
+                {selectedCircuit && currentCircuitIndex >= 0 && <nav aria-label={`${selectedCircuit.name} circuit navigation`} className={styles.metaActions}>
+                  <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === 0} onClick={() => moveCircuit(-1)}>‹ Prev</button>
+                  <CircuitBadge circuit={selectedCircuit} />
+                  <span>· {currentCircuitIndex + 1} of {circuitRouteIds.length} ·</span>
+                  <button type="button" className="btn btn-ghost" disabled={currentCircuitIndex === circuitRouteIds.length - 1} onClick={() => moveCircuit(1)}>Next ›</button>
+                </nav>}
+                {routeData?.description && <p className={styles.description}>{routeData.description}</p>}
+  
+                {wall?.image ? (
+                  <div className={styles.imageContainer}>
+                    <WallImage src={wall.image.image_url} fitContainer>
+                      {routeHolds.length > 0 && (
+                        <HoldOverlay
+                          holds={routeHolds}
+                          selectedIds={routeHoldIds}
+                          onToggle={() => {}}
+                          mode="view"
+                          holdRoles={visibleHoldRoles}
+                        />
+                      )}
+                    </WallImage>
+                  </div>
+                ) : (
+                  <div className={styles.noImage}>No wall image</div>
+                )}
+              </div>
 
               <section className={styles.activitySection} aria-label="Activity">
                 <h2>Activity</h2>
