@@ -59,6 +59,7 @@ function RouteThumbnail({ route, holds, imageUrl }: { route: Route; holds: Hold[
                 onToggle={() => {}}
                 mode="view"
                 holdRoles={route.hold_roles}
+                compact
               />
             </div>
           )}
