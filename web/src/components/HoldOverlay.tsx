@@ -30,13 +30,35 @@ const ROLE_STROKES: Record<HoldRole, string> = {
   normal: "#00FFFF",
 };
 
+interface GlowLayer {
+  width: number;
+  opacity: number;
+}
+
 /**
- * Selected-hold outline sizing. `outline` and `glow` are stroke widths in screen px; `blur` is the
- * glow's blur radius in normalised image units (1 = image height).
+ * Builds the glow as a stack of progressively wider, faint strokes rather than an SVG blur filter:
+ * iOS Safari does not render the blur in this overlay, while plain strokes and masks work everywhere.
+ *
+ * Each stroke is centred on the hold edge and masked to the outside, so a stroke of width 2d reaches
+ * d px outwards. Layer opacities are solved from the outermost layer inwards so the composited glow
+ * follows `peak * exp(-d² / 2σ²)` at each step, giving a soft falloff with no solid band at the edge.
  */
+function buildGlowLayers(peak: number, sigma: number, step: number, reach: number): GlowLayer[] {
+  const alphaAt = (d: number) => peak * Math.exp(-(d * d) / (2 * sigma * sigma));
+  const layers: GlowLayer[] = [];
+  let outerAlpha = 0;
+  for (let d = reach; d >= step - 1e-9; d -= step) {
+    const alpha = alphaAt(d);
+    layers.push({ width: 2 * d, opacity: 1 - (1 - alpha) / (1 - outerAlpha) });
+    outerAlpha = alpha;
+  }
+  return layers;
+}
+
+/** Selected-hold outline sizing, in screen px. */
 const SELECTED_STYLE = {
-  regular: { outline: 2, glow: 8, blur: 0.005 },
-  compact: { outline: 1.25, glow: 3, blur: 0.008 },
+  regular: { outline: 2, glow: buildGlowLayers(0.8, 3.2, 1, 10) },
+  compact: { outline: 1.25, glow: buildGlowLayers(0.7, 1.2, 0.5, 3) },
 };
 
 function getSelectedStroke(holdId: string, holdRoles?: HoldRoles | null, selectedRole?: HoldRole) {
@@ -112,7 +134,6 @@ export default function HoldOverlay({
 }: HoldOverlayProps) {
   const idBase = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const maskId = `hold-outside-mask-${idBase}`;
-  const glowId = `hold-glow-${idBase}`;
   const aspectRatio = coordinateAspectRatio && coordinateAspectRatio > 0 ? coordinateAspectRatio : null;
   const xScale = aspectRatio ?? 1;
   const viewBox = aspectRatio ? `0 0 ${aspectRatio} 1` : "0 0 1 1";
@@ -142,10 +163,6 @@ export default function HoldOverlay({
       style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
     >
       <defs>
-        {/* One filter region covering the whole image, so the blur is never clipped per hold. */}
-        <filter id={glowId} filterUnits="userSpaceOnUse" x={0} y={0} width={xScale} height={1}>
-          <feGaussianBlur stdDeviation={sizes.blur} />
-        </filter>
         {/* White = outside the selected holds. Keeps the dimming and the glow off the holds themselves. */}
         <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={xScale} height={1}>
           <rect x={0} y={0} width={xScale} height={1} fill="white" />
@@ -166,15 +183,22 @@ export default function HoldOverlay({
       )}
       {spotlitHolds.length > 0 && (
         <g mask={`url(#${maskId})`} style={{ pointerEvents: "none" }}>
-          <g filter={`url(#${glowId})`}>
-            {spotlitHolds.map(({ hold, shape, stroke }) =>
+          {spotlitHolds.flatMap(({ hold, shape, stroke }) =>
+            sizes.glow.map(({ width, opacity }) =>
               renderHoldShape(
                 shape,
-                { fill: "none", stroke, strokeWidth: sizes.glow, vectorEffect: "non-scaling-stroke" },
-                hold.id,
+                {
+                  fill: "none",
+                  stroke,
+                  strokeOpacity: opacity,
+                  strokeWidth: width,
+                  strokeLinejoin: "round",
+                  vectorEffect: "non-scaling-stroke",
+                },
+                `${hold.id}-glow-${width}`,
               ),
-            )}
-          </g>
+            ),
+          )}
         </g>
       )}
       {mode === "edit" && editHoldMode === "add" && (
