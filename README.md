@@ -4,9 +4,8 @@ AI-assisted spray wall route setting and climbing app.
 
 ## Prerequisites
 
-- Docker & Docker Compose
-- Node.js ^20.19.0 or ≥ 22.12.0 (for the web app)
-- Go ≥ 1.22 (optional, for local dev outside Docker)
+- Docker with the Compose plugin
+- [mise](https://mise.jdx.dev/) (for the pinned development toolchain)
 
 ## Self-Hosting
 
@@ -77,17 +76,16 @@ Releases are cut by [Release Please](https://github.com/googleapis/release-pleas
 ## Development
 
 ```bash
-# Clone and configure
 git clone https://github.com/bowlinedandy/spraywall.git
 cd spraywall
-cp .env.example .env
-
-# Start backend services (Postgres, MinIO, Go server, Python worker)
-make dev
-
-# In another terminal — start the web app (proxies /api, /images, and /beta-media to :8080)
-make web
+make setup
 ```
+
+`make setup` installs the versions pinned in `mise.toml`, creates `.env` from `.env.example` if needed, installs web and worker dependencies, starts Docker services, and restores the shared test fixture. To launch the web app in another terminal, run `make web`.
+
+Use `make up` to start the backend stack in the background (`make dev` runs it in the foreground). `make seed` replaces the current database and MinIO bucket contents with the committed fixture; `make setup` also runs it. Run `make snapshot` first if you need to keep existing dev data: it refreshes the fixture from the running stack after saving an unsanitized local backup under the gitignored `.snapshots/` directory.
+
+The fixture login password is `spraywall` for all accounts: `admin@spraywall.test`, `user2@spraywall.test`, `user3@spraywall.test`, `user4@spraywall.test`, and `user5@spraywall.test`.
 
 The app is a mobile-first PWA. Open it on your phone and use "Add to Home Screen" to install it.
 It caches the app shell, wall images and recently viewed data for offline browsing; changes need a connection.
@@ -142,8 +140,12 @@ Climbers can add YouTube, Instagram, TikTok, and Immich video links to climbs. I
 
 | Command         | Description                                      |
 | --------------- | ------------------------------------------------ |
-| `make dev`      | Start all backend services (SAM enabled)         |
+| `make setup`    | Install tools/dependencies, start services, and seed test data |
+| `make up`       | Start backend services in the background         |
+| `make dev`      | Start backend services in the foreground         |
 | `make web`      | Start the web app (Vite) dev server              |
+| `make seed`     | Reset database and MinIO files to the test fixture |
+| `make snapshot` | Back up local data and refresh the sanitized fixture |
 | `make migrate`  | Run database migrations                          |
 | `make sqlc`     | Generate Go code from SQL queries                |
 | `make lint`     | Run Go, TypeScript, and Python linters           |
