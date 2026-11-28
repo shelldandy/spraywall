@@ -98,7 +98,7 @@ def dump(directory: Path) -> None:
             count += 1
         if count == 0:
             raise ValueError(f"MinIO bucket {bucket!r} is empty; refusing to write an empty fixture")
-        (staging / MANIFEST).write_text(json.dumps({"content_types": content_types}, indent=2) + "\n")
+        (staging / MANIFEST).write_text(json.dumps({"content_types": dict(sorted(content_types.items()))}, indent=2) + "\n")
 
         old_directory = directory.with_name(f".{directory.name}.old")
         if old_directory.exists():

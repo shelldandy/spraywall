@@ -41,8 +41,9 @@ $COMPOSE exec -T postgres sh -c 'exec pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"
     | $COMPOSE exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d spraywall_snapshot'
 $COMPOSE exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d spraywall_snapshot' \
     < scripts/dev/sanitize.sql
-$COMPOSE exec -T postgres sh -c 'exec pg_dump --clean --if-exists --no-owner --no-privileges -U "$POSTGRES_USER" -d spraywall_snapshot' \
-    | gzip -c > "$SEED_DIR/db.sql.gz"
+# Use a fixed psql restriction key and omit gzip timestamps for stable fixture bytes.
+$COMPOSE exec -T postgres sh -c 'exec pg_dump --restrict-key=099e4650f7034cc14804eb91b0245b099736ccfc18f99cf3b4113e63620b76d0 --clean --if-exists --no-owner --no-privileges -U "$POSTGRES_USER" -d spraywall_snapshot' \
+    | gzip -n -c > "$SEED_DIR/db.sql.gz"
 $COMPOSE exec -T postgres sh -c 'dropdb --if-exists --force -U "$POSTGRES_USER" spraywall_snapshot'
 scratch_created=0
 
