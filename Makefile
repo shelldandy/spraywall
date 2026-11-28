@@ -1,4 +1,16 @@
-.PHONY: dev prod migrate sqlc web web-tailscale lint test clean
+.PHONY: setup up seed snapshot dev prod migrate sqlc web web-tailscale lint test clean
+
+setup:
+	scripts/dev/setup.sh
+
+up:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait
+
+seed:
+	scripts/dev/seed.sh
+
+snapshot:
+	scripts/dev/snapshot.sh
 
 dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
